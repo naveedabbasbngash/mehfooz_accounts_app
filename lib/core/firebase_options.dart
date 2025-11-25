@@ -1,0 +1,1 @@
+// Placeholder for lib/core/firebase_options.dart

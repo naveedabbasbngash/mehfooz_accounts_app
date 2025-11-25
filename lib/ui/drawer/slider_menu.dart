@@ -1,0 +1,1 @@
+// Placeholder for lib/ui/drawer/slider_menu.dart

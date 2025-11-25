@@ -1,0 +1,182 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
+
+import '../../main.dart';
+import '../../model/user_model.dart';
+import '../../services/auth_service.dart'; // for logout
+
+class DrawerMenu extends StatelessWidget {
+  final Function(String) onItemClick;
+  final GlobalKey<SliderDrawerState> drawerKey;
+  final int currentPageIndex;
+
+  final UserModel user;
+
+  const DrawerMenu({
+    super.key,
+    required this.onItemClick,
+    required this.drawerKey,
+    required this.currentPageIndex,
+    required this.user,
+  });
+
+  /// 🔥 GLOBAL LOG
+  void _logAction(String title) {
+    print("\n============================");
+    print("📌 Drawer Menu Clicked: $title");
+    print("👤 User Full Name: ${user.fullName}");
+    print("🪪 First Name: ${user.firstName}");
+    print("🪪 Last  Name: ${user.lastName}");
+    print("📧 User Email: ${user.email}");
+    print("🖼️ User Image URL: ${user.imageUrl}");
+    print("🔐 is_login: ${user.isLogin}");
+    print("============================\n");
+  }
+
+  /// 🔥 LOGOUT HANDLER
+  Future<void> _handleLogout(BuildContext context) async {
+    _logAction("Logout");
+    print("🚪 Logging out…");
+
+    await AuthService.logout();
+
+    // Close drawer then navigate to root (AuthScreen via '/')
+    drawerKey.currentState?.closeSlider();
+
+    Future.delayed(const Duration(milliseconds: 250), () {
+      Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+    });
+  }
+
+  Widget _menuItem({
+    required String title,
+    required IconData icon,
+    required int index,
+    required BuildContext context,
+  }) {
+    final bool selected = currentPageIndex == index;
+
+    return Container(
+      decoration: selected
+          ? BoxDecoration(
+        color: Colors.white.withOpacity(.15),
+        borderRadius: BorderRadius.circular(12),
+      )
+          : null,
+      child: ListTile(
+        leading: Icon(icon, color: Colors.white),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        onTap: () {
+          _logAction(title);
+          onItemClick(title);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasValidImage =
+        user.imageUrl.isNotEmpty && user.imageUrl.startsWith("http");
+
+    print(
+        "🧩 [DrawerMenu] Building with user: fullName='${user.fullName}', email='${user.email}', image='${user.imageUrl}'");
+
+    return Container(
+      color: Colors.deepPurple,
+      padding: const EdgeInsets.only(top: 50, left: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ⭐ USER PROFILE
+          CircleAvatar(
+            radius: 35,
+            backgroundColor: Colors.white24,
+
+            backgroundImage: hasValidImage ? NetworkImage(user.imageUrl) : null,
+
+            child: !hasValidImage
+                ? const Icon(Icons.person, size: 40, color: Colors.white)
+                : null,
+          ),
+
+          const SizedBox(height: 10),
+
+          Text(
+            user.fullName.isNotEmpty
+                ? user.fullName
+                : (user.firstName.isNotEmpty
+                ? "${user.firstName} ${user.lastName}".trim()
+                : "User"),
+            style: const TextStyle(color: Colors.white, fontSize: 18),
+          ),
+
+          Text(
+            user.email,
+            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          ),
+
+          const SizedBox(height: 30),
+
+          _menuItem(
+            title: "Home",
+            icon: Icons.home,
+            index: 0,
+            context: context,
+          ),
+          _menuItem(
+            title: "Search",
+            icon: Icons.search,
+            index: 1,
+            context: context,
+          ),
+          _menuItem(
+            title: "Reports",
+            icon: Icons.bar_chart,
+            index: 2,
+            context: context,
+          ),
+          _menuItem(
+            title: "Profile",
+            icon: Icons.person,
+            index: 3,
+            context: context,
+          ),
+
+          const Divider(color: Colors.white54),
+
+          // SETTINGS
+          ListTile(
+            leading: const Icon(Icons.settings, color: Colors.white),
+            title: const Text(
+              "Settings",
+              style: TextStyle(color: Colors.white),
+            ),
+            onTap: () {
+              _logAction("Settings");
+              onItemClick("Settings");
+            },
+          ),
+
+          // ⭐ LOGOUT BUTTON
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.white),
+            title: const Text(
+              "Logout",
+              style: TextStyle(color: Colors.white),
+            ),
+              onTap: () async {
+                await AuthService.logout();
+                context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
+              }          ),
+        ],
+      ),
+    );
+  }
+}

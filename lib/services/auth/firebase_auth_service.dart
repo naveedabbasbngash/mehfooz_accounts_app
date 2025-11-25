@@ -1,0 +1,1 @@
+// Placeholder for lib/services/auth/firebase_auth_service.dart
