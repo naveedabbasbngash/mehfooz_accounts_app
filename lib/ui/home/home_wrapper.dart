@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
+import 'package:mehfooz_accounts_app/ui/transcations/transaction_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -24,7 +25,6 @@ import 'home_screen.dart';
 import 'import_summary_screen.dart';
 import '../profile/profile_screen.dart';
 import '../reports/reports.dart';
-import '../search/search_screen.dart';
 import '../settings/settings_wrapper.dart';
 
 class HomeWrapper extends StatefulWidget {
@@ -47,7 +47,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
 
   late final List<Widget> _screens = [
     const HomeScreenContent(),
-    const SearchScreen(),
+    const TransactionScreen(),
     const ReportsScreen(),
     ChangeNotifierProvider(
       create: (_) => ProfileViewModel(loggedInUser: widget.user),
@@ -56,7 +56,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
 
   final List<String> _titles = [
     "Home",
-    "Search",
+    "Transaction",
     "Reports",
     "Profile"
   ];

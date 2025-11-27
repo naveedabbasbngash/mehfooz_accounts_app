@@ -131,7 +131,7 @@ class DrawerMenu extends StatelessWidget {
             context: context,
           ),
           _menuItem(
-            title: "Search",
+            title: "Transaction",
             icon: Icons.search,
             index: 1,
             context: context,

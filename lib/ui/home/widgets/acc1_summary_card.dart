@@ -68,7 +68,7 @@ class Acc1SummaryCard extends StatelessWidget {
             color: Colors.deepPurple, size: 22),
         SizedBox(width: 8),
         Text(
-          "AccID = 1 Summary",
+          "Cash In Hand",
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,

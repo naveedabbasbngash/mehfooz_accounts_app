@@ -68,7 +68,7 @@ class CashInHandCard extends StatelessWidget {
         Icon(Icons.savings_outlined, color: Colors.deepPurple, size: 22),
         SizedBox(width: 8),
         Text(
-          "Cash in hand",
+          "JB Amount",
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ],

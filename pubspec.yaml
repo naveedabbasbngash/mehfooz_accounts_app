@@ -50,6 +50,9 @@ dependencies:
   intl: ^0.20.2
   easy_localization: ^3.0.8
   file_picker: ^10.3.7
+  pdf: ^3.11.3
+  printing: ^5.14.2
+  open_filex: ^4.7.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -78,6 +81,7 @@ flutter:
   # To add assets to your application, add an assets section, like this:
   assets:
     - assets/lang/
+    - assets/fonts/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
