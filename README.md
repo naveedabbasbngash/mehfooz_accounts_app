@@ -1,16 +1,27 @@
-# mehfooz_accounts_app
+📱 Mehfooz Accounts App
 
-A new Flutter project.
+Offline-First Personal Ledger & Financial Reporting System (Flutter + Drift + MVVM)
 
-## Getting Started
+A cross-platform financial management app built using Flutter, designed as an offline-first solution with secure and optimized synchronization support for future expansions.
+Supports Android, iOS, and Web.
 
-This project is a starting point for a Flutter application.
+⸻
 
-A few resources to get you started if this is your first Flutter project:
+🚀 Overview
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Mehfooz Accounts App is a complete financial ledger & reporting system that allows users to:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+	•	Import and validate external SQLite databases
+	•	View accounts, balances, transactions, and ledger details
+	•	Generate professional PDF reports (Balance Report, Credit, Debit, Pending, Ledger)
+	•	Use advanced filters (date range, debit/credit modes, balance mode)
+	•	Work fully offline, using a robust database engine powered by Drift (Moor)
+	•	Sync-ready architecture for future API integration
+
+This project is a Kotlin → Flutter migration and follows a strict MVVM architecture with a clean separation of:
+
+	•	UI (Screens / Widgets)
+	•	ViewModels
+	•	Repositories
+	•	Drift database layer
+	•	Services (PDF generator, logging, import validation)
