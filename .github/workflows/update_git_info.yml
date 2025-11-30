@@ -3,51 +3,43 @@ name: Auto Update GIT_INFO.json
 on:
   push:
     branches:
-      - "**"
-  pull_request:
-  workflow_dispatch:
+      - v2-dev
+      - main
+      - v1
 
 jobs:
-  update-json:
+  update-info:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
+          persist-credentials: true
           fetch-depth: 0
 
-      - name: Get Git Info
-        id: gitinfo
-        run: |
-          echo "last_commit=$(git log -1 --pretty=format:'%H')" >> $GITHUB_OUTPUT
-          echo "last_commit_date=$(git log -1 --pretty=format:'%ad' --date=iso)" >> $GITHUB_OUTPUT
-          echo "current_branch=${GITHUB_REF#refs/heads/}" >> $GITHUB_OUTPUT
-          echo "latest_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo 'none')" >> $GITHUB_OUTPUT
-
-      - name: Generate JSON File
-        run: |
-          cat <<EOF > GIT_INFO.json
-          {
-            "repo_name": "${{ github.repository }}",
-            "default_branch": "${{ github.event.repository.default_branch }}",
-            "current_branch": "${{ steps.gitinfo.outputs.current_branch }}",
-            "latest_tag": "${{ steps.gitinfo.outputs.latest_tag }}",
-            "last_commit": "${{ steps.gitinfo.outputs.last_commit }}",
-            "last_commit_date": "${{ steps.gitinfo.outputs.last_commit_date }}",
-            "updated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-          }
-          EOF
-
-      - name: Commit & Push Updates
+      - name: Set Git identity
         run: |
           git config --global user.email "action@github.com"
           git config --global user.name "GitHub Action"
 
-          git add GIT_INFO.json
+      - name: Update GIT_INFO.json
+        run: |
+          echo "Updating file..."
+          cat > GIT_INFO.json <<EOF
+{
+  "last_updated": "$(date -u +"%Y-%m-%d %H:%M:%S UTC")",
+  "branch": "${GITHUB_REF#refs/heads/}",
+  "commit": "${GITHUB_SHA}",
+  "author": "${GITHUB_ACTOR}"
+}
+EOF
 
-          if git commit -m "Auto-update GIT_INFO.json [skip ci]"; then
-            git push
-          else
-            echo "No changes to commit"
-          fi
+          git add GIT_INFO.json
+          git commit -m "Auto-update GIT_INFO.json [skip ci]" || echo "Nothing to commit"
+
+      - name: Push to Branch
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Pushing back to $BRANCH"
+          git push origin HEAD:$BRANCH
