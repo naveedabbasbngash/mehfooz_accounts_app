@@ -1,12 +1,19 @@
+// lib/ui/reports/reports_screen.dart
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/global_state.dart';
 import '../../services/pdf/open_file_service.dart';
+import '../../viewmodel/reports/last_credit_view_model.dart';
+import '../../viewmodel/reports/ledger_filter_view_model.dart';
 import '../../viewmodel/reports/reports_view_model.dart';
 import '../../repository/transactions_repository.dart';
+import '../../repository/pending_repository.dart';
 import '../../data/local/database_manager.dart';
-
+import 'last_credit_summary_screen.dart';
+import 'ledger_filter_screen.dart';   // <-- IMPORTANT IMPORT
 
 class ReportsScreen extends StatelessWidget {
   const ReportsScreen({super.key});
@@ -16,6 +23,7 @@ class ReportsScreen extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => ReportsViewModel(
         repo: TransactionsRepository(DatabaseManager.instance.db),
+        pendingRepo: PendingRepository(DatabaseManager.instance.db),
       )..loadBalanceMatrix(),
       child: const _ReportsScreenBody(),
     );
@@ -30,8 +38,8 @@ class _ReportsScreenBody extends StatelessWidget {
     final vm = context.watch<ReportsViewModel>();
     final ui = vm.ui;
 
-    const softBg = Color(0xFFF7F9FC);      // same as Home/Transactions
-    const deepBlue = Color(0xFF0B1E3A);    // your brand primary
+    const softBg = Color(0xFFF7F9FC);
+    const deepBlue = Color(0xFF0B1E3A);
 
     return Scaffold(
       backgroundColor: softBg,
@@ -54,7 +62,6 @@ class _ReportsScreenBody extends StatelessWidget {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // ---------------------- MAIN CARD ----------------------
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
@@ -69,6 +76,7 @@ class _ReportsScreenBody extends StatelessWidget {
                     ),
                   ],
                 ),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -80,20 +88,16 @@ class _ReportsScreenBody extends StatelessWidget {
                         color: deepBlue,
                       ),
                     ),
-
                     const SizedBox(height: 6),
-
                     Text(
-                      "Select a report to export as PDF",
+                      "Select any option to export report PDF",
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey.shade600,
                       ),
                     ),
-
                     const SizedBox(height: 22),
 
-                    // ---------------------- LOADING ----------------------
                     if (ui.loading)
                       const Center(
                         child: Padding(
@@ -102,7 +106,6 @@ class _ReportsScreenBody extends StatelessWidget {
                         ),
                       ),
 
-                    // ---------------------- ERROR ----------------------
                     if (ui.error != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 18),
@@ -112,73 +115,117 @@ class _ReportsScreenBody extends StatelessWidget {
                         ),
                       ),
 
-                    // ---------------------- BUTTONS ----------------------
+                    // ---------------- BALANCE REPORT ----------------
                     _reportButton(
                       label: "Balance Report",
                       icon: Icons.assessment_outlined,
                       color: deepBlue,
                       onTap: () async {
                         final file = await vm.generateBalanceReport();
-                        if (file == null) {
-                          _toast(context, "No data available");
-                          return;
-                        }
+                        if (file == null) return _toast(context, "No data available");
                         OpenFileService.openPdf(context, file);
                       },
                     ),
 
                     const SizedBox(height: 12),
 
+                    // ---------------- CREDIT REPORT ----------------
                     _reportButton(
                       label: "Jama / Credit Report",
                       icon: Icons.credit_score_outlined,
                       color: Colors.green.shade700,
-                      onTap: () {
-                        _toast(context, "Feature not implemented yet");
+                      onTap: () async {
+                        final file = await vm.generateCreditReport();
+                        if (file == null) return _toast(context, "No credit data found");
+                        OpenFileService.openPdf(context, file);
                       },
                     ),
 
                     const SizedBox(height: 12),
 
+                    // ---------------- DEBIT REPORT ----------------
                     _reportButton(
                       label: "Banam / Debit Report",
                       icon: Icons.trending_down_outlined,
                       color: Colors.red.shade700,
-                      onTap: () {
-                        _toast(context, "Feature not implemented yet");
+                      onTap: () async {
+                        final file = await vm.generateDebitReport();
+                        if (file == null) return _toast(context, "No debit data found");
+                        OpenFileService.openPdf(context, file);
                       },
                     ),
 
                     const SizedBox(height: 12),
 
+                    // ---------------- PENDING REPORT ----------------
                     _reportButton(
                       label: "Pending Report",
                       icon: Icons.schedule_outlined,
                       color: Colors.orange.shade700,
-                      onTap: () {
-                        _toast(context, "Feature not implemented yet");
+                      onTap: () async {
+                        const accId = 3;
+                        final companyId = GlobalState.instance.companyId;
+                        final officeName = GlobalState.instance.companyName;
+
+                        if (companyId == null) {
+                          _toast(context, "Please select a company first");
+                          return;
+                        }
+
+                        final file = await vm.generatePendingReport(
+                          officeName: officeName ?? "Mehfooz Accounts",
+                          accId: accId,
+                          companyId: companyId,
+                        );
+
+                        if (file == null) {
+                          _toast(context, "No pending rows found");
+                          return;
+                        }
+
+                        OpenFileService.openPdf(context, file);
                       },
                     ),
 
                     const SizedBox(height: 12),
 
+                    // ---------------- LEDGER REPORT (UPDATED) ----------------
                     _reportButton(
                       label: "Ledger Report",
                       icon: Icons.receipt_long_outlined,
                       color: deepBlue,
                       onTap: () {
-                        _toast(context, "Navigate to Ledger Filter Screen");
-                      },
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChangeNotifierProvider(
+                              create: (_) => LedgerFilterViewModel(),
+                              child: const LedgerFilterScreen(),
+                            ),
+                          ),
+                        );                      },
                     ),
 
                     const SizedBox(height: 12),
 
+                    // ---------------- LAST CREDIT SUMMARY ----------------
+                    // ---------------- LAST CREDIT SUMMARY ----------------
                     _reportButton(
                       label: "Last Credit Summary",
                       icon: Icons.summarize_outlined,
                       color: Colors.teal.shade700,
                       onTap: () {
-                        _toast(context, "Feature not implemented yet");
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ChangeNotifierProvider(
+                              create: (_) => LastCreditViewModel(
+                                repo: TransactionsRepository(DatabaseManager.instance.db),
+                              ),
+                              child: const LastCreditSummaryScreen(),
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ],
@@ -191,9 +238,6 @@ class _ReportsScreenBody extends StatelessWidget {
     );
   }
 
-  // --------------------------------------------------------------------
-  // BEAUTIFUL UNIFIED REPORT BUTTON (Google Material 3 Inspired)
-  // --------------------------------------------------------------------
   Widget _reportButton({
     required String label,
     required IconData icon,
@@ -224,11 +268,7 @@ class _ReportsScreenBody extends StatelessWidget {
                 ),
               ),
             ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: Colors.grey,
-              size: 22,
-            ),
+            const Icon(Icons.chevron_right_rounded, color: Colors.grey, size: 22),
           ],
         ),
       ),

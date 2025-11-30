@@ -50,7 +50,7 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
     return Scaffold(
       backgroundColor: softBg,
 
-      // 🔥 FIX #1 — safe area only on top (bottom=false)
+      // ONLY top safe area → bottom kept free for details sheet
       body: SafeArea(
         top: true,
         bottom: false,
@@ -58,11 +58,12 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+
             const SizedBox(height: 20),
 
-            // --------------------------------------------------
+            // --------------------------------------------
             // SEARCH BAR
-            // --------------------------------------------------
+            // --------------------------------------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: TxSearchBar(
@@ -74,9 +75,9 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
 
             const SizedBox(height: 12),
 
-            // --------------------------------------------------
-            // FILTER CHIPS BAR
-            // --------------------------------------------------
+            // --------------------------------------------
+            // FILTER CHIPS
+            // --------------------------------------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: TxFilterChips(
@@ -87,7 +88,10 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                 onShowAll: () => vm.setFilter(TxFilter.all),
                 onShowDebits: () => vm.setFilter(TxFilter.debit),
                 onShowCredits: () => vm.setFilter(TxFilter.credit),
+
+                // DATE chip shows the unified sheet
                 onShowDates: () => _openDatePickerSheet(context, vm),
+
                 onToggleBalance: () => vm.setFilter(TxFilter.balance),
 
                 selectedCurrency: vm.selectedCurrency,
@@ -98,35 +102,38 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
 
             const SizedBox(height: 10),
 
-            // --------------------------------------------------
-            // MAIN CONTENT AREA (Animated)
-            // --------------------------------------------------
+            // --------------------------------------------
+            // MAIN CONTENT (with animation)
+            // --------------------------------------------
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(22)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
                   boxShadow: [
-                  BoxShadow(
-                  blurRadius: 12,
-                  color: Colors.black.withOpacity(0.05),
-                  offset: const Offset(0, -1),
-                  ) ],
+                    BoxShadow(
+                      blurRadius: 12,
+                      color: Colors.black.withOpacity(0.05),
+                      offset: const Offset(0, -1),
+                    ),
+                  ],
                 ),
+
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 260),
                   switchInCurve: Curves.easeOut,
                   switchOutCurve: Curves.easeIn,
 
-                  transitionBuilder: (child, animation) {
+                  transitionBuilder: (child, anim) {
                     return FadeTransition(
-                      opacity: animation,
+                      opacity: anim,
                       child: SlideTransition(
                         position: Tween<Offset>(
                           begin: const Offset(0, 0.03),
                           end: Offset.zero,
-                        ).animate(animation),
+                        ).animate(anim),
                         child: child,
                       ),
                     );
@@ -152,11 +159,11 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
               ),
             ),
 
-            // --------------------------------------------------
-            // DETAILS PANEL
-            // --------------------------------------------------
+            // --------------------------------------------
+            // DETAILS PANEL (Avoids Android system nav overlap)
+            // --------------------------------------------
             if (showDetails && selectedRow != null)
-              SafeArea(        // 🔥 FIX #2 — applies ONLY bottom safe area
+              SafeArea(
                 top: false,
                 bottom: true,
                 child: TxDetailsPanel(
@@ -170,9 +177,9 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
     );
   }
 
-  // ==========================================================================
+  // ==============================================================================
   // DATE PICKER BOTTOM SHEET
-  // ==========================================================================
+  // ==============================================================================
   Future<void> _openDatePickerSheet(
       BuildContext context,
       TransactionsViewModel vm,
@@ -180,10 +187,12 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
+      isScrollControlled: false,
       showDragHandle: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
+
       builder: (_) {
         return Padding(
           padding: const EdgeInsets.fromLTRB(18, 10, 18, 30),
@@ -201,7 +210,7 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
 
               const SizedBox(height: 16),
 
-              // ---------------- Single Day --------------------
+              // ---------------------- Single Day ----------------------
               ListTile(
                 leading: const Icon(Icons.calendar_today_outlined),
                 title: const Text("Pick single day"),
@@ -216,14 +225,15 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                   );
 
                   if (picked != null) {
-                    final iso = picked.toIso8601String().substring(0, 10);
-                    vm.setDateRange(iso, iso);
+                    final day = picked.toIso8601String().substring(0, 10);
+
+                    vm.setDateRange(day, day);
                     vm.setFilter(TxFilter.dateRange);
                   }
                 },
               ),
 
-              // ---------------- Range --------------------
+              // ---------------------- Date Range ----------------------
               ListTile(
                 leading: const Icon(Icons.date_range),
                 title: const Text("Pick date range"),
@@ -235,24 +245,23 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                     firstDate: DateTime(2000),
                     lastDate: DateTime.now(),
                     initialDateRange: DateTimeRange(
-                      start: DateTime.now().subtract(const Duration(days: 3)),
+                      start:
+                      DateTime.now().subtract(const Duration(days: 3)),
                       end: DateTime.now(),
                     ),
                   );
 
                   if (picked != null) {
-                    final startIso =
-                    picked.start.toIso8601String().substring(0, 10);
-                    final endIso =
-                    picked.end.toIso8601String().substring(0, 10);
+                    final start = picked.start.toIso8601String().substring(0, 10);
+                    final end = picked.end.toIso8601String().substring(0, 10);
 
-                    vm.setDateRange(startIso, endIso);
+                    vm.setDateRange(start, end);
                     vm.setFilter(TxFilter.dateRange);
                   }
                 },
               ),
 
-              // ---------------- Clear --------------------
+              // ---------------------- Clear ----------------------
               if (vm.startDate != null || vm.endDate != null)
                 ListTile(
                   leading: const Icon(Icons.clear),

@@ -1,11 +1,13 @@
-import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
+// lib/viewmodel/profile/profile_view_model.dart
+
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/database_manager.dart';
 import '../../model/user_model.dart';
+import '../../services/global_state.dart';
 import '../home/home_view_model.dart';
 
 class ProfileViewModel extends ChangeNotifier {
@@ -29,47 +31,67 @@ class ProfileViewModel extends ChangeNotifier {
     final db = DatabaseManager.instance.db;
     final prefs = await SharedPreferences.getInstance();
 
-    // 1) Load all companies
+    // 1) load companies
     companies = await db.select(db.companyTable).get();
 
-    // 2) Restore selected company
+    // 2) restore existing selection from SharedPreferences
     final storedId = prefs.getInt("selected_company_id");
 
     if (storedId != null) {
       try {
-        selectedCompany =
-            companies.firstWhere((c) => c.companyId == storedId);
+        selectedCompany = companies.firstWhere((c) => c.companyId == storedId);
+
+        // 🔥 Sync to GlobalState
+        GlobalState.instance.setCompany(
+          id: selectedCompany!.companyId!,
+          name: selectedCompany!.companyName ?? "Your Company",
+        );
       } catch (_) {
         selectedCompany = null;
       }
     }
 
-    // 3) Load Db_Info email
-    final info = await db.select(db.dbInfoTable).get();
-    if (info.isNotEmpty) {
-      dbEmail = info.first.emailAddress;
+    // 3) If still null → default to first company
+    if (selectedCompany == null && companies.isNotEmpty) {
+      selectedCompany = companies.first;
+
+      GlobalState.instance.setCompany(
+        id: selectedCompany!.companyId!,
+        name: selectedCompany!.companyName ?? "Your Company",
+      );
+
+      await prefs.setInt("selected_company_id", selectedCompany!.companyId!);
     }
+
+    // 4) Load Db_Info email
+    final info = await db.select(db.dbInfoTable).get();
+    if (info.isNotEmpty) dbEmail = info.first.emailAddress;
 
     isLoading = false;
     notifyListeners();
   }
 
   // =========================================================
-  // SELECT COMPANY → Save + Update HomeViewModel
+  // SELECT COMPANY → Save + Update HomeViewModel + GlobalState
   // =========================================================
   Future<void> selectCompany(int? id, {required BuildContext context}) async {
     if (id == null) return;
 
     try {
-      selectedCompany =
-          companies.firstWhere((c) => c.companyId == id);
+      selectedCompany = companies.firstWhere((c) => c.companyId == id);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt("selected_company_id", id);
 
-      // 🔥 Notify HOME VIEWMODEL about new company
+      // 🔥 Update GlobalState
+      GlobalState.instance.setCompany(
+        id: selectedCompany!.companyId!,
+        name: selectedCompany!.companyName ?? "Your Company",
+      );
+
+      // 🔥 Update HomeViewModel (loads summaries, pending, cash etc.)
       final homeVM = context.read<HomeViewModel>();
-      homeVM.selectCompany(id);
+      await homeVM.setCompany(id);
 
       notifyListeners();
     } catch (_) {}
