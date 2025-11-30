@@ -1,0 +1,53 @@
+{
+  "repo": {
+    "name": "mehfooz_accounts_app",
+    "owner": "naveedabbasbngash",
+    "url": "git@github.com:naveedabbasbngash/mehfooz_accounts_app.git"
+  },
+  "branches": {
+    "v1": {
+      "purpose": "Stable first release, basic functionality (snapshot).",
+      "status": "protected snapshot, do not modify",
+      "tracking": "origin/v1",
+      "tag": "v1.0.0"
+    },
+    "v2-dev": {
+      "purpose": "Active development branch for redesign, UI changes, new features.",
+      "status": "active",
+      "tracking": "origin/v2-dev"
+    },
+    "main": {
+      "purpose": "Future production branch (optional)",
+      "status": "not created yet"
+    }
+  },
+  "tags": [
+    {
+      "name": "v1.0.0",
+      "description": "Version 1 stable release",
+      "points_to": "v1"
+    }
+  ],
+  "readme": {
+    "location": "project-root/README.md",
+    "status": "Custom README is safe. Will not be overwritten by GitHub.",
+    "rule": "Always commit README.md manually before push."
+  },
+  "workflow_commands": {
+    "checkout_v1": "git checkout v1",
+    "checkout_v2_dev": "git checkout v2-dev",
+    "create_new_version_branch": "git checkout -b v3-dev && git push -u origin v3-dev",
+    "push_changes": "git add . && git commit -m \"message\" && git push",
+    "revert_to_version_1_code": "git checkout v1",
+    "merge_dev_to_main": "git checkout main && git merge v2-dev && git push",
+    "pull_latest_v2": "git checkout v2-dev && git pull",
+    "tag_new_release": "git tag -a v2.0.0 -m \"Version 2 release\" && git push origin v2.0.0"
+  },
+  "rules": {
+    "never_edit_v1": true,
+    "always_develop_on": "v2-dev",
+    "readme_never_auto_overwrite": true,
+    "use_tags_for_releases": true,
+    "ssh_key_required": true
+  }
+}
