@@ -3,6 +3,7 @@ import '../data/local/app_database.dart';
 import '../model/balance_currency_ui.dart';
 import '../model/balance_matrix_result.dart';
 import '../model/balance_row.dart';
+import '../model/last_credit_row.dart';
 import '../model/pending_group_row.dart';
 import '../model/simple_currency_summary.dart';
 import '../model/tx_filter.dart';
@@ -73,18 +74,17 @@ class TransactionsRepository {
 
     // Debug logging (optional)
     // ignore: avoid_print
-    print("⚡ getPendingGroups accId=$accId companyId=$companyId showAll=$showAll");
+    print(
+        "⚡ getPendingGroups accId=$accId companyId=$companyId showAll=$showAll");
 
-    final result = await db
-        .customSelect(
+    final result = await db.customSelect(
       query,
       variables: [
-        Variable.withInt(accId),              // ?1
-        Variable.withInt(companyId),          // ?2
-        Variable.withInt(showAll ? 1 : 0),    // ?3
+        Variable.withInt(accId), // ?1
+        Variable.withInt(companyId), // ?2
+        Variable.withInt(showAll ? 1 : 0), // ?3
       ],
-    )
-        .get();
+    ).get();
 
     // ignore: avoid_print
     print("⚡ RESULT COUNT: ${result.length}");
@@ -100,7 +100,7 @@ class TransactionsRepository {
     String? name,
     TxFilter filter = TxFilter.all,
     String? startDate, // yyyy-MM-dd
-    String? endDate,   // yyyy-MM-dd
+    String? endDate, // yyyy-MM-dd
   }) {
     final only = filter.asOnlyParam; // "ALL" | "DEBIT" | "CREDIT"
 
@@ -139,7 +139,9 @@ class TransactionsRepository {
       sql,
       variables: [
         // ?1 name (nullable)
-        (name == null || name.trim().isEmpty)
+        (name == null || name
+            .trim()
+            .isEmpty)
             ? const Variable(null)
             : Variable.withString(name.trim()),
 
@@ -204,7 +206,7 @@ class TransactionsRepository {
   Stream<List<BalanceCurrencyUi>> watchBalanceByCurrencyForAccId({
     required int accId,
     String? startDate, // yyyy-MM-dd
-    String? endDate,   // yyyy-MM-dd
+    String? endDate, // yyyy-MM-dd
   }) {
     const sql = r'''
       SELECT 
@@ -241,41 +243,42 @@ class TransactionsRepository {
     )
         .watch()
         .map(
-          (rows) => rows
-          .map(
-            (row) => BalanceCurrencyUi(
-          currency: (row.data['currency'] as String?) ?? '',
-          creditCents: (row.data['crCents'] as int?) ?? 0,
-          debitCents: (row.data['drCents'] as int?) ?? 0,
-        ),
-      )
-          .toList(),
+          (rows) =>
+          rows
+              .map(
+                (row) =>
+                BalanceCurrencyUi(
+                  currency: (row.data['currency'] as String?) ?? '',
+                  creditCents: (row.data['crCents'] as int?) ?? 0,
+                  debitCents: (row.data['drCents'] as int?) ?? 0,
+                ),
+          )
+              .toList(),
     );
   }
 
-
-
-
-  /// Flutter equivalent of Kotlin `queryBalancePivot()`
+  // =========================================================
+  // GLOBAL BALANCE MATRIX (Σ(Cr − Dr))  — for Balance Report
+  // =========================================================
   Future<BalanceMatrixResult> getBalanceMatrix() async {
     // ---------------------------------------------------------
-    // STEP 1 — fetch currencies with non-zero global net balance
+    // STEP 1 — currencies with non-zero global net balance
     // ---------------------------------------------------------
     final curRows = await db.customSelect(
       '''
-        SELECT at.AccTypeName AS cur
-        FROM AccType at
-        JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
-        GROUP BY at.AccTypeName
-        HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
-             - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) <> 0
-        ORDER BY at.AccTypeName COLLATE NOCASE
-      ''',
+      SELECT at.AccTypeName AS cur
+      FROM AccType at
+      JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
+      GROUP BY at.AccTypeName
+      HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
+           - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) <> 0
+      ORDER BY at.AccTypeName COLLATE NOCASE
+    ''',
     ).get();
 
     final currencies = curRows
-        .map((r) => r.data['cur'] as String)
-        .where((s) => s.trim().isNotEmpty)
+        .map((r) => (r.data['cur'] as String).trim())
+        .where((s) => s.isNotEmpty)
         .toList();
 
     if (currencies.isEmpty) {
@@ -283,25 +286,23 @@ class TransactionsRepository {
     }
 
     // ---------------------------------------------------------
-    // STEP 2 — fetch (name, currency, net = SUM(Cr - Dr))
+    // STEP 2 — per (account, currency) net = Σ(Cr − Dr)
     // ---------------------------------------------------------
     final rawRows = await db.customSelect(
       '''
-        SELECT 
-          ap.Name AS name,
-          at.AccTypeName AS cur,
-          IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
-          - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS netCents
-        FROM Acc_Personal ap
-        LEFT JOIN Transactions_P tp ON ap.AccID = tp.AccID
-        LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
-        GROUP BY ap.Name, at.AccTypeName
-        ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
-      ''',
+      SELECT 
+        ap.Name AS name,
+        at.AccTypeName AS cur,
+        IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
+        - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS netCents
+      FROM Acc_Personal ap
+      LEFT JOIN Transactions_P tp ON ap.AccID = tp.AccID
+      LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
+      GROUP BY ap.Name, at.AccTypeName
+      ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
+    ''',
     ).get();
 
-    // Map<String, Map<String, int>>
-    //     name        currency  value
     final Map<String, Map<String, int>> pivot = {};
 
     for (final row in rawRows) {
@@ -309,18 +310,24 @@ class TransactionsRepository {
       final cur = row.data['cur'] as String?;
       final net = row.data['netCents'] as int?;
 
+      // ❗ skip invalid / zero rows
       if (cur == null || net == null || net == 0) continue;
 
+      // ❗ only create entry AFTER we confirm there is a valid non-zero value
       pivot.putIfAbsent(name, () => {});
-      pivot[name]![cur] = (pivot[name]![cur] ?? 0) + net;
+      pivot[name]![cur] = net;
     }
 
-    // Convert to BalanceRow list
+    // ---------------------------------------------------------
+    // STEP 3 — Remove accounts with all-zero after filtering
+    // ---------------------------------------------------------
     final rows = pivot.entries
-        .map((e) => BalanceRow(
-      name: e.key,
-      byCurrency: Map<String, int>.from(e.value),
-    ))
+        .map(
+          (e) => BalanceRow(
+        name: e.key,
+        byCurrency: Map<String, int>.from(e.value),
+      ),
+    )
         .where((r) => r.byCurrency.values.any((v) => v != 0))
         .toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -329,5 +336,316 @@ class TransactionsRepository {
       currencies: currencies,
       rows: rows,
     );
+  }
+
+  // =========================================================
+  // CREDIT-ONLY MATRIX (Σ Cr) — for Jama / Credit Report
+  // Kotlin equivalent of queryCreditPivot()
+  // =========================================================
+  /// Flutter equivalent of Kotlin `queryCreditPivot(ctx)`
+  Future<BalanceMatrixResult> getCreditMatrix() async {
+    // ---------------------------------------------------------
+    // STEP 1 — fetch currencies with ANY credit (excluding AccID = 1)
+    // ---------------------------------------------------------
+    final curRows = await db.customSelect(
+      '''
+    SELECT at.AccTypeName AS cur
+    FROM AccType at
+    JOIN Transactions_P tp 
+      ON at.AccTypeID = tp.AccTypeID
+     AND tp.AccID != 1
+    GROUP BY at.AccTypeName
+    HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0) <> 0
+    ORDER BY at.AccTypeName COLLATE NOCASE
+    ''',
+    ).get();
+
+    var currencies = curRows
+        .map((r) => (r.data['cur'] as String).trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+
+    if (currencies.isEmpty) {
+      return BalanceMatrixResult(currencies: [], rows: []);
+    }
+
+    // ---------------------------------------------------------
+    // STEP 2 — fetch (name, currency, net = ΣCr - ΣDr), AccID != 1
+    // ---------------------------------------------------------
+    final rawRows = await db.customSelect(
+      '''
+    SELECT 
+      ap.Name AS name,
+      at.AccTypeName AS cur,
+      IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0) AS sumCr,
+      IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS sumDr
+    FROM Acc_Personal ap
+    LEFT JOIN Transactions_P tp 
+      ON ap.AccID = tp.AccID
+     AND tp.AccID != 1
+    LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
+    GROUP BY ap.Name, at.AccTypeName
+    ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
+    ''',
+    ).get();
+
+    final Map<String, Map<String, int>> pivot = {};
+
+    for (final row in rawRows) {
+      final name = (row.data['name'] as String?)?.trim() ?? 'Unknown';
+      final cur = row.data['cur'] as String?;
+      final cr = row.data['sumCr'] as int? ?? 0;
+      final dr = row.data['sumDr'] as int? ?? 0;
+
+      final net = cr - dr; // net credit (Cr - Dr)
+
+      // ❗ IMPORTANT:
+      // - Ignore null currency
+      // - Ignore net <= 0 (we ONLY want positive credit balance)
+      if (cur == null || net <= 0) continue;
+
+      pivot.putIfAbsent(name, () => {});
+      pivot[name]![cur] = net;
+    }
+
+    // ---------------------------------------------------------
+    // STEP 3 — build rows and DROP customers whose all nets ≤ 0
+    // (after above condition, only >0 values remain anyway)
+    // ---------------------------------------------------------
+    var rows = pivot.entries
+        .map(
+          (e) => BalanceRow(
+        name: e.key,
+        byCurrency: Map<String, int>.from(e.value),
+      ),
+    )
+        .where((r) => r.byCurrency.values.any((v) => v > 0))
+        .toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    // Optional: also drop currencies that ended up unused (all 0/absent)
+    final usedCurrencies = <String>{};
+    for (final row in rows) {
+      row.byCurrency.forEach((cur, v) {
+        if (v > 0) usedCurrencies.add(cur);
+      });
+    }
+    currencies =
+        currencies.where((c) => usedCurrencies.contains(c)).toList();
+
+    return BalanceMatrixResult(
+      currencies: currencies,
+      rows: rows,
+    );
+  }
+
+
+  // =========================================================
+// LEDGER (Kotlin equivalent of LedgerFilterViewModel dao calls)
+// =========================================================
+
+  Future<int?> resolveAccIdExact(String name) async {
+    final rows = await db.customSelect(
+      '''
+    SELECT AccID AS accId
+    FROM Acc_Personal
+    WHERE TRIM(Name) = TRIM(?1) COLLATE NOCASE
+    LIMIT 1;
+    ''',
+      variables: [Variable.withString(name)],
+    ).get();
+
+    if (rows.isEmpty) return null;
+    return rows.first.data['accId'] as int?;
+  }
+
+  Future<int?> resolveAccIdLoose(String name) async {
+    final rows = await db.customSelect(
+      '''
+    SELECT AccID AS accId
+    FROM Acc_Personal
+    WHERE REPLACE(TRIM(Name), '  ', ' ')
+          = REPLACE(TRIM(?1), '  ', ' ') COLLATE NOCASE
+    LIMIT 1;
+    ''',
+      variables: [Variable.withString(name)],
+    ).get();
+
+    if (rows.isEmpty) return null;
+    return rows.first.data['accId'] as int?;
+  }
+
+  Future<int?> findAccTypeIdByName(String currency) async {
+    final rows = await db.customSelect(
+      '''
+    SELECT AccTypeID AS id
+    FROM AccType
+    WHERE TRIM(AccTypeName) = TRIM(?1) COLLATE NOCASE
+    LIMIT 1;
+    ''',
+      variables: [Variable.withString(currency)],
+    ).get();
+
+    if (rows.isEmpty) return null;
+    return rows.first.data['id'] as int?;
+  }
+
+  Future<int> ledgerOpeningBalance({
+    required int accId,
+    required int accTypeId,
+    required String fromDate, // yyyy-MM-dd
+  }) async {
+    final rows = await db.customSelect(
+      '''
+    SELECT IFNULL(SUM(Cr),0) - IFNULL(SUM(Dr),0) AS opening
+    FROM Transactions_P
+    WHERE AccID = ?1
+      AND AccTypeID = ?2
+      AND substr(TDate,1,10) < ?3
+    ''',
+      variables: [
+        Variable.withInt(accId),
+        Variable.withInt(accTypeId),
+        Variable.withString(fromDate),
+      ],
+    ).get();
+
+    if (rows.isEmpty) return 0;
+    return rows.first.data['opening'] as int? ?? 0;
+  }
+
+  Future<List<Map<String, dynamic>>> fetchLedgerRowsRaw({
+    required int accId,
+    required int accTypeId,
+    required String fromDate,
+    required String toDate,
+  }) async {
+    return await db.customSelect(
+      '''
+    SELECT
+        t.VoucherNo            AS voucherNo,
+        substr(t.TDate,1,10)   AS tDate,
+        t.Description          AS description,
+        IFNULL(t.Dr,0)         AS dr,
+        IFNULL(t.Cr,0)         AS cr
+    FROM Transactions_P t
+    WHERE t.AccID = ?1
+      AND t.AccTypeID = ?2
+      AND t.TDate IS NOT NULL
+      AND substr(t.TDate,1,10) BETWEEN ?3 AND ?4
+    ORDER BY substr(t.TDate,1,10) ASC, t.VoucherNo ASC
+    ''',
+      variables: [
+        Variable.withInt(accId),
+        Variable.withInt(accTypeId),
+        Variable.withString(fromDate),
+        Variable.withString(toDate),
+      ],
+    ).get().then((rows) => rows.map((r) => r.data).toList());
+  }
+
+
+  // =========================================================
+  // RESOLVE AccTypeID BY CURRENCY NAME (AccTypeName)
+  // =========================================================
+  Future<int?> resolveAccTypeIdByName(String currencyName) async {
+    final rows = await db.customSelect(
+      '''
+      SELECT AccTypeID AS id
+      FROM AccType
+      WHERE LOWER(AccTypeName) = LOWER(?1)
+      LIMIT 1
+      ''',
+      variables: [
+        Variable.withString(currencyName),
+      ],
+      readsFrom: {db.accType},
+    ).get();
+
+    if (rows.isEmpty) return null;
+    final value = rows.first.data['id'];
+    if (value == null) return null;
+    return value as int;
+  }
+
+
+  // =========================================================
+  // LAST CREDIT SUMMARY (Kotlin getLastCreditSummary equivalent)
+  // =========================================================
+  Future<List<LastCreditRow>> getLastCreditSummary({
+    required int currencyId,
+  }) async {
+    const sql = r'''
+      WITH LastCredit AS (
+          SELECT
+              AccID,
+              AccTypeID,
+              MAX(TDate) AS LastCreditDate
+          FROM Transactions_P
+          WHERE Cr > 0
+          GROUP BY AccID, AccTypeID
+      ),
+      LastCreditSum AS (
+          SELECT
+              T.AccID,
+              T.AccTypeID,
+              SUM(T.Cr) AS LastCreditAmount,
+              LC.LastCreditDate
+          FROM Transactions_P AS T
+          INNER JOIN LastCredit AS LC
+              ON T.AccID = LC.AccID
+              AND T.AccTypeID = LC.AccTypeID
+              AND T.TDate = LC.LastCreditDate
+          GROUP BY T.AccID, T.AccTypeID, LC.LastCreditDate
+      )
+      SELECT
+          A.AccTypeName AS CurrencyName,
+          P.AccID,
+          P.Name AS Customer,
+          P.Address,
+          T.AccTypeID AS CurrencyID,
+          SUM(T.Cr - T.Dr) AS NetBalance,
+          MAX(T.TDate) AS LastTransactionDate,
+          CAST(julianday('now') - julianday(LC.LastCreditDate) AS INTEGER) AS DaysSinceLastCredit,
+          LC.LastCreditAmount
+      FROM Transactions_P AS T
+      INNER JOIN Acc_Personal AS P
+          ON T.AccID = P.AccID
+      LEFT JOIN LastCreditSum AS LC
+          ON T.AccID = LC.AccID
+          AND T.AccTypeID = LC.AccTypeID
+      LEFT JOIN AccType AS A
+          ON T.AccTypeID = A.AccTypeID
+      WHERE T.AccTypeID = ?1
+      GROUP BY
+          A.AccTypeName,
+          P.AccID,
+          P.Name,
+          P.Address,
+          T.AccTypeID,
+          LC.LastCreditAmount,
+          LC.LastCreditDate
+      HAVING SUM(T.Cr - T.Dr) <> 0
+         AND SUM(T.Cr - T.Dr) < 0
+      ORDER BY
+          CurrencyName,
+          DaysSinceLastCredit DESC
+    ''';
+
+    final result = await db.customSelect(
+      sql,
+      variables: [
+        Variable.withInt(currencyId), // ?1
+      ],
+      readsFrom: {
+        db.transactionsP,
+        db.accPersonal,
+        db.accType,
+      },
+    ).get();
+
+    return result
+        .map((row) => LastCreditRow.fromRow(row.data))
+        .toList();
   }
 }

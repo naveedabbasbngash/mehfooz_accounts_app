@@ -1,3 +1,5 @@
+// lib/ui/profile/profile_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -34,9 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       padding: const EdgeInsets.all(18),
       child: Column(
         children: [
-          // ---------------------------------------------------------------
           // USER HEADER
-          // ---------------------------------------------------------------
           CircleAvatar(
             radius: 55,
             backgroundImage: user.imageUrl.isNotEmpty
@@ -59,16 +59,10 @@ class _ProfileScreenState extends State<ProfileScreen>
 
           const SizedBox(height: 25),
 
-          // ---------------------------------------------------------------
-          // COMPANY SELECTOR — NEW ANIMATED VERSION
-          // ---------------------------------------------------------------
           _companySelectorAnimated(context, vm),
 
           const SizedBox(height: 25),
 
-          // ---------------------------------------------------------------
-          // PLAN STATUS CARD
-          // ---------------------------------------------------------------
           if (user.planStatus != null)
             _infoCard(
               icon: Icons.workspace_premium,
@@ -77,9 +71,6 @@ class _ProfileScreenState extends State<ProfileScreen>
               color: Colors.blue,
             ),
 
-          // ---------------------------------------------------------------
-          // REMAINING DAYS CARD
-          // ---------------------------------------------------------------
           if (user.expiry != null)
             _infoCard(
               icon: Icons.timer,
@@ -88,27 +79,22 @@ class _ProfileScreenState extends State<ProfileScreen>
               color: Colors.orange,
             ),
 
-          // ---------------------------------------------------------------
-          // SUBSCRIPTION DETAILS
-          // ---------------------------------------------------------------
           if (user.subscription != null)
             _subscriptionCard(user.subscription!),
 
           const SizedBox(height: 25),
 
-          // ---------------------------------------------------------------
-          // EMAIL MATCH CARD
-          // ---------------------------------------------------------------
           _emailMatchCard(vm, user),
         ],
       ),
     );
   }
 
-  // -------------------------------------------------------------------
-  // NEW ANIMATED COMPANY SELECTOR (Material You Style)
-  // -------------------------------------------------------------------
-  Widget _companySelectorAnimated(BuildContext context, ProfileViewModel vm) {
+  // ============================================================
+  // COMPANY SELECTOR (Animated)
+  // ============================================================
+  Widget _companySelectorAnimated(
+      BuildContext context, ProfileViewModel vm) {
     final selected = vm.selectedCompany;
 
     return Card(
@@ -126,12 +112,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
             const SizedBox(height: 12),
 
-            // SELECTED COMPANY TILE
             InkWell(
               onTap: () {
-                setState(() {
-                  expandCompanies = !expandCompanies;
-                });
+                setState(() => expandCompanies = !expandCompanies);
               },
               child: Container(
                 padding:
@@ -155,19 +138,13 @@ class _ProfileScreenState extends State<ProfileScreen>
                     AnimatedRotation(
                       turns: expandCompanies ? 0.5 : 0,
                       duration: const Duration(milliseconds: 200),
-                      child: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 28,
-                      ),
+                      child: const Icon(Icons.keyboard_arrow_down_rounded, size: 28),
                     ),
                   ],
                 ),
               ),
             ),
 
-            // -------------------------------------------------------------
-            // EXPANDING COMPANY LIST
-            // -------------------------------------------------------------
             AnimatedSize(
               duration: const Duration(milliseconds: 250),
               curve: Curves.easeInOut,
@@ -185,7 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                         setState(() => expandCompanies = false);
                       },
                     );
-                  }).toList()
+                  }).toList(),
                 ],
               )
                   : const SizedBox.shrink(),
@@ -196,9 +173,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // -------------------------------------------------------------------
-  // GENERIC INFO CARD
-  // -------------------------------------------------------------------
+  // Generic info card
   Widget _infoCard({
     required IconData icon,
     required String title,
@@ -215,9 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     );
   }
 
-  // -------------------------------------------------------------------
-  // SUBSCRIPTION CARD
-  // -------------------------------------------------------------------
+  // Subscription card
   Widget _subscriptionCard(SubscriptionInfo sub) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -231,7 +204,6 @@ class _ProfileScreenState extends State<ProfileScreen>
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
-
             _subscriptionRow("Plan", sub.planTitle),
             _subscriptionRow("Description", sub.planDescription),
             _subscriptionRow("Price", "${sub.planPrice} PKR"),
@@ -249,25 +221,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
         children: [
-          Expanded(
-            flex: 3,
-            child: Text(
-              "$label:",
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
-          Expanded(
-            flex: 5,
-            child: Text(value),
-          ),
+          Expanded(flex: 3, child: Text("$label:", style: const TextStyle(fontWeight: FontWeight.bold))),
+          Expanded(flex: 5, child: Text(value)),
         ],
       ),
     );
   }
 
-  // -------------------------------------------------------------------
-  // EMAIL MATCH CARD
-  // -------------------------------------------------------------------
+  // Email match card
   Widget _emailMatchCard(ProfileViewModel vm, UserModel user) {
     final bool isMatch = vm.dbEmail != null &&
         vm.dbEmail!.trim().toLowerCase() == user.email.trim().toLowerCase();

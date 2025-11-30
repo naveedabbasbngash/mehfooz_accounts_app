@@ -9,6 +9,7 @@ import '../../data/local/database_manager.dart';
 import '../../model/cash_in_hand_row.dart';
 import '../../model/cash_summary_row.dart';
 import '../../repository/account_repository.dart';
+import '../../services/global_state.dart';
 import '../../services/sqlite_import_service.dart';
 import '../../services/sqlite_validation_service.dart';
 import '../../model/pending_amount_row.dart';
@@ -16,10 +17,16 @@ import '../../model/pending_amount_row.dart';
 class HomeViewModel extends ChangeNotifier {
   final Logger _log = Logger();
 
+  int? selectedCompanyId;
+  String? selectedCompanyName;
+
   final GlobalKey<NavigatorState> navigatorKey;
   final GlobalKey drawerKey;
+
   List<CashInHandRow> cashInHandSummary = [];
   List<CashSummaryRow> acc1CashSummary = [];
+  List<PendingAmountRow> pendingAmounts = [];
+
   HomeViewModel({
     required this.navigatorKey,
     required this.drawerKey,
@@ -27,12 +34,6 @@ class HomeViewModel extends ChangeNotifier {
 
   /// Active database path
   String? verifiedDbPath;
-
-  /// The company selected from Profile screen
-  int? selectedCompanyId;
-
-  /// Summary data
-  List<PendingAmountRow> pendingAmounts = [];
 
   bool _isImporting = false;
   bool get isImporting => _isImporting;
@@ -61,7 +62,7 @@ class HomeViewModel extends ChangeNotifier {
     if (restored) {
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
-      // Restore chosen company
+      // 🔹 Restore (or default) company selection + name + GlobalState
       await _restoreCompanySelection();
 
       // Load summary only if company selected
@@ -124,31 +125,91 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // COMPANY SELECTION (Called from ProfileViewModel)
+  // COMPANY SELECTION (legacy entry point - delegate to setCompany)
   // ---------------------------------------------------------------------------
   Future<void> selectCompany(int companyId) async {
-    selectedCompanyId = companyId;
+    // Keep compatibility with old callers
+    await setCompany(companyId);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Restore previously selected company
+  // If none → default to companyId = 1
+  // Also loads name from DB and updates GlobalState
+  // ---------------------------------------------------------------------------
+  Future<void> _restoreCompanySelection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storedId = prefs.getInt("selected_company_id");
+
+    if (storedId != null) {
+      selectedCompanyId = storedId;
+      _log.i("🏢 Restored company selection from prefs: $selectedCompanyId");
+    } else {
+      // 🔹 Default to company 1
+      selectedCompanyId = 1;
+      await prefs.setInt("selected_company_id", 1);
+      _log.w("ℹ No company in prefs → defaulting to companyId=1");
+    }
+
+    // Load company name from DB
+    if (selectedCompanyId != null) {
+      final db = DatabaseManager.instance.db;
+      final result = await (db.select(db.companyTable)
+        ..where((tbl) => tbl.companyId.equals(selectedCompanyId!)))
+          .get();
+
+      selectedCompanyName = result.isNotEmpty
+          ? (result.first.companyName ?? "Your Company")
+          : "Your Company";
+
+      // 🔥 Sync global singleton so UI like HomeScreenContent & Reports can use it
+      GlobalState.instance.setCompany(
+        id: selectedCompanyId!,
+        name: selectedCompanyName!,
+      );
+
+      _log.i(
+          "🏢 Company restored → id=$selectedCompanyId, name=$selectedCompanyName");
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Set company from bottom sheet / profile
+  // - Updates id + name
+  // - Saves to prefs
+  // - Updates GlobalState
+  // - Reloads summaries
+  // ---------------------------------------------------------------------------
+  Future<void> setCompany(int id) async {
+    selectedCompanyId = id;
+
+    // Fetch name from DB
+    final db = DatabaseManager.instance.db;
+    final result = await (db.select(db.companyTable)
+      ..where((tbl) => tbl.companyId.equals(id)))
+        .get();
+
+    selectedCompanyName = result.isNotEmpty
+        ? (result.first.companyName ?? "Your Company")
+        : "Your Company";
 
     // Save to preferences
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt("selected_company_id", companyId);
+    await prefs.setInt("selected_company_id", id);
 
-    _log.i("🏢 Selected company saved: $companyId");
+    // 🔥 Save globally
+    GlobalState.instance.setCompany(
+      id: selectedCompanyId!,
+      name: selectedCompanyName!,
+    );
 
-    // Reload summary
+    _log.i(
+        "🏢 setCompany → id=$selectedCompanyId, name=$selectedCompanyName (saved to prefs + global)");
+
+    // Reload summary for new company
     await loadPendingAmounts();
-  }
 
-  // Restore previously selected company
-  Future<void> _restoreCompanySelection() async {
-    final prefs = await SharedPreferences.getInstance();
-    selectedCompanyId = prefs.getInt("selected_company_id");
-
-    if (selectedCompanyId != null) {
-      _log.i("🏢 Restored company selection: $selectedCompanyId");
-    } else {
-      _log.w("⚠ No company selected yet.");
-    }
+    notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
@@ -175,6 +236,7 @@ class HomeViewModel extends ChangeNotifier {
 
       acc1CashSummary =
       await repo.getAcc1CashSummary(selectedCompanyId!);
+
       _log.i("📊 Summary loaded for company ID: $selectedCompanyId");
 
       notifyListeners();
@@ -191,11 +253,20 @@ class HomeViewModel extends ChangeNotifier {
 
     verifiedDbPath = null;
     selectedCompanyId = null;
+    selectedCompanyName = null;
     pendingAmounts = [];
+    cashInHandSummary = [];
+    acc1CashSummary = [];
     _hasRestored = false;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("selected_company_id");
+
+    // Optionally reset global state to a neutral default
+    GlobalState.instance.setCompany(
+      id: 1,
+      name: "Your Company",
+    );
 
     notifyListeners();
   }

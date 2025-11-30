@@ -73,20 +73,22 @@ class CompanySelectorBottomSheet {
                         title: Text(
                           c.companyName ?? "Unnamed company",
                           style: TextStyle(
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.w400,
+                            fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.w400,
                           ),
                         ),
                         trailing: isSelected
                             ? const Icon(Icons.check, color: Colors.green)
                             : null,
-                        onTap: () {
+
+                        onTap: () async {
                           if (c.companyId != null) {
-                            vm.selectCompany(c.companyId!);
-                            vm.loadPendingAmounts();
+                            // 🔥 Single source of truth = setCompany()
+                            await vm.setCompany(c.companyId!);
                           }
-                          Navigator.pop(context);
+
+                          // Close AFTER update
+                          if (context.mounted) Navigator.pop(context);
                         },
                       );
                     },
