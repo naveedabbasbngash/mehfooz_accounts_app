@@ -3,7 +3,8 @@ import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 
 import '../../main.dart';
 import '../../model/user_model.dart';
-import '../../services/auth_service.dart'; // for logout
+import '../../services/auth_service.dart';
+import '../../theme/app_colors.dart'; // <-- IMPORTANT
 
 class DrawerMenu extends StatelessWidget {
   final Function(String) onItemClick;
@@ -20,27 +21,22 @@ class DrawerMenu extends StatelessWidget {
     required this.user,
   });
 
-  /// 🔥 GLOBAL LOG
   void _logAction(String title) {
     print("\n============================");
     print("📌 Drawer Menu Clicked: $title");
     print("👤 User Full Name: ${user.fullName}");
     print("🪪 First Name: ${user.firstName}");
-    print("🪪 Last  Name: ${user.lastName}");
+    print("🪪 Last Name: ${user.lastName}");
     print("📧 User Email: ${user.email}");
     print("🖼️ User Image URL: ${user.imageUrl}");
     print("🔐 is_login: ${user.isLogin}");
     print("============================\n");
   }
 
-  /// 🔥 LOGOUT HANDLER
   Future<void> _handleLogout(BuildContext context) async {
     _logAction("Logout");
-    print("🚪 Logging out…");
-
     await AuthService.logout();
 
-    // Close drawer then navigate to root (AuthScreen via '/')
     drawerKey.currentState?.closeSlider();
 
     Future.delayed(const Duration(milliseconds: 250), () {
@@ -59,7 +55,7 @@ class DrawerMenu extends StatelessWidget {
     return Container(
       decoration: selected
           ? BoxDecoration(
-        color: Colors.white.withOpacity(.15),
+        color: AppColors.darkgreen.withOpacity(0.20),   // ⭐ LIGHT GREEN HIGHLIGHT
         borderRadius: BorderRadius.circular(12),
       )
           : null,
@@ -85,11 +81,8 @@ class DrawerMenu extends StatelessWidget {
     final bool hasValidImage =
         user.imageUrl.isNotEmpty && user.imageUrl.startsWith("http");
 
-    print(
-        "🧩 [DrawerMenu] Building with user: fullName='${user.fullName}', email='${user.email}', image='${user.imageUrl}'");
-
     return Container(
-      color: Colors.deepPurple,
+      color: AppColors.darkgreen,     // ⭐ MATCHES BOTTOM NAVIGATION
       padding: const EdgeInsets.only(top: 50, left: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,9 +91,7 @@ class DrawerMenu extends StatelessWidget {
           CircleAvatar(
             radius: 35,
             backgroundColor: Colors.white24,
-
             backgroundImage: hasValidImage ? NetworkImage(user.imageUrl) : null,
-
             child: !hasValidImage
                 ? const Icon(Icons.person, size: 40, color: Colors.white)
                 : null,
@@ -151,7 +142,6 @@ class DrawerMenu extends StatelessWidget {
 
           const Divider(color: Colors.white54),
 
-          // SETTINGS
           ListTile(
             leading: const Icon(Icons.settings, color: Colors.white),
             title: const Text(
@@ -164,17 +154,17 @@ class DrawerMenu extends StatelessWidget {
             },
           ),
 
-          // ⭐ LOGOUT BUTTON
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.white),
             title: const Text(
               "Logout",
               style: TextStyle(color: Colors.white),
             ),
-              onTap: () async {
-                await AuthService.logout();
-                context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
-              }          ),
+            onTap: () async {
+              await AuthService.logout();
+              context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
+            },
+          ),
         ],
       ),
     );

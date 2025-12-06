@@ -1,15 +1,15 @@
 // lib/ui/auth/auth_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 
 import '../../model/user_model.dart';
-import '../../services/auth_service.dart';
-import '../../services/logging/logger_service.dart';
+import '../../viewmodel/auth/auth_view_model.dart';
 import '../home/home_wrapper.dart';
 import 'login_failure_screen.dart';
 
-class AuthScreen extends StatefulWidget {
+class AuthScreen extends StatelessWidget {
   final GlobalKey<SliderDrawerState> sliderDrawerKey;
 
   const AuthScreen({
@@ -18,34 +18,38 @@ class AuthScreen extends StatefulWidget {
   });
 
   @override
-  State<AuthScreen> createState() => _AuthScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => AuthViewModel(),
+      child: _AuthScreenBody(sliderDrawerKey: sliderDrawerKey),
+    );
+  }
 }
 
-class _AuthScreenState extends State<AuthScreen> {
-  bool _isLoading = false;
-  String? _error;
+class _AuthScreenBody extends StatefulWidget {
+  final GlobalKey<SliderDrawerState> sliderDrawerKey;
 
+  const _AuthScreenBody({
+    required this.sliderDrawerKey,
+  });
+
+  @override
+  State<_AuthScreenBody> createState() => _AuthScreenBodyState();
+}
+
+class _AuthScreenBodyState extends State<_AuthScreenBody> {
   Future<void> _handleGoogleLogin() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    final vm = context.read<AuthViewModel>();
 
-    LoggerService.debug("[UI][AuthScreen] Starting login...");
-
-    final UserModel? user = await AuthService.loginWithGoogle();
-
-    setState(() => _isLoading = false);
+    final UserModel? user = await vm.loginWithGoogle();
 
     if (user == null) {
-      LoggerService.warn("[UI][AuthScreen] Login failed");
-      setState(() => _error = "Login failed. Please try again.");
+      // General failure (network, exception, etc.)
       return;
     }
 
     if (!user.status) {
-      LoggerService.warn("[UI][AuthScreen] Login rejected: ${user.message}");
-
+      // Show failure screen
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -53,20 +57,20 @@ class _AuthScreenState extends State<AuthScreen> {
             title: "Login Failed",
             message: user.message,
             user: user,
-            sliderDrawerKey: widget.sliderDrawerKey,   // ← REQUIRED FIX
+            sliderDrawerKey: widget.sliderDrawerKey,
           ),
         ),
-      );      return;
+      );
+      return;
     }
 
-    LoggerService.info("[UI][AuthScreen] Login success → Home");
-
+    // Success -> go Home
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => HomeWrapper(
           user: user,
-          sliderDrawerKey: widget.sliderDrawerKey,   // ✅ FIXED
+          sliderDrawerKey: widget.sliderDrawerKey,
         ),
       ),
     );
@@ -74,6 +78,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final vm = context.watch<AuthViewModel>();
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -87,13 +92,11 @@ class _AuthScreenState extends State<AuthScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (_isLoading) ...[
+              if (vm.isLoading) ...[
                 const CircularProgressIndicator(),
                 const SizedBox(height: 16),
                 const Text("Signing in..."),
-              ],
-
-              if (!_isLoading) ...[
+              ] else ...[
                 const Text(
                   "Sign in to continue",
                   style: TextStyle(fontSize: 18),
@@ -105,11 +108,10 @@ class _AuthScreenState extends State<AuthScreen> {
                   label: const Text("Sign in with Google"),
                 ),
               ],
-
-              if (_error != null) ...[
+              if (vm.errorMessage != null) ...[
                 const SizedBox(height: 20),
                 Text(
-                  _error!,
+                  vm.errorMessage!,
                   style: TextStyle(color: theme.colorScheme.error),
                 ),
               ],

@@ -14,6 +14,9 @@ import '../../services/sqlite_import_service.dart';
 import '../../services/sqlite_validation_service.dart';
 import '../../model/pending_amount_row.dart';
 
+// 🔥 NEW
+import '../../viewmodel/sync/sync_viewmodel.dart';
+
 class HomeViewModel extends ChangeNotifier {
   final Logger _log = Logger();
 
@@ -39,6 +42,27 @@ class HomeViewModel extends ChangeNotifier {
   bool get isImporting => _isImporting;
 
   bool _hasRestored = false;
+
+  // 🔥 NEW: Sync ViewModel reference
+  SyncViewModel? syncVM;
+
+  // ---------------------------------------------------------------------------
+  // NEW → Register SyncViewModel (called from main.dart)
+  // ---------------------------------------------------------------------------
+  void registerSyncVM(SyncViewModel vm) {
+    syncVM = vm;
+    _log.i("🔗 SyncViewModel registered inside HomeViewModel");
+
+    // If DB already restored, attach immediately
+    if (DatabaseManager.instance.activeDbPath != null) {
+      try {
+        vm.attachDatabase(DatabaseManager.instance.db);
+        _log.i("🔗 Attached existing DB to SyncViewModel");
+      } catch (e) {
+        _log.e("❌ Failed attaching DB to SyncViewModel", error: e);
+      }
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // INIT — Only restore DB when user is logged in
@@ -71,6 +95,16 @@ class HomeViewModel extends ChangeNotifier {
       }
 
       _log.i("✅ Database restored successfully.");
+
+      // 🔥 NEW → Attach DB to SyncVM after restore
+      if (syncVM != null) {
+        try {
+          syncVM!.attachDatabase(DatabaseManager.instance.db);
+          _log.i("🔗 DB attached to SyncViewModel after restore");
+        } catch (e) {
+          _log.e("❌ Failed attaching restored DB to SyncVM", error: e);
+        }
+      }
     } else {
       _log.w("⚠ No saved database found.");
     }
@@ -115,6 +149,16 @@ class HomeViewModel extends ChangeNotifier {
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
       _log.i("✅ Database imported + activated.");
+
+      // 🔥 NEW → Attach DB to SyncVM after import
+      if (syncVM != null) {
+        try {
+          syncVM!.attachDatabase(DatabaseManager.instance.db);
+          _log.i("🔗 DB attached to SyncViewModel after import");
+        } catch (e) {
+          _log.e("❌ Failed attaching imported DB to SyncVM", error: e);
+        }
+      }
     } catch (e, st) {
       _log.e("❌ DB import failed", error: e, stackTrace: st);
       rethrow;
@@ -128,14 +172,11 @@ class HomeViewModel extends ChangeNotifier {
   // COMPANY SELECTION (legacy entry point - delegate to setCompany)
   // ---------------------------------------------------------------------------
   Future<void> selectCompany(int companyId) async {
-    // Keep compatibility with old callers
     await setCompany(companyId);
   }
 
   // ---------------------------------------------------------------------------
   // Restore previously selected company
-  // If none → default to companyId = 1
-  // Also loads name from DB and updates GlobalState
   // ---------------------------------------------------------------------------
   Future<void> _restoreCompanySelection() async {
     final prefs = await SharedPreferences.getInstance();
@@ -145,13 +186,12 @@ class HomeViewModel extends ChangeNotifier {
       selectedCompanyId = storedId;
       _log.i("🏢 Restored company selection from prefs: $selectedCompanyId");
     } else {
-      // 🔹 Default to company 1
       selectedCompanyId = 1;
       await prefs.setInt("selected_company_id", 1);
       _log.w("ℹ No company in prefs → defaulting to companyId=1");
     }
 
-    // Load company name from DB
+    // Load company name
     if (selectedCompanyId != null) {
       final db = DatabaseManager.instance.db;
       final result = await (db.select(db.companyTable)
@@ -162,28 +202,23 @@ class HomeViewModel extends ChangeNotifier {
           ? (result.first.companyName ?? "Your Company")
           : "Your Company";
 
-      // 🔥 Sync global singleton so UI like HomeScreenContent & Reports can use it
       GlobalState.instance.setCompany(
         id: selectedCompanyId!,
         name: selectedCompanyName!,
       );
 
       _log.i(
-          "🏢 Company restored → id=$selectedCompanyId, name=$selectedCompanyName");
+        "🏢 Company restored → id=$selectedCompanyId, name=$selectedCompanyName",
+      );
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Set company from bottom sheet / profile
-  // - Updates id + name
-  // - Saves to prefs
-  // - Updates GlobalState
-  // - Reloads summaries
+  // Set company ID
   // ---------------------------------------------------------------------------
   Future<void> setCompany(int id) async {
     selectedCompanyId = id;
 
-    // Fetch name from DB
     final db = DatabaseManager.instance.db;
     final result = await (db.select(db.companyTable)
       ..where((tbl) => tbl.companyId.equals(id)))
@@ -193,27 +228,22 @@ class HomeViewModel extends ChangeNotifier {
         ? (result.first.companyName ?? "Your Company")
         : "Your Company";
 
-    // Save to preferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt("selected_company_id", id);
 
-    // 🔥 Save globally
     GlobalState.instance.setCompany(
       id: selectedCompanyId!,
       name: selectedCompanyName!,
     );
 
-    _log.i(
-        "🏢 setCompany → id=$selectedCompanyId, name=$selectedCompanyName (saved to prefs + global)");
+    _log.i("🏢 setCompany → $selectedCompanyId / $selectedCompanyName");
 
-    // Reload summary for new company
     await loadPendingAmounts();
-
     notifyListeners();
   }
 
   // ---------------------------------------------------------------------------
-  // LOAD PENDING SUMMARY (REQUIRES company ID)
+  // LOAD PENDING SUMMARY
   // ---------------------------------------------------------------------------
   Future<void> loadPendingAmounts() async {
     try {
@@ -237,7 +267,7 @@ class HomeViewModel extends ChangeNotifier {
       acc1CashSummary =
       await repo.getAcc1CashSummary(selectedCompanyId!);
 
-      _log.i("📊 Summary loaded for company ID: $selectedCompanyId");
+      _log.i("📊 Summary loaded for company $selectedCompanyId");
 
       notifyListeners();
     } catch (e) {
@@ -262,7 +292,6 @@ class HomeViewModel extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("selected_company_id");
 
-    // Optionally reset global state to a neutral default
     GlobalState.instance.setCompany(
       id: 1,
       name: "Your Company",

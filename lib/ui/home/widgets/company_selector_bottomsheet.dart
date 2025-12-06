@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../data/local/database_manager.dart';
+import '../../../theme/app_colors.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 
 class CompanySelectorBottomSheet {
@@ -67,7 +68,7 @@ class CompanySelectorBottomSheet {
                           child: const Icon(
                             Icons.business,
                             size: 18,
-                            color: Colors.deepPurple,
+                            color: AppColors.primary,
                           ),
                         ),
                         title: Text(

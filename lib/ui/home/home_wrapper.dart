@@ -271,19 +271,19 @@ class _HomeWrapperState extends State<HomeWrapper> {
       bottomNavigationBar: SafeArea(
         child: CurvedNavigationBar(
           backgroundColor: Colors.transparent,
-          color: AppColors.navBarBackground,
-          buttonBackgroundColor: AppColors.navBarBackground,
+          color: AppColors.darkgreen,
+          buttonBackgroundColor: AppColors.darkgreen,
           height: 60,
           index: _pageIndex,
           items: const [
-            Icon(Icons.home, size: 30),
-            Icon(Icons.search, size: 30),
-            Icon(Icons.bar_chart, size: 30),
-            Icon(Icons.person, size: 30),
+            Icon(Icons.home, size: 30, color: Colors.white),
+            Icon(Icons.search, size: 30, color: Colors.white),
+            Icon(Icons.bar_chart, size: 30, color: Colors.white),
+            Icon(Icons.person, size: 30, color: Colors.white),
           ],
           onTap: (i) => setState(() => _pageIndex = i),
         ),
-      ),
+      ),  
     );
   }
 
