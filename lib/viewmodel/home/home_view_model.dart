@@ -9,17 +9,27 @@ import '../../data/local/database_manager.dart';
 import '../../model/cash_in_hand_row.dart';
 import '../../model/cash_summary_row.dart';
 import '../../repository/account_repository.dart';
+import '../../services/global_state.dart';
 import '../../services/sqlite_import_service.dart';
 import '../../services/sqlite_validation_service.dart';
 import '../../model/pending_amount_row.dart';
 
+// 🔥 NEW
+import '../../viewmodel/sync/sync_viewmodel.dart';
+
 class HomeViewModel extends ChangeNotifier {
   final Logger _log = Logger();
 
+  int? selectedCompanyId;
+  String? selectedCompanyName;
+
   final GlobalKey<NavigatorState> navigatorKey;
   final GlobalKey drawerKey;
+
   List<CashInHandRow> cashInHandSummary = [];
   List<CashSummaryRow> acc1CashSummary = [];
+  List<PendingAmountRow> pendingAmounts = [];
+
   HomeViewModel({
     required this.navigatorKey,
     required this.drawerKey,
@@ -28,16 +38,31 @@ class HomeViewModel extends ChangeNotifier {
   /// Active database path
   String? verifiedDbPath;
 
-  /// The company selected from Profile screen
-  int? selectedCompanyId;
-
-  /// Summary data
-  List<PendingAmountRow> pendingAmounts = [];
-
   bool _isImporting = false;
   bool get isImporting => _isImporting;
 
   bool _hasRestored = false;
+
+  // 🔥 NEW: Sync ViewModel reference
+  SyncViewModel? syncVM;
+
+  // ---------------------------------------------------------------------------
+  // NEW → Register SyncViewModel (called from main.dart)
+  // ---------------------------------------------------------------------------
+  void registerSyncVM(SyncViewModel vm) {
+    syncVM = vm;
+    _log.i("🔗 SyncViewModel registered inside HomeViewModel");
+
+    // If DB already restored, attach immediately
+    if (DatabaseManager.instance.activeDbPath != null) {
+      try {
+        vm.attachDatabase(DatabaseManager.instance.db);
+        _log.i("🔗 Attached existing DB to SyncViewModel");
+      } catch (e) {
+        _log.e("❌ Failed attaching DB to SyncViewModel", error: e);
+      }
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // INIT — Only restore DB when user is logged in
@@ -61,7 +86,7 @@ class HomeViewModel extends ChangeNotifier {
     if (restored) {
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
-      // Restore chosen company
+      // 🔹 Restore (or default) company selection + name + GlobalState
       await _restoreCompanySelection();
 
       // Load summary only if company selected
@@ -70,6 +95,16 @@ class HomeViewModel extends ChangeNotifier {
       }
 
       _log.i("✅ Database restored successfully.");
+
+      // 🔥 NEW → Attach DB to SyncVM after restore
+      if (syncVM != null) {
+        try {
+          syncVM!.attachDatabase(DatabaseManager.instance.db);
+          _log.i("🔗 DB attached to SyncViewModel after restore");
+        } catch (e) {
+          _log.e("❌ Failed attaching restored DB to SyncVM", error: e);
+        }
+      }
     } else {
       _log.w("⚠ No saved database found.");
     }
@@ -114,6 +149,16 @@ class HomeViewModel extends ChangeNotifier {
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
       _log.i("✅ Database imported + activated.");
+
+      // 🔥 NEW → Attach DB to SyncVM after import
+      if (syncVM != null) {
+        try {
+          syncVM!.attachDatabase(DatabaseManager.instance.db);
+          _log.i("🔗 DB attached to SyncViewModel after import");
+        } catch (e) {
+          _log.e("❌ Failed attaching imported DB to SyncVM", error: e);
+        }
+      }
     } catch (e, st) {
       _log.e("❌ DB import failed", error: e, stackTrace: st);
       rethrow;
@@ -124,35 +169,81 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // COMPANY SELECTION (Called from ProfileViewModel)
+  // COMPANY SELECTION (legacy entry point - delegate to setCompany)
   // ---------------------------------------------------------------------------
   Future<void> selectCompany(int companyId) async {
-    selectedCompanyId = companyId;
-
-    // Save to preferences
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt("selected_company_id", companyId);
-
-    _log.i("🏢 Selected company saved: $companyId");
-
-    // Reload summary
-    await loadPendingAmounts();
+    await setCompany(companyId);
   }
 
+  // ---------------------------------------------------------------------------
   // Restore previously selected company
+  // ---------------------------------------------------------------------------
   Future<void> _restoreCompanySelection() async {
     final prefs = await SharedPreferences.getInstance();
-    selectedCompanyId = prefs.getInt("selected_company_id");
+    final storedId = prefs.getInt("selected_company_id");
 
-    if (selectedCompanyId != null) {
-      _log.i("🏢 Restored company selection: $selectedCompanyId");
+    if (storedId != null) {
+      selectedCompanyId = storedId;
+      _log.i("🏢 Restored company selection from prefs: $selectedCompanyId");
     } else {
-      _log.w("⚠ No company selected yet.");
+      selectedCompanyId = 1;
+      await prefs.setInt("selected_company_id", 1);
+      _log.w("ℹ No company in prefs → defaulting to companyId=1");
+    }
+
+    // Load company name
+    if (selectedCompanyId != null) {
+      final db = DatabaseManager.instance.db;
+      final result = await (db.select(db.companyTable)
+        ..where((tbl) => tbl.companyId.equals(selectedCompanyId!)))
+          .get();
+
+      selectedCompanyName = result.isNotEmpty
+          ? (result.first.companyName ?? "Your Company")
+          : "Your Company";
+
+      GlobalState.instance.setCompany(
+        id: selectedCompanyId!,
+        name: selectedCompanyName!,
+      );
+
+      _log.i(
+        "🏢 Company restored → id=$selectedCompanyId, name=$selectedCompanyName",
+      );
     }
   }
 
   // ---------------------------------------------------------------------------
-  // LOAD PENDING SUMMARY (REQUIRES company ID)
+  // Set company ID
+  // ---------------------------------------------------------------------------
+  Future<void> setCompany(int id) async {
+    selectedCompanyId = id;
+
+    final db = DatabaseManager.instance.db;
+    final result = await (db.select(db.companyTable)
+      ..where((tbl) => tbl.companyId.equals(id)))
+        .get();
+
+    selectedCompanyName = result.isNotEmpty
+        ? (result.first.companyName ?? "Your Company")
+        : "Your Company";
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt("selected_company_id", id);
+
+    GlobalState.instance.setCompany(
+      id: selectedCompanyId!,
+      name: selectedCompanyName!,
+    );
+
+    _log.i("🏢 setCompany → $selectedCompanyId / $selectedCompanyName");
+
+    await loadPendingAmounts();
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------------
+  // LOAD PENDING SUMMARY
   // ---------------------------------------------------------------------------
   Future<void> loadPendingAmounts() async {
     try {
@@ -175,7 +266,8 @@ class HomeViewModel extends ChangeNotifier {
 
       acc1CashSummary =
       await repo.getAcc1CashSummary(selectedCompanyId!);
-      _log.i("📊 Summary loaded for company ID: $selectedCompanyId");
+
+      _log.i("📊 Summary loaded for company $selectedCompanyId");
 
       notifyListeners();
     } catch (e) {
@@ -191,11 +283,19 @@ class HomeViewModel extends ChangeNotifier {
 
     verifiedDbPath = null;
     selectedCompanyId = null;
+    selectedCompanyName = null;
     pendingAmounts = [];
+    cashInHandSummary = [];
+    acc1CashSummary = [];
     _hasRestored = false;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("selected_company_id");
+
+    GlobalState.instance.setCompany(
+      id: 1,
+      name: "Your Company",
+    );
 
     notifyListeners();
   }

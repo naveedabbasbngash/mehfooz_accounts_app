@@ -1,6 +1,10 @@
+// lib/ui/home/widgets/pending_amounts_list.dart
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
 
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../model/pending_amount_row.dart';
 import '../../../repository/transactions_repository.dart';
 import '../../../viewmodel/home/home_view_model.dart';
@@ -10,109 +14,143 @@ import '../../pending/pending_grouped_screen.dart';
 
 class PendingAmountsList extends StatelessWidget {
   final List<PendingAmountRow> rows;
+  final String searchQuery;
 
-  const PendingAmountsList({super.key, required this.rows});
+  final NumberFormat fmt = NumberFormat('#,##0.00');
+
+  PendingAmountsList({
+    super.key,
+    required this.rows,
+    this.searchQuery = "",
+  });
+
+  // --------------------------------------------------------
+  // HYBRID SMART FILTER
+  // --------------------------------------------------------
+  List<PendingAmountRow> _applyFilter() {
+    if (searchQuery.trim().isEmpty) return rows;
+
+    final q = searchQuery.trim().toLowerCase();
+    final isNumeric = double.tryParse(q) != null;
+
+    return rows.where((r) {
+      final currency = r.currency.toLowerCase();
+      final balanceStr = r.balance.toStringAsFixed(2);
+
+      if (isNumeric) {
+        return balanceStr == q || balanceStr.startsWith(q);
+      }
+
+      return currency.startsWith(q);
+    }).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 20),
-        child: Center(
-          child: Text(
-            "No pending amounts to show.",
-            style: TextStyle(color: Colors.grey),
-          ),
-        ),
-      );
+    final filtered = _applyFilter();
+
+    if (filtered.isEmpty) {
+      return const SizedBox.shrink();
     }
 
     return ListView.builder(
-      itemCount: rows.length,
+      itemCount: filtered.length,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemBuilder: (context, index) {
-        final row = rows[index];
-        final isPositive = row.balance >= 0;
+        final row = filtered[index];
 
-        return GestureDetector(
-          onTap: () {
-            print("DEBUG: Tapped currency = ${row.currency}");
+        return AnimatedOpacity(
+          opacity: 1,
+          duration: const Duration(milliseconds: 250),
+          child: GestureDetector(
+            onTap: () {
+              final companyId = Provider.of<HomeViewModel>(
+                context,
+                listen: false,
+              ).selectedCompanyId ?? 1;
 
-            final companyId = Provider.of<HomeViewModel>(context, listen: false)
-                .selectedCompanyId ?? 1;
-
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) {
-                  return ChangeNotifierProvider(
-                    create: (_) => NotPaidViewModel(
-                      repository: TransactionsRepository(
-                          DatabaseManager.instance.db),
-                      accId: 3,
-                      companyId: companyId,
-                    )..loadRows(),
-                    child: NotPaidGroupedScreen(
-                      filterCurrency: row.currency,
-                    ),
-                  );
-                },
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) {
+                    return ChangeNotifierProvider(
+                      create: (_) => NotPaidViewModel(
+                        repository: TransactionsRepository(
+                          DatabaseManager.instance.db,
+                        ),
+                        accId: 3,
+                        companyId: companyId,
+                      )..loadRows(),
+                      child: NotPaidGroupedScreen(
+                        filterCurrency: row.currency,
+                      ),
+                    );
+                  },
+                ),
+              );
+            },
+            child: Card(
+              elevation: 0,
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-            );
-          },
-          child: Card(
-            elevation: 0,
-            margin: const EdgeInsets.only(bottom: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.deepPurple.shade50,
-                    child: const Icon(
-                      Icons.currency_exchange,
-                      color: Colors.deepPurple,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    // LEFT ICON
+                    CircleAvatar(
+                      radius: 20,
+                      backgroundColor: AppColors.primary.withOpacity(0.10),
+                      child: Icon(
+                        Icons.currency_exchange,
+                        color: AppColors.primary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          row.currency,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 16,
+
+                    const SizedBox(width: 16),
+
+                    // MAIN TEXTS
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Currency Title
+                          Text(
+                            row.currency,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: AppColors.textDark,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "CR: ${row.totalCr} • DR: ${row.totalDr}",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
+
+                          const SizedBox(height: 6),
+
+                          // Balance ONLY (CR/DR removed)
+                          Text(
+                            "Balance: ${fmt.format(row.balance)}",
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,   // BOLD
+                              color: AppColors.primary,      // PRIMARY COLOR
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          "Balance: ${row.balance.toStringAsFixed(2)}",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: isPositive ? Colors.green : Colors.red,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Icon(Icons.chevron_right, color: Colors.deepPurple),
-                ],
+
+                    const SizedBox(width: 12),
+
+                    // CHEVRON ARROW UPDATED
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.primary,  // PRIMARY COLOR
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
