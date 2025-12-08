@@ -36,4 +36,29 @@ class NotPaidViewModel extends ChangeNotifier {
     companyId = newCompanyId;
     loadRows(); // auto refresh data
   }
+
+  List<T> smartFilter<T>({
+    required List<T> rows,
+    required String query,
+    required String Function(T item) fieldGetter,
+  }) {
+    if (query.trim().isEmpty) return rows;
+
+    final q = query.trim();
+
+    // Detect numeric or text
+    final isNumeric = double.tryParse(q) != null;
+
+    return rows.where((item) {
+      final value = fieldGetter(item).trim();
+
+      if (isNumeric) {
+        // Numeric → EXACT MATCH
+        return value == q;
+      } else {
+        // Text → PREFIX MATCH
+        return value.toLowerCase().startsWith(q.toLowerCase());
+      }
+    }).toList();
+  }
 }

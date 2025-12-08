@@ -1,10 +1,30 @@
+// lib/ui/pending/widgets/pending_group_card.dart
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
+
 import '../../../model/pending_group_row.dart';
 
 class PendingGroupCard extends StatefulWidget {
   final PendingGroupRow row;
+  final String highlight;
 
-  const PendingGroupCard({super.key, required this.row});
+  // Selection mode
+  final bool selectionMode;
+  final bool isSelected;
+  final VoidCallback? onSelectionToggle;
+  final VoidCallback? onLongPressToSelect;
+
+  const PendingGroupCard({
+    super.key,
+    required this.row,
+    this.highlight = "",
+    this.selectionMode = false,
+    this.isSelected = false,
+    this.onSelectionToggle,
+    this.onLongPressToSelect,
+  });
 
   @override
   State<PendingGroupCard> createState() => _PendingGroupCardState();
@@ -13,112 +33,176 @@ class PendingGroupCard extends StatefulWidget {
 class _PendingGroupCardState extends State<PendingGroupCard> {
   bool expanded = true;
 
-  @override
-  Widget build(BuildContext context) {
-    final row = widget.row;
-    final isNegative = row.balance < 0;
+  final NumberFormat fmt = NumberFormat('#,##0.##');
 
-    return GestureDetector(
-      onTap: () => setState(() => expanded = !expanded),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.fastOutSlowIn,
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            )
-          ],
+  // ============================================================
+  // Highlight text
+  // ============================================================
+  TextSpan _hl(String text, String q, TextStyle normal, TextStyle bold) {
+    if (q.isEmpty) return TextSpan(text: text, style: normal);
+
+    final lower = text.toLowerCase();
+    final search = q.toLowerCase();
+    final index = lower.indexOf(search);
+
+    if (index == -1) return TextSpan(text: text, style: normal);
+
+    return TextSpan(children: [
+      TextSpan(text: text.substring(0, index), style: normal),
+      TextSpan(text: text.substring(index, index + search.length), style: bold),
+      TextSpan(text: text.substring(index + search.length), style: normal),
+    ]);
+  }
+
+  // ============================================================
+  // Small Tag (PD, Currency, etc.)
+  // ============================================================
+  Widget _smallTag(String text, String hl) {
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.highlight,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.divider),
+      ),
+      child: RichText(
+        text: _hl(
+          text,
+          hl,
+          TextStyle(color: AppColors.textLight, fontSize: 12),
+          TextStyle(
+            color: AppColors.textLight,
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
         ),
-        child: expanded
-            ? _expandedView(row, isNegative)
-            : _collapsedView(row, isNegative),
       ),
     );
   }
 
   // ============================================================
-  // COLLAPSED VIEW (currency dominant on right)
+  // Selection dot
   // ============================================================
-  Widget _collapsedView(PendingGroupRow row, bool isNegative) {
+  Widget _selectionDot(bool selected) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: 22,
+      height: 22,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? AppColors.primary : AppColors.cardBackground,
+        border: Border.all(
+          color: selected ? AppColors.primary : AppColors.divider,
+          width: 2,
+        ),
+        boxShadow: selected
+            ? [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(.25),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          )
+        ]
+            : null,
+      ),
+      child: selected
+          ? const Icon(Icons.check, color: Colors.white, size: 14)
+          : null,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final row = widget.row;
+    final hl = widget.highlight.trim();
+    final negative = row.balance < 0;
+
+    return GestureDetector(
+      onTap: () {
+        if (widget.selectionMode) {
+          widget.onSelectionToggle?.call();
+        } else {
+          setState(() => expanded = !expanded);
+        }
+      },
+      onLongPress: () {
+        widget.onLongPressToSelect?.call();
+      },
+      child: Stack(
+        children: [
+          // ================= CARD =====================
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            margin: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.cardShadow,
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ],
+              border: Border.all(color: AppColors.divider),
+            ),
+            child: expanded
+                ? _expandedView(row, negative, hl)
+                : _collapsedView(row, negative, hl),
+          ),
+
+          // ================= SELECTION DOT =============
+          if (widget.selectionMode)
+            Positioned(
+              top: 12,
+              right: 12,
+              child: _selectionDot(widget.isSelected),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // COLLAPSED VIEW
+  // ============================================================
+  Widget _collapsedView(PendingGroupRow r, bool isNeg, String hl) {
+    final normal = TextStyle(color: AppColors.textDark, fontSize: 14);
+    final bold = TextStyle(color: AppColors.textLight, fontSize: 14, fontWeight: FontWeight.bold);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header row: date + PD + currency + balance
         Row(
           children: [
-            // DATE + PD grouped left
+            // DATE
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  row.beginDate,
-                  style: TextStyle(
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
+                RichText(text: _hl(r.beginDate, hl, normal, bold)),
 
-                if (row.pd != null && row.pd!.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.deepPurple.shade100),
-                    ),
-                    child: Text(
-                      "PD: ${row.pd}",
-                      style: const TextStyle(
-                        color: Colors.deepPurple,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                if (r.pd?.isNotEmpty ?? false)
+                  _smallTag("PD: ${r.pd!}", hl),
               ],
             ),
 
             const Spacer(),
 
-            // CURRENCY TAG (dominant)
-            if (row.accTypeName != null)
-              Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.deepPurple.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.deepPurple.shade200),
-                ),
-                child: Text(
-                  row.accTypeName!,
-                  style: const TextStyle(
-                    color: Colors.deepPurple,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+            // CURRENCY TAG
+            if (r.accTypeName != null)
+              _smallTag(r.accTypeName!, hl),
 
             const SizedBox(width: 12),
 
             // BALANCE
             Text(
-              row.balance.toString(),
+              fmt.format(r.balance),
               style: TextStyle(
-                color: isNegative ? Colors.red : Colors.green.shade700,
-                fontWeight: FontWeight.w900,
+                color: isNeg ? AppColors.error : AppColors.primary,
                 fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
@@ -126,38 +210,13 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
         const SizedBox(height: 12),
 
-        // Sender + Receiver horizontally
         Row(
           children: [
-            const Text(
-              "S: ",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-            Expanded(
-              child: Text(
-                row.sender ?? "—",
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.black87),
-              ),
-            ),
+            Text("S: ", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textLight)),
+            Expanded(child: RichText(text: _hl(r.sender ?? "—", hl, normal, bold))),
             const SizedBox(width: 16),
-            const Text(
-              "R: ",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.deepPurple,
-              ),
-            ),
-            Expanded(
-              child: Text(
-                row.receiver ?? "—",
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.black87),
-              ),
-            ),
+            Text("R: ", style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textLight)),
+            Expanded(child: RichText(text: _hl(r.receiver ?? "—", hl, normal, bold))),
           ],
         ),
       ],
@@ -165,118 +224,77 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   }
 
   // ============================================================
-  // EXPANDED VIEW (full details - premium UI)
+  // EXPANDED VIEW
   // ============================================================
-  Widget _expandedView(PendingGroupRow row, bool isNegative) {
+  Widget _expandedView(PendingGroupRow r, bool isNeg, String hl) {
+    final normal = TextStyle(color: AppColors.textDark, fontSize: 14);
+    final bold = TextStyle(color: AppColors.textLight, fontSize: 14, fontWeight: FontWeight.bold);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // HEADER ROW
+        // TOP HEADER
         Row(
           children: [
-            // Left: DATE + PD grouped
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  row.beginDate,
-                  style: const TextStyle(
-                    color: Colors.deepPurple,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
+                RichText(text: _hl(r.beginDate, hl, bold, bold)),
 
-                if (row.pd != null && row.pd!.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.deepPurple.shade200),
-                    ),
-                    child: Text(
-                      "PD: ${row.pd}",
-                      style: const TextStyle(
-                        color: Colors.deepPurple,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
+                if (r.pd?.isNotEmpty ?? false)
+                  _smallTag("PD: ${r.pd!}", hl),
               ],
             ),
 
             const Spacer(),
 
-            // CURRENCY TAG
-            if (row.accTypeName != null)
-              Container(
-                padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.deepPurple.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.deepPurple.shade200),
-                ),
-                child: Text(
-                  row.accTypeName!,
-                  style: const TextStyle(
-                    color: Colors.deepPurple,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+            if (r.accTypeName != null) _smallTag(r.accTypeName!, hl),
 
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
 
-            // BALANCE
             Text(
-              row.balance.toString(),
+              fmt.format(r.balance),
               style: TextStyle(
-                color: isNegative ? Colors.red : Colors.green.shade700,
-                fontWeight: FontWeight.w900,
+                color: isNeg ? AppColors.error : AppColors.textLight,
                 fontSize: 20,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ],
         ),
 
-        if (row.msgNo?.isNotEmpty ?? false) ...[
-          const SizedBox(height: 6),
-          Text(
-            "Msg: ${row.msgNo}",
-            style: TextStyle(color: Colors.grey.shade600),
+        if (r.msgNo?.isNotEmpty ?? false) ...[
+          const SizedBox(height: 8),
+          RichText(
+            text: _hl(
+              "Msg: ${r.msgNo}",
+              hl,
+              TextStyle(color: AppColors.textMuted),
+              TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
 
         const SizedBox(height: 16),
 
-        // Sender row
-        _line("Sender", row.sender ?? "—"),
-
+        _infoLine("Sender", r.sender ?? "—", hl),
         const SizedBox(height: 8),
-
-        // Receiver row
-        _line("Receiver", row.receiver ?? "—"),
+        _infoLine("Receiver", r.receiver ?? "—", hl),
 
         const SizedBox(height: 18),
 
-        // Amount summary row
+        // ================= AMOUNT SUMMARY ====================
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.grey.shade100,
+            color: AppColors.greyLight,
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             children: [
-              _amountPill("P.Amount", row.notPaidAmount.toString()),
-              _amountPill("Paid", row.paidAmount.toString()),
-              _amountPill("Balance", row.balance.toString(), bold: true),
+              _amtPill("P.Amount", fmt.format(r.notPaidAmount)),
+              _amtPill("Paid", fmt.format(r.paidAmount)),
+              _amtPill("Balance", fmt.format(r.balance), bold: true),
             ],
           ),
         ),
@@ -285,23 +303,24 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   }
 
   // ============================================================
-  // Helper: Sender/Receiver rows
+  // INFO TEXT
   // ============================================================
-  Widget _line(String label, String value) {
+  Widget _infoLine(String label, String value, String hl) {
     return Row(
       children: [
-        Text(
-          "$label: ",
-          style: const TextStyle(
-            color: Colors.deepPurple,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        Text("$label: ",
+            style: TextStyle(
+              color: AppColors.textLight,
+              fontWeight: FontWeight.bold,
+            )),
         Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(color: Colors.black87),
-            overflow: TextOverflow.ellipsis,
+          child: RichText(
+            text: _hl(
+              value,
+              hl,
+              TextStyle(color: AppColors.textDark),
+              TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold),
+            ),
           ),
         ),
       ],
@@ -309,27 +328,22 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   }
 
   // ============================================================
-  // Helper: Amount pill
+  // AMOUNT PILL (P.Amount / Paid / Balance)
   // ============================================================
-  Widget _amountPill(String label, String value, {bool bold = false}) {
+  Widget _amtPill(String label, String value, {bool bold = false}) {
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.grey.shade600,
-              fontSize: 12,
-            ),
-          ),
+          Text(label,
+              style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
           const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              color: Colors.deepPurple,
+              color: AppColors.primary,
               fontSize: bold ? 18 : 16,
-              fontWeight: bold ? FontWeight.w900 : FontWeight.w600,
+              fontWeight: bold ? FontWeight.bold : FontWeight.w600,
             ),
           ),
         ],

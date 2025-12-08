@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../data/local/database_manager.dart';
+import '../../../theme/app_colors.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 
 class CompanySelectorBottomSheet {
@@ -67,26 +68,28 @@ class CompanySelectorBottomSheet {
                           child: const Icon(
                             Icons.business,
                             size: 18,
-                            color: Colors.deepPurple,
+                            color: AppColors.primary,
                           ),
                         ),
                         title: Text(
                           c.companyName ?? "Unnamed company",
                           style: TextStyle(
-                            fontWeight: isSelected
-                                ? FontWeight.bold
-                                : FontWeight.w400,
+                            fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.w400,
                           ),
                         ),
                         trailing: isSelected
                             ? const Icon(Icons.check, color: Colors.green)
                             : null,
-                        onTap: () {
+
+                        onTap: () async {
                           if (c.companyId != null) {
-                            vm.selectCompany(c.companyId!);
-                            vm.loadPendingAmounts();
+                            // 🔥 Single source of truth = setCompany()
+                            await vm.setCompany(c.companyId!);
                           }
-                          Navigator.pop(context);
+
+                          // Close AFTER update
+                          if (context.mounted) Navigator.pop(context);
                         },
                       );
                     },

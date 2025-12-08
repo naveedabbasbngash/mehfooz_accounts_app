@@ -1,4 +1,9 @@
+// lib/ui/home/home_screen_content.dart
+
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
+import 'package:mehfooz_accounts_app/ui/home/widgets/home_header.dart';
 import 'package:provider/provider.dart';
 
 import '../../repository/transactions_repository.dart';
@@ -13,6 +18,9 @@ import 'widgets/acc1_summary_card.dart';
 import 'widgets/pending_amounts_list.dart';
 import 'widgets/company_selector_bottomsheet.dart';
 
+// NEW
+import '../../viewmodel/sync/sync_viewmodel.dart';
+
 class HomeScreenContent extends StatefulWidget {
   const HomeScreenContent({super.key});
 
@@ -23,6 +31,30 @@ class HomeScreenContent extends StatefulWidget {
 class _HomeScreenContentState extends State<HomeScreenContent> {
   bool cashExpanded = false;
   bool acc1Expanded = false;
+  String pendingSearchText = "";
+
+  Timer? _syncTimer;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Background Auto Sync every 5 minutes
+    _syncTimer = Timer.periodic(const Duration(minutes: 5), (_) async {
+      try {
+        final svm = context.read<SyncViewModel>();
+        if (!svm.isSyncing) {
+          await svm.syncNow();
+        }
+      } catch (_) {}
+    });
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +65,8 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
         final companyId = vm.selectedCompanyId ?? 1;
 
         return Scaffold(
-          backgroundColor: Colors.grey.shade50,
+          backgroundColor: AppColors.app_bg,
+
           body: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -41,69 +74,35 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // ---------------------------------------------------------
-                  // Header
+                  // HEADER
                   // ---------------------------------------------------------
-                  FutureBuilder<String?>(
-                    future: _getCompanyName(vm),
-                    builder: (context, snapshot) {
-                      final name = snapshot.data ?? "Mahfooz Accounts";
+                  HomeHeader(
+                    vm: vm,
+                    onChangeCompany: () =>
+                        CompanySelectorBottomSheet.show(context, vm),
+                  ),
 
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Welcome",
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                              color: Colors.grey.shade700,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            name,
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineSmall
-                                ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          TextButton.icon(
-                            onPressed: () =>
-                                CompanySelectorBottomSheet.show(context, vm),
-                            icon: const Icon(Icons.swap_horiz,
-                                size: 18, color: Colors.deepPurple),
-                            label: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  "Change company",
-                                  style: TextStyle(
-                                    color: Colors.deepPurple,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                SizedBox(width: 2),
-                                Icon(Icons.keyboard_arrow_down,
-                                    size: 18, color: Colors.deepPurple),
-                              ],
-                            ),
-                          ),
-                        ],
+                  const SizedBox(height: 10),
+
+                  // ---------------------------------------------------------
+                  // SYNC PROGRESS BAR
+                  // ---------------------------------------------------------
+                  Consumer<SyncViewModel>(
+                    builder: (context, svm, _) {
+                      return AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: svm.isSyncing ? 4 : 0,
+                        margin: const EdgeInsets.only(top: 10, bottom: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
                       );
                     },
                   ),
 
-                  const SizedBox(height: 24),
-
                   // ---------------------------------------------------------
-                  // Cash In Hand
+                  // Cash In Hand Card
                   // ---------------------------------------------------------
                   CashInHandCard(
                     vm: vm,
@@ -115,7 +114,7 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                   const SizedBox(height: 16),
 
                   // ---------------------------------------------------------
-                  // ACC ID = 1 Summary Card
+                  // AccID = 1 Summary Card
                   // ---------------------------------------------------------
                   Acc1SummaryCard(
                     vm: vm,
@@ -129,28 +128,29 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                   // ---------------------------------------------------------
                   // Pending Amounts Section
                   // ---------------------------------------------------------
-                  if (isImporting)
+                  if (isImporting) ...[
                     const Center(
                       child: Padding(
                         padding: EdgeInsets.only(top: 40),
                         child: CircularProgressIndicator(),
                       ),
                     )
-                  else ...[
+                  ] else if (pendingAmounts.isNotEmpty) ...[
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
+                        Text(
                           "Pending amounts by currency",
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
+                            color: AppColors.textDark, // UPDATED
                           ),
                         ),
 
-                        // -------------------------------------------------
-                        // View All → NotPaidGroupedScreen
-                        // -------------------------------------------------
+                        // ---------------------------------------------------------
+                        // View All Button — UPDATED
+                        // ---------------------------------------------------------
                         TextButton.icon(
                           onPressed: () {
                             Navigator.push(
@@ -158,7 +158,8 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                               MaterialPageRoute(
                                 builder: (_) => ChangeNotifierProvider(
                                   create: (_) => NotPaidViewModel(
-                                    repository: TransactionsRepository(
+                                    repository:
+                                    TransactionsRepository(
                                         DatabaseManager.instance.db),
                                     accId: 3,
                                     companyId: companyId,
@@ -168,14 +169,17 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                               ),
                             );
                           },
-                          icon: const Icon(Icons.open_in_full,
-                              color: Colors.deepPurple),
-                          label: const Text(
+                          icon: Icon(
+                            Icons.open_in_full,
+                            color: AppColors.primary, // UPDATED
+                            size: 18,
+                          ),
+                          label: Text(
                             "View All",
                             style: TextStyle(
-                              color: Colors.deepPurple,
+                              color: AppColors.primary,  // UPDATED
                               fontSize: 14,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: FontWeight.w700, // BOLD
                             ),
                           ),
                         ),
@@ -183,10 +187,14 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                     ),
 
                     const SizedBox(height: 8),
-                    PendingAmountsList(rows: pendingAmounts),
+
+                    PendingAmountsList(
+                      rows: pendingAmounts,
+                      searchQuery: pendingSearchText,
+                    ),
                   ],
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
@@ -196,6 +204,9 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
     );
   }
 
+  // ---------------------------------------------------------
+  // Company Name Loader
+  // ---------------------------------------------------------
   Future<String?> _getCompanyName(HomeViewModel vm) async {
     final selectedId = vm.selectedCompanyId;
     if (selectedId == null) return null;
@@ -208,5 +219,94 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
     return result.isNotEmpty
         ? result.first.companyName ?? "Your Company"
         : "Your Company";
+  }
+
+  // ---------------------------------------------------------
+  // Relative time formatter
+  // ---------------------------------------------------------
+  String _timeAgo(DateTime? dt) {
+    if (dt == null) return "";
+
+    final diff = DateTime.now().difference(dt);
+
+    if (diff.inMinutes < 1) return "Just now";
+    if (diff.inMinutes < 60) return "${diff.inMinutes} min ago";
+    if (diff.inHours < 24) return "${diff.inHours} hours ago";
+
+    return "${diff.inDays} days ago";
+  }
+
+  // ---------------------------------------------------------
+  // Sync Menu Bottom Sheet
+  // ---------------------------------------------------------
+  void _openSyncMenu(BuildContext context, SyncViewModel svm) {
+    showModalBottomSheet(
+      context: context,
+      shape:
+      RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      builder: (_) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Sync Options",
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textDark)),
+
+              const SizedBox(height: 12),
+
+              ListTile(
+                leading: Icon(Icons.sync, color: AppColors.primary),
+                title: Text("Sync Now",
+                    style: TextStyle(color: AppColors.textDark)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await svm.syncNow();
+                  _showToast(context, svm.lastMessage);
+                },
+              ),
+
+              ListTile(
+                leading:
+                Icon(Icons.history, color: AppColors.primary),
+                title: Text("Sync History",
+                    style: TextStyle(color: AppColors.textDark)),
+                onTap: () => Navigator.pop(context),
+              ),
+
+              ListTile(
+                leading:
+                Icon(Icons.settings, color: AppColors.primary),
+                title: Text("Sync Settings",
+                    style: TextStyle(color: AppColors.textDark)),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------
+  // Toast Notification
+  // ---------------------------------------------------------
+  void _showToast(BuildContext context, String message) {
+    final snackBar = SnackBar(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor:
+      message.startsWith("❌") ? AppColors.error : AppColors.success,
+      content: Text(
+        message,
+        style: const TextStyle(fontSize: 14, color: Colors.white),
+      ),
+      duration: const Duration(seconds: 2),
+    );
+
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
 }
