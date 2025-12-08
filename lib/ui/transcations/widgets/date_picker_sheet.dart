@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 
 typedef DateRangeResult = ({String? start, String? end});
 
@@ -7,7 +8,7 @@ class DatePickerSheet {
     return await showModalBottomSheet<DateRangeResult>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.cardBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -24,42 +25,53 @@ class _DatePickerSheetBody extends StatefulWidget {
 }
 
 class _DatePickerSheetBodyState extends State<_DatePickerSheetBody> {
-  DateTime? singleDate;
-  DateTimeRange? range;
-
   @override
   Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
+
     return SafeArea(
+      top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+        padding: EdgeInsets.fromLTRB(20, 22, 20, 28 + bottomPadding),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // HEADER
+            // ──────────────────────────
+            // DRAG HANDLE
+            // ──────────────────────────
             Container(
-              width: 40,
-              height: 4,
+              width: 46,
+              height: 5,
               decoration: BoxDecoration(
-                color: Colors.grey.shade400,
-                borderRadius: BorderRadius.circular(2),
+                color: AppColors.grey,
+                borderRadius: BorderRadius.circular(4),
               ),
             ),
             const SizedBox(height: 14),
-            const Text(
+
+            // ──────────────────────────
+            // TITLE
+            // ──────────────────────────
+            Text(
               "Select Date",
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
-                color: Color(0xFF0B1E3A),
+                color: AppColors.textDark,
               ),
             ),
 
             const SizedBox(height: 18),
 
-            // SINGLE DAY PICKER BUTTON
+            // ──────────────────────────
+            // SINGLE DAY PICKER
+            // ──────────────────────────
             ListTile(
-              leading: const Icon(Icons.calendar_today, color: Colors.deepPurple),
-              title: const Text("Pick a single day"),
+              leading: Icon(Icons.calendar_today, color: AppColors.primary),
+              title: Text(
+                "Pick a single day",
+                style: TextStyle(color: AppColors.textDark),
+              ),
               onTap: () async {
                 final picked = await showDatePicker(
                   context: context,
@@ -68,16 +80,21 @@ class _DatePickerSheetBodyState extends State<_DatePickerSheetBody> {
                 );
 
                 if (picked != null) {
-                  Navigator.pop(context,
-                      (start: picked.toIso8601String().split("T")[0], end: picked.toIso8601String().split("T")[0]));
+                  final d = picked.toIso8601String().split("T")[0];
+                  Navigator.pop(context, (start: d, end: d));
                 }
               },
             ),
 
-            // RANGE PICKER
+            // ──────────────────────────
+            // DATE RANGE PICKER
+            // ──────────────────────────
             ListTile(
-              leading: const Icon(Icons.date_range, color: Colors.deepPurple),
-              title: const Text("Pick a date range"),
+              leading: Icon(Icons.date_range, color: AppColors.primary),
+              title: Text(
+                "Pick a date range",
+                style: TextStyle(color: AppColors.textDark),
+              ),
               onTap: () async {
                 final now = DateTime.now();
 
@@ -92,17 +109,26 @@ class _DatePickerSheetBodyState extends State<_DatePickerSheetBody> {
                 );
 
                 if (picked != null) {
-                  Navigator.pop(context,
-                      (start: picked.start.toIso8601String().split("T")[0],
-                      end: picked.end.toIso8601String().split("T")[0]));
+                  Navigator.pop(
+                    context,
+                    (
+                    start: picked.start.toIso8601String().split("T")[0],
+                    end: picked.end.toIso8601String().split("T")[0]
+                    ),
+                  );
                 }
               },
             ),
 
+            // ──────────────────────────
             // CLEAR DATES
+            // ──────────────────────────
             ListTile(
-              leading: const Icon(Icons.clear, color: Colors.red),
-              title: const Text("Clear dates"),
+              leading: Icon(Icons.clear, color: AppColors.error),
+              title: Text(
+                "Clear dates",
+                style: TextStyle(color: AppColors.error),
+              ),
               onTap: () {
                 Navigator.pop(context, (start: null, end: null));
               },

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
+import '../../theme/app_colors.dart';
 import '../../viewmodel/reports/ledger_filter_view_model.dart';
 import '../../services/pdf/ledger_pdf_service.dart';
 import '../../services/pdf/open_file_service.dart';
@@ -236,7 +237,7 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                 ElevatedButton(
                   onPressed: () async => _onGeneratePressed(context, vm),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0B1E3A),
+                    backgroundColor: AppColors.primary,
                     foregroundColor: Colors.white,
                     minimumSize: const Size(double.infinity, 52),
                     shape: RoundedRectangleBorder(

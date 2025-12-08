@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../theme/app_colors.dart';
 import '../../viewmodel/reports/last_credit_view_model.dart';
 import '../../services/pdf/open_file_service.dart';
 
@@ -135,7 +136,7 @@ class _LastCreditSummaryScreenState extends State<LastCreditSummaryScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: deepBlue,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(

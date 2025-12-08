@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:open_filex/open_filex.dart';
 
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../model/pending_row.dart';
 import '../../services/pdf/pending_pdf_service.dart';
 import '../../viewmodel/home/not_paid_view_model.dart';
@@ -22,51 +23,46 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
   String query = "";
   DateTime? startDate;
   DateTime? endDate;
-  String statusFilter = "ALL"; // ALL | PAID | NOTPAID
+  String statusFilter = "ALL";
 
-  // NEW: selection mode
   bool selectionMode = false;
   final Set<PendingGroupRow> _selectedRows = {};
-
-
 
   @override
   Widget build(BuildContext context) {
     final vm = Provider.of<NotPaidViewModel>(context);
     List<PendingGroupRow> rows = vm.rows;
 
-    // 1️⃣ Currency filter from Home
+    // Currency Filter
     if (widget.filterCurrency != null) {
       rows = rows
-          .where((r) =>
-      (r.accTypeName ?? "").toLowerCase() ==
+          .where((r) => (r.accTypeName ?? "").toLowerCase() ==
           widget.filterCurrency!.toLowerCase())
           .toList();
     }
 
-    // 2️⃣ Status filter
+    // Status filter
     rows = rows.where((r) {
       if (statusFilter == "PAID") return r.balance == 0;
       if (statusFilter == "NOTPAID") return r.balance != 0;
       return true;
     }).toList();
 
-    // 3️⃣ Date range filter
+    // Date filter
     if (startDate != null && endDate != null) {
       rows = rows.where((r) {
         final date = DateTime.tryParse(r.beginDate);
         if (date == null) return false;
-
         return date.isAfter(startDate!.subtract(const Duration(days: 1))) &&
             date.isBefore(endDate!.add(const Duration(days: 1)));
       }).toList();
     }
 
-    // 4️⃣ Smart search
+    // Search Filter
     final q = query.trim().toLowerCase();
     final isNumeric = double.tryParse(q) != null;
 
-    final List<PendingGroupRow> filtered = rows.where((r) {
+    final filtered = rows.where((r) {
       if (q.isEmpty) return true;
 
       final sender = (r.sender ?? "").toLowerCase();
@@ -88,17 +84,13 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: AppColors.app_bg,
       appBar: _buildAppBar(filtered),
       body: Column(
         children: [
-          // 🔍 Search Bar
-          PendingSearchBar(
-            onChanged: (v) => setState(() => query = v),
-          ),
+          PendingSearchBar(onChanged: (v) => setState(() => query = v)),
           const SizedBox(height: 10),
 
-          // LIST
           Expanded(
             child: PendingGroupList(
               rows: filtered,
@@ -115,70 +107,61 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
   }
 
   // ============================================================
-  // APP BAR (Normal + Selection Mode)
+  // APP BAR
   // ============================================================
   AppBar _buildAppBar(List<PendingGroupRow> filtered) {
     if (selectionMode) {
-      // ✅ SELECTION MODE (Gmail style)
       return AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.cardBackground,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.black87),
+          icon: Icon(Icons.close, color: AppColors.textDark),
           onPressed: _clearSelection,
         ),
         title: Text(
           "${_selectedRows.length} selected",
-          style: const TextStyle(
-            color: Colors.black87,
+          style: TextStyle(
+            color: AppColors.textDark,
             fontWeight: FontWeight.w600,
           ),
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.picture_as_pdf, color: Colors.deepPurple),
-            onPressed: _selectedRows.isEmpty ? null : () => _exportSelected(),
-            tooltip: "Export selected to PDF",
+            icon: Icon(Icons.picture_as_pdf, color: AppColors.primary),
+            onPressed: _selectedRows.isEmpty ? null : _exportSelected,
           ),
         ],
       );
     }
 
-    // ✅ NORMAL MODE
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.cardBackground,
       elevation: 1,
       title: Text(
         widget.filterCurrency == null
             ? "Pending Amounts"
             : "${widget.filterCurrency} – Pending",
-        style: const TextStyle(
-          color: Colors.black87,
+        style: TextStyle(
+          color: AppColors.textDark,
           fontWeight: FontWeight.w600,
         ),
       ),
-      iconTheme: const IconThemeData(color: Colors.black87),
+      iconTheme: IconThemeData(color: AppColors.textDark),
       actions: [
-        // Export all (for current filtered list)
         IconButton(
-          icon: const Icon(Icons.picture_as_pdf_outlined,
-              color: Colors.deepPurple),
-          onPressed:
-          filtered.isEmpty ? null : () => _exportAll(filtered),
-          tooltip: "Export all to PDF",
+          icon: Icon(Icons.picture_as_pdf_outlined, color: AppColors.primary),
+          onPressed: filtered.isEmpty ? null : () => _exportAll(filtered),
         ),
-
-        // Existing filter button
         IconButton(
-          icon: const Icon(Icons.filter_list, color: Colors.deepPurple),
-          onPressed: () => _openFilterSheet(),
+          icon: Icon(Icons.filter_list, color: AppColors.primary),
+          onPressed: _openFilterSheet,
         ),
       ],
     );
   }
 
   // ============================================================
-  // SELECTION HANDLERS
+  // SELECTION HANDLING
   // ============================================================
   void _startSelectionFromRow(PendingGroupRow row) {
     setState(() {
@@ -195,9 +178,7 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
         _selectedRows.add(row);
       }
 
-      if (_selectedRows.isEmpty) {
-        selectionMode = false;
-      }
+      if (_selectedRows.isEmpty) selectionMode = false;
     });
   }
 
@@ -208,62 +189,12 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
     });
   }
 
-
-
+  // ============================================================
+  // EXPORT ALL
+  // ============================================================
   Future<void> _exportAll(List<PendingGroupRow> groups) async {
-    if (groups.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("No pending rows to export"),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
     try {
-      const officeName = "Mahfooz Accounts";
-
-      final rows = groups.map<PendingRow>((g) {
-        return PendingRow(
-          voucherNo: 0,                     // <-- REQUIRED
-          dateIso: g.beginDate,
-          pd: g.pd ?? "",
-          msg: g.msgNo ?? "",
-          sender: g.sender ?? "",
-          receiver: g.receiver ?? "",
-          description: "",                  // <-- REQUIRED
-          notPaidAmount: g.notPaidAmount,
-          paidAmount: g.paidAmount,
-          balance: g.balance,
-          currency: g.accTypeName ?? "",
-        );
-      }).toList();
-
-      final file = await PendingPdfService.instance.render(
-        officeName: officeName,
-        rows: rows,
-        title: 'Pending Amount (Grouped)',
-      );
-
-      await OpenFilex.open(file.path);
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Failed to generate PDF: $e"),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red.shade600,
-        ),
-      );
-    }
-  }
-  Future<void> _exportSelected() async {
-    if (_selectedRows.isEmpty) return;
-
-    try {
-      const officeName = "Mahfooz Accounts";
-
-      final rows = _selectedRows.map<PendingRow>((g) {
+      final rows = groups.map((g) {
         return PendingRow(
           voucherNo: 0,
           dateIso: g.beginDate,
@@ -280,187 +211,260 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
       }).toList();
 
       final file = await PendingPdfService.instance.render(
-        officeName: officeName,
+        officeName: "Mahfooz Accounts",
         rows: rows,
-        title: 'Selected Pending Items',
+        title: "Pending Amount (Grouped)",
       );
 
       await OpenFilex.open(file.path);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Failed to generate PDF: $e"),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red.shade600,
-        ),
-      );
+      _error("Failed to generate PDF: $e");
     }
   }
-  // ===========================================================================
-  // 📌 FILTER BOTTOM-SHEET (unchanged from your code)
-  // ===========================================================================
+
+  // ============================================================
+  // EXPORT SELECTED
+  // ============================================================
+  Future<void> _exportSelected() async {
+    try {
+      final rows = _selectedRows.map((g) {
+        return PendingRow(
+          voucherNo: 0,
+          dateIso: g.beginDate,
+          pd: g.pd ?? "",
+          msg: g.msgNo ?? "",
+          sender: g.sender ?? "",
+          receiver: g.receiver ?? "",
+          description: "",
+          notPaidAmount: g.notPaidAmount,
+          paidAmount: g.paidAmount,
+          balance: g.balance,
+          currency: g.accTypeName ?? "",
+        );
+      }).toList();
+
+      final file = await PendingPdfService.instance.render(
+        officeName: "Mahfooz Accounts",
+        rows: rows,
+        title: "Selected Pending Items",
+      );
+
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      _error("Failed to generate PDF: $e");
+    }
+  }
+
+  // ============================================================
+  // FILTER SHEET
+  // ============================================================
   void _openFilterSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.cardBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, sheetSetState) {
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: MediaQuery.of(context).viewInsets.bottom,
-                left: 16,
-                right: 16,
-                top: 20,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // drag handle
-                  Container(
-                    height: 5,
-                    width: 45,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(20),
+        return SafeArea(
+          bottom: true, // 👈 avoids touching system navigation bar
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              20,
+              16,
+              MediaQuery.of(context).viewInsets.bottom + 16,
+            ),
+            child: StatefulBuilder(
+              builder: (context, sheetSetState) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+
+                    // ---------------- DRAG HANDLE ----------------
+                    Center(
+                      child: Container(
+                        height: 5,
+                        width: 45,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.divider,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
                     ),
-                  ),
 
-                  const Text(
-                    "Filters",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
+                    // ---------------- TITLE ----------------
+                    Text(
+                      "Filters",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
                     ),
-                  ),
 
-                  const SizedBox(height: 20),
+                    const SizedBox(height: 20),
 
-                  // Status Filter
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text("Status",
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade800)),
-                  ),
-                  const SizedBox(height: 8),
-
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(
-                        value: "ALL",
-                        icon: Icon(Icons.all_inbox),
-                        label: Text("All"),
+                    // ---------------- STATUS FILTER ----------------
+                    Text(
+                      "Status",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
                       ),
-                      ButtonSegment(
-                        value: "PAID",
-                        icon: Icon(Icons.check_circle_outline),
-                        label: Text("Paid"),
-                      ),
-                      ButtonSegment(
-                        value: "NOTPAID",
-                        icon: Icon(Icons.pending_actions),
-                        label: Text("Not Paid"),
-                      ),
-                    ],
-                    selected: {statusFilter},
-                    onSelectionChanged: (newSet) {
-                      sheetSetState(() => statusFilter = newSet.first);
-                      setState(() {});
-                    },
-                  ),
+                    ),
 
-                  const SizedBox(height: 24),
+                    const SizedBox(height: 8),
 
-                  // Date Range Filter
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text("Date Range",
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade800)),
-                  ),
-                  const SizedBox(height: 8),
-
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          icon: const Icon(Icons.date_range,
-                              color: Colors.deepPurple),
-                          label: Text(
-                            (startDate == null || endDate == null)
-                                ? "Pick Range"
-                                : "${startDate!.toString().split(' ')[0]} → "
-                                "${endDate!.toString().split(' ')[0]}",
-                            style:
-                            const TextStyle(color: Colors.deepPurple),
+                    SegmentedButton<String>(
+                      style: ButtonStyle(
+                        backgroundColor: WidgetStateProperty.resolveWith(
+                              (states) =>
+                          states.contains(WidgetState.selected)
+                              ? AppColors.primary.withOpacity(.15)
+                              : AppColors.cardBackground,
+                        ),
+                        side: WidgetStateProperty.resolveWith(
+                              (states) => BorderSide(
+                            color: AppColors.primary.withOpacity(
+                              states.contains(WidgetState.selected) ? 1 : 0.3,
+                            ),
+                            width: 1,
                           ),
-                          onPressed: () async {
-                            final picked = await showDateRangePicker(
-                              context: context,
-                              firstDate: DateTime(2020),
-                              lastDate: DateTime.now()
-                                  .add(const Duration(days: 365)),
-                            );
+                        ),
+                      ),
+                      segments: [
+                        ButtonSegment(
+                          value: "ALL",
+                          label: Text("All",
+                              style: TextStyle(color: AppColors.textDark)),
+                        ),
+                        ButtonSegment(
+                          value: "PAID",
+                          label: Text("Paid",
+                              style: TextStyle(color: AppColors.textDark)),
+                        ),
+                        ButtonSegment(
+                          value: "NOTPAID",
+                          label: Text("Not Paid",
+                              style: TextStyle(color: AppColors.textDark)),
+                        ),
+                      ],
+                      selected: {statusFilter},
+                      onSelectionChanged: (newSet) {
+                        sheetSetState(() => statusFilter = newSet.first);
+                        setState(() {});
+                      },
+                    ),
 
-                            if (picked != null) {
+                    const SizedBox(height: 24),
+
+                    // ---------------- DATE RANGE ----------------
+                    Text(
+                      "Date Range",
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: Icon(Icons.date_range, color: AppColors.primary),
+                            label: Text(
+                              (startDate == null || endDate == null)
+                                  ? "Pick Range"
+                                  : "${startDate!.toString().split(' ')[0]} → ${endDate!.toString().split(' ')[0]}",
+                              style: TextStyle(color: AppColors.primary),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(color: AppColors.divider),
+                              padding: const EdgeInsets.all(14),
+                            ),
+                            onPressed: () async {
+                              final picked = await showDateRangePicker(
+                                context: context,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime.now()
+                                    .add(const Duration(days: 365)),
+                              );
+
+                              if (picked != null) {
+                                sheetSetState(() {
+                                  startDate = picked.start;
+                                  endDate = picked.end;
+                                });
+                                setState(() {});
+                              }
+                            },
+                          ),
+                        ),
+
+                        if (startDate != null && endDate != null)
+                          IconButton(
+                            icon: Icon(Icons.close, color: AppColors.error),
+                            onPressed: () {
                               sheetSetState(() {
-                                startDate = picked.start;
-                                endDate = picked.end;
+                                startDate = null;
+                                endDate = null;
                               });
                               setState(() {});
-                            }
-                          },
-                        ),
-                      ),
-                      if (startDate != null && endDate != null)
-                        IconButton(
-                          icon: const Icon(Icons.close, color: Colors.red),
-                          onPressed: () {
-                            sheetSetState(() {
-                              startDate = null;
-                              endDate = null;
-                            });
-                            setState(() {});
-                          },
-                        ),
-                    ],
-                  ),
+                            },
+                          ),
+                      ],
+                    ),
 
-                  const SizedBox(height: 26),
+                    const SizedBox(height: 26),
 
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepPurple,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text(
-                        "Apply Filters",
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600),
+                    // ---------------- APPLY BUTTON ----------------
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(
+                          "Apply Filters",
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.white_color,
+                          ),
+                        ),
                       ),
                     ),
-                  ),
 
-                  const SizedBox(height: 16),
-                ],
-              ),
-            );
-          },
+                    const SizedBox(height: 10),
+                  ],
+                );
+              },
+            ),
+          ),
         );
       },
+    );
+  }
+  // ============================================================
+  // ERROR SNACKBAR
+  // ============================================================
+  void _error(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: AppColors.error,
+      ),
     );
   }
 }

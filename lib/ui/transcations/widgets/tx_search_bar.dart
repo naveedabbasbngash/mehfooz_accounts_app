@@ -4,12 +4,14 @@ class TxSearchBar extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
   final List<String> suggestions;
+  final VoidCallback? onFocus;     // NEW — close details panel
 
   const TxSearchBar({
     super.key,
     required this.value,
     required this.onChanged,
     this.suggestions = const [],
+    this.onFocus,
   });
 
   @override
@@ -18,6 +20,7 @@ class TxSearchBar extends StatelessWidget {
       value: value,
       onChanged: onChanged,
       suggestions: suggestions,
+      onFocus: onFocus,         // pass down
     );
   }
 }
@@ -26,11 +29,13 @@ class _TxAutoSearch extends StatefulWidget {
   final String value;
   final ValueChanged<String> onChanged;
   final List<String> suggestions;
+  final VoidCallback? onFocus;   // NEW
 
   const _TxAutoSearch({
     required this.value,
     required this.onChanged,
     required this.suggestions,
+    this.onFocus,
   });
 
   @override
@@ -77,14 +82,19 @@ class _TxAutoSearchState extends State<_TxAutoSearch> {
         return TextField(
           controller: controller,
           focusNode: focusNode,
+          onTap: () {
+            if (widget.onFocus != null) widget.onFocus!();   // ← CLOSE PANEL
+          },
           onChanged: widget.onChanged,
           decoration: InputDecoration(
             hintText: "Search person…",
             prefixIcon: const Icon(Icons.search),
             filled: true,
             fillColor: Colors.white,
-            contentPadding:
-            const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(28),
               borderSide: BorderSide.none,
@@ -113,7 +123,9 @@ class _TxAutoSearchState extends State<_TxAutoSearch> {
                     onTap: () => onSelected(option),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       child: RichText(
                         text: _highlight(option, query),
                       ),
@@ -138,9 +150,9 @@ class _TxAutoSearchState extends State<_TxAutoSearch> {
   // ---------------------------------------------------
   TextSpan _highlight(String text, String query) {
     if (query.isEmpty) {
-      return TextSpan(
-        text: text,
-        style: const TextStyle(fontSize: 15, color: Color(0xFF0B1E3A)),
+      return const TextSpan(
+        text: "",
+        style: TextStyle(fontSize: 15, color: Color(0xFF0B1E3A)),
       );
     }
 

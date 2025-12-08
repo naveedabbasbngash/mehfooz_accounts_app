@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../../services/global_state.dart';
 import '../../services/pdf/open_file_service.dart';
+import '../../theme/app_colors.dart';
 import '../../viewmodel/reports/last_credit_view_model.dart';
 import '../../viewmodel/reports/ledger_filter_view_model.dart';
 import '../../viewmodel/reports/reports_view_model.dart';
@@ -13,7 +14,7 @@ import '../../repository/transactions_repository.dart';
 import '../../repository/pending_repository.dart';
 import '../../data/local/database_manager.dart';
 import 'last_credit_summary_screen.dart';
-import 'ledger_filter_screen.dart';   // <-- IMPORTANT IMPORT
+import 'ledger_filter_screen.dart';
 
 class ReportsScreen extends StatelessWidget {
   const ReportsScreen({super.key});
@@ -38,54 +39,43 @@ class _ReportsScreenBody extends StatelessWidget {
     final vm = context.watch<ReportsViewModel>();
     final ui = vm.ui;
 
-    const softBg = Color(0xFFF7F9FC);
-    const deepBlue = Color(0xFF0B1E3A);
-
     return Scaffold(
-      backgroundColor: softBg,
-      appBar: AppBar(
-        backgroundColor: softBg,
-        elevation: 0,
-        title: const Text(
-          "Reports",
-          style: TextStyle(
-            color: deepBlue,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        centerTitle: true,
-      ),
+      backgroundColor: AppColors.app_bg,
 
+      // ❌ REMOVED APPBAR — You already have tab navigation title
       body: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
         child: SingleChildScrollView(
           child: Column(
             children: [
+              // ---------------------------------------------------------
+              // MAIN REPORT CARD
+              // ---------------------------------------------------------
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: AppColors.cardBackground,
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 8,
+                      color: AppColors.cardShadow,
+                      blurRadius: 10,
                       offset: const Offset(0, 3),
                     ),
                   ],
+                  border: Border.all(color: AppColors.divider),
                 ),
 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       "Generate Reports",
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
-                        color: deepBlue,
+                        color: AppColors.textDark,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -93,17 +83,15 @@ class _ReportsScreenBody extends StatelessWidget {
                       "Select any option to export report PDF",
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey.shade600,
+                        color: AppColors.textMuted,
                       ),
                     ),
                     const SizedBox(height: 22),
 
                     if (ui.loading)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.only(bottom: 18),
-                          child: CircularProgressIndicator(),
-                        ),
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 18),
+                        child: Center(child: CircularProgressIndicator()),
                       ),
 
                     if (ui.error != null)
@@ -111,15 +99,18 @@ class _ReportsScreenBody extends StatelessWidget {
                         padding: const EdgeInsets.only(bottom: 18),
                         child: Text(
                           "⚠ Error: ${ui.error}",
-                          style: const TextStyle(color: Colors.red),
+                          style: TextStyle(color: AppColors.error),
                         ),
                       ),
 
-                    // ---------------- BALANCE REPORT ----------------
+                    // ---------------------------------------------------------
+                    // BUTTONS
+                    // ---------------------------------------------------------
+
                     _reportButton(
                       label: "Balance Report",
                       icon: Icons.assessment_outlined,
-                      color: deepBlue,
+                      color: AppColors.primary,
                       onTap: () async {
                         final file = await vm.generateBalanceReport();
                         if (file == null) return _toast(context, "No data available");
@@ -129,11 +120,10 @@ class _ReportsScreenBody extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    // ---------------- CREDIT REPORT ----------------
                     _reportButton(
                       label: "Jama / Credit Report",
                       icon: Icons.credit_score_outlined,
-                      color: Colors.green.shade700,
+                      color: AppColors.success,
                       onTap: () async {
                         final file = await vm.generateCreditReport();
                         if (file == null) return _toast(context, "No credit data found");
@@ -143,11 +133,10 @@ class _ReportsScreenBody extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    // ---------------- DEBIT REPORT ----------------
                     _reportButton(
                       label: "Banam / Debit Report",
                       icon: Icons.trending_down_outlined,
-                      color: Colors.red.shade700,
+                      color: AppColors.error,
                       onTap: () async {
                         final file = await vm.generateDebitReport();
                         if (file == null) return _toast(context, "No debit data found");
@@ -157,11 +146,10 @@ class _ReportsScreenBody extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    // ---------------- PENDING REPORT ----------------
                     _reportButton(
                       label: "Pending Report",
                       icon: Icons.schedule_outlined,
-                      color: Colors.orange.shade700,
+                      color: Colors.orange,
                       onTap: () async {
                         const accId = 3;
                         final companyId = GlobalState.instance.companyId;
@@ -178,10 +166,7 @@ class _ReportsScreenBody extends StatelessWidget {
                           companyId: companyId,
                         );
 
-                        if (file == null) {
-                          _toast(context, "No pending rows found");
-                          return;
-                        }
+                        if (file == null) return _toast(context, "No pending rows found");
 
                         OpenFileService.openPdf(context, file);
                       },
@@ -189,11 +174,10 @@ class _ReportsScreenBody extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    // ---------------- LEDGER REPORT (UPDATED) ----------------
                     _reportButton(
                       label: "Ledger Report",
                       icon: Icons.receipt_long_outlined,
-                      color: deepBlue,
+                      color: AppColors.primary,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -203,17 +187,16 @@ class _ReportsScreenBody extends StatelessWidget {
                               child: const LedgerFilterScreen(),
                             ),
                           ),
-                        );                      },
+                        );
+                      },
                     ),
 
                     const SizedBox(height: 12),
 
-                    // ---------------- LAST CREDIT SUMMARY ----------------
-                    // ---------------- LAST CREDIT SUMMARY ----------------
                     _reportButton(
                       label: "Last Credit Summary",
                       icon: Icons.summarize_outlined,
-                      color: Colors.teal.shade700,
+                      color: AppColors.primary,
                       onTap: () {
                         Navigator.push(
                           context,
@@ -238,6 +221,9 @@ class _ReportsScreenBody extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------
+  // BUTTON WIDGET (UPDATED COLORS)
+  // ---------------------------------------------------------
   Widget _reportButton({
     required String label,
     required IconData icon,
@@ -250,9 +236,9 @@ class _ReportsScreenBody extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
         decoration: BoxDecoration(
+          color: AppColors.cardBackground,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.grey.shade200),
-          color: Colors.white,
+          border: Border.all(color: AppColors.divider),
         ),
         child: Row(
           children: [
@@ -261,14 +247,15 @@ class _ReportsScreenBody extends StatelessWidget {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 15.5,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.deepPurple,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
                 ),
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: Colors.grey, size: 22),
+            Icon(Icons.chevron_right_rounded,
+                color: AppColors.textMuted, size: 22),
           ],
         ),
       ),

@@ -17,6 +17,16 @@ class BalancePdfService extends BasePdfService {
   }) async {
     final pdf = pw.Document();
 
+    // Mobile-friendly tall page to avoid vertical centering in viewers
+    final double pageWidth = PdfPageFormat.cm * 29.7;   // ~A4 width
+    final double pageHeight = PdfPageFormat.cm * 55;    // tall page
+
+    final pageFormat = PdfPageFormat(
+      pageWidth,
+      pageHeight,
+      marginAll: 12,
+    );
+
     final (font, fontBold) = createFonts();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final greenBg = PdfColor.fromInt(0xFF4CAF50);
@@ -25,34 +35,33 @@ class BalancePdfService extends BasePdfService {
     final black = PdfColors.black;
 
     pdf.addPage(
-      pw.MultiPage(
-        pageFormat: PdfPageFormat.a4.landscape,
-        margin: const pw.EdgeInsets.fromLTRB(
-          BasePdfService.marginLeft,
-          BasePdfService.marginTop,
-          BasePdfService.marginRight,
-          BasePdfService.marginBottom,
-        ),
-        build: (context) => [
-          buildHeader(
-            title: 'Account Summary (All Currencies)',
-            font: font,
-            fontBold: fontBold,
-            titleColor: deepBlue,
-          ),
-          pw.SizedBox(height: 4),
-          _buildTable(
-            currencies: currencies,
-            rows: rows,
-            font: font,
-            fontBold: fontBold,
-            deepBlue: deepBlue,
-            greenBg: greenBg,
-            redBg: redBg,
-            white: white,
-            black: black,
-          ),
-        ],
+      pw.Page(
+        pageFormat: pageFormat,
+        build: (_) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              buildHeader(
+                title: 'Account Summary (All Currencies)',
+                font: font,
+                fontBold: fontBold,
+                titleColor: deepBlue,
+              ),
+              pw.SizedBox(height: 10),
+              _buildTable(
+                currencies: currencies,
+                rows: rows,
+                font: font,
+                fontBold: fontBold,
+                deepBlue: deepBlue,
+                greenBg: greenBg,
+                redBg: redBg,
+                white: white,
+                black: black,
+              ),
+            ],
+          );
+        },
       ),
     );
 
@@ -208,6 +217,7 @@ class BalancePdfService extends BasePdfService {
           vertical: BasePdfService.cellPadV,
           horizontal: BasePdfService.cellPadH,
         ),
+        // ❗ FIX: use ONLY decoration, no separate `color:` param
         decoration: pw.BoxDecoration(
           color: bg,
           border: pw.Border(
@@ -246,7 +256,7 @@ class BalancePdfService extends BasePdfService {
         for (int i = 0; i < currencies.length; i++)
           i + 1: const pw.FlexColumnWidth(1),
       },
-      children: tableRows.toList(),
+      children: tableRows,
     );
   }
 }
