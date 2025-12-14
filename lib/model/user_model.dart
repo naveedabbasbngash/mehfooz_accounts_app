@@ -105,8 +105,24 @@ class UserModel {
           ? SubscriptionInfo.fromJson(data["subscription"])
           : null,
     );
-  }
 
+  }
+  factory UserModel.empty() {
+    return UserModel(
+      status: false,
+      message: "",
+      id: "",
+      email: "",
+      firstName: "",
+      lastName: "",
+      fullName: "",
+      imageUrl: "",
+      isLogin: 0,
+      planStatus: null,
+      expiry: null,
+      subscription: null,
+    );
+  }
   /// ✅ Save to storage
   Map<String, dynamic> toJson() => {
     "status": status,
@@ -213,4 +229,6 @@ class SubscriptionInfo {
     "start_date": startDate,
     "end_date": endDate,
   };
+
+
 }

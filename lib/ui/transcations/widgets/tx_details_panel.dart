@@ -1,6 +1,12 @@
 // lib/ui/transactions/widgets/tx_details_panel.dart
+
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
+
 import '../../../model/tx_item_ui.dart';
+import '../../../services/pdf/transaction_voucher_pdf_service.dart';
+// or use your existing PendingPdfService if preferred.
 
 class TxDetailsPanel extends StatelessWidget {
   final TxItemUi row;
@@ -18,100 +24,126 @@ class TxDetailsPanel extends StatelessWidget {
     final int amount = isCredit ? (row.crCents ?? 0) : (row.drCents ?? 0);
 
     final Color amountColor =
-    isCredit ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+    isCredit ? AppColors.success : AppColors.error;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.fastOutSlowIn,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 25,
-            spreadRadius: 4,
-            color: Colors.black.withOpacity(0.18),
-            offset: const Offset(0, -3),
-          ),
-        ],
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutCubic,
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom, // 👈 avoids overflow
       ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ------------------------------------------------------------
-            // HEADER ROW (Voucher + Close button)
-            // ------------------------------------------------------------
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    "Voucher #${row.voucherNo}",
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0B1E3A),
-                      letterSpacing: 0.2,
-                    ),
-                  ),
-                ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: onClose,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.grey.shade200,
-                    ),
-                    child: const Icon(
-                      Icons.close_rounded,
-                      size: 20,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-              ],
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.fastOutSlowIn,
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
+        decoration: BoxDecoration(
+          color: AppColors.cardBackground,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 25,
+              spreadRadius: 4,
+              color: Colors.black.withOpacity(0.18),
+              offset: const Offset(0, -3),
             ),
+          ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ------------------------------------------------------------
+              // HEADER ROW (Voucher + PDF + Close button)
+              // ------------------------------------------------------------
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      "Voucher #${row.voucherNo}",
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                  ),
 
-            const SizedBox(height: 10),
-            Divider(color: Colors.grey.shade300),
+                  // PDF BUTTON
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => _exportPdf(context),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.primary.withOpacity(0.12),
+                      ),
+                      child: Icon(
+                        Icons.picture_as_pdf,
+                        size: 20,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
 
-            const SizedBox(height: 16),
+                  // CLOSE BUTTON
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: onClose,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.grey.shade200,
+                      ),
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 20,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
 
-            // ------------------------------------------------------------
-            // INFO GRID (beautiful spacing)
-            // ------------------------------------------------------------
-            _info("Name", row.name ?? "-"),
-            _info("Date", row.date ?? "-"),
-            _info("Currency", row.currency ?? "-"),
+              const SizedBox(height: 10),
+              Divider(color: AppColors.divider),
 
-            if ((row.description ?? "").isNotEmpty)
-              _info("Description", row.description ?? "-"),
+              // ------------------------------------------------------------
+              // INFO GRID
+              // ------------------------------------------------------------
+              const SizedBox(height: 16),
+              _info("Name", row.name ?? "-"),
+              _info("Date", row.date ?? "-"),
+              _info("Currency", row.currency ?? "-"),
 
-            const SizedBox(height: 22),
+              if ((row.description ?? "").isNotEmpty)
+                _info("Description", row.description ?? "-"),
 
-            // ------------------------------------------------------------
-            // AMOUNT — Bold, centered, Google style
-            // ------------------------------------------------------------
-            Center(
-              child: Text(
-                "${isCredit ? '+' : '-'}${_format(amount)}",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                  color: amountColor,
-                  letterSpacing: 0.3,
+              const SizedBox(height: 22),
+
+              // ------------------------------------------------------------
+              // AMOUNT — Stunning and centered
+              // ------------------------------------------------------------
+              Center(
+                child: Text(
+                  "${isCredit ? '+' : '-'}${_format(amount)}",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.w900,
+                    color: amountColor,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 12),
-          ],
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
       ),
     );
@@ -128,9 +160,9 @@ class TxDetailsPanel extends StatelessWidget {
         children: [
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
-              color: Color(0xFF6B7280),
+              color: AppColors.textMuted,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.3,
             ),
@@ -138,9 +170,9 @@ class TxDetailsPanel extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
-              color: Color(0xFF0B1E3A),
+              color: AppColors.textDark,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -150,7 +182,24 @@ class TxDetailsPanel extends StatelessWidget {
   }
 
   // ------------------------------------------------------------
-  // Thousands formatting (same as Kotlin grouping)
+  // PDF Export
+  // ------------------------------------------------------------
+  Future<void> _exportPdf(BuildContext context) async {
+    try {
+      final file = await TxDetailsPdfService.instance.render(row);
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Failed to generate PDF: $e"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Thousands formatting
   // ------------------------------------------------------------
   String _format(int n) {
     final s = n.toString();

@@ -14,7 +14,7 @@ class AccountRepository {
   /// ============================================================
   Future<List<AccPersonalData>> searchAccountsByName(String keyword) async {
     return (db.select(db.accPersonal)
-      ..where((tbl) => tbl.accName.like('%$keyword%')))
+      ..where((tbl) => tbl.name.like('%$keyword%')))
         .get();
   }
 
@@ -33,9 +33,11 @@ class AccountRepository {
   Future<List<AccPersonalData>> searchByNameAndCompany(
       String keyword, int companyId) async {
     return (db.select(db.accPersonal)
-      ..where((tbl) =>
-      tbl.accName.like('%$keyword%') &
-      tbl.companyId.equals(companyId)))
+      ..where(
+            (tbl) =>
+        tbl.name.like('%$keyword%') &
+        tbl.companyId.equals(companyId),
+      ))
         .get();
   }
 
@@ -44,7 +46,7 @@ class AccountRepository {
   /// ============================================================
   Future<List<AccPersonalData>> getAllAccounts() async {
     return (db.select(db.accPersonal)
-      ..orderBy([(tbl) => OrderingTerm.asc(tbl.accName)]))
+      ..orderBy([(tbl) => OrderingTerm.asc(tbl.name)]))
         .get();
   }
 
@@ -59,21 +61,11 @@ class AccountRepository {
 
   /// ============================================================
   /// GET PENDING AMOUNT SUMMARY (currency wise)
-  ///
-  /// Uses your Kotlin raw SQL equivalent:
-  ///
-  /// SELECT CurrencyStatus,
-  ///        SUM(CR) AS totalCr,
-  ///        SUM(DR) AS totalDr,
-  ///        (SUM(CR) - SUM(DR)) AS balance
-  ///   FROM Acc_Personal
-  ///  GROUP BY CurrencyStatus;
-  ///
   /// ============================================================
   Future<List<PendingAmountRow>> getPendingAmountSummary({
     required int selectedCompanyId,
   }) async {
-    final query = """
+    const query = """
     SELECT 
       tp.AccID,
       ap.Name AS Name,
@@ -119,6 +111,9 @@ class AccountRepository {
     }).toList();
   }
 
+  /// ============================================================
+  /// CASH IN HAND SUMMARY
+  /// ============================================================
   Future<List<CashInHandRow>> getCashInHandSummary({
     required int selectedCompanyId,
   }) async {
@@ -156,8 +151,11 @@ class AccountRepository {
     }).toList();
   }
 
+  /// ============================================================
+  /// ACCID = 1 CASH SUMMARY
+  /// ============================================================
   Future<List<CashSummaryRow>> getAcc1CashSummary(int companyId) async {
-    final query = """
+    const query = """
     SELECT 
       T.AccTypeID,
       AT.AccTypeName AS Currency,
@@ -187,4 +185,4 @@ class AccountRepository {
       );
     }).toList();
   }
-  }
+}

@@ -1,0 +1,45 @@
+name: Auto Update GIT_INFO.json
+
+on:
+  push:
+    branches:
+      - v2-dev
+      - main
+      - v1
+
+jobs:
+  update-info:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Set Git identity
+        run: |
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+
+      - name: Update GIT_INFO.json
+        run: |
+          echo "Updating file..."
+          cat > GIT_INFO.json <<EOF
+{
+  "last_updated": "$(date -u +"%Y-%m-%d %H:%M:%S UTC")",
+  "branch": "${GITHUB_REF#refs/heads/}",
+  "commit": "${GITHUB_SHA}",
+  "author": "${GITHUB_ACTOR}"
+}
+EOF
+
+          git add GIT_INFO.json
+          git commit -m "Auto-update GIT_INFO.json [skip ci]" || echo "Nothing to commit"
+
+      - name: Push to Branch
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "Pushing back to $BRANCH"
+          git push origin HEAD:$BRANCH

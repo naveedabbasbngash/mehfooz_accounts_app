@@ -31,7 +31,8 @@ class AuthService {
         return null;
       }
 
-      final headers = await user.authorizationClient.authorizationHeaders(scopes);
+      final headers = await user.authorizationClient.authorizationHeaders(
+          scopes);
       // final accessToken = headers['Authorization']?.replaceFirst('Bearer ', '');
 
       final email = user.email;
@@ -48,7 +49,8 @@ class AuthService {
         },
       );
 
-      LoggerService.debug("🌐 API response (${response.statusCode}): ${response.body}");
+      LoggerService.debug(
+          "🌐 API response (${response.statusCode}): ${response.body}");
 
       if (response.statusCode != 200) {
         // LoggerService.error("❌ API error", error: response.body);
@@ -101,9 +103,12 @@ class AuthService {
     } catch (_) {}
 
     await GoogleSignIn.instance.signOut();
+
+    // ✅ Clear all saved users (your existing behavior)
     await LocalStorageService.clearAllUsers();
 
     LoggerService.info("👋 Logged out successfully");
 
     if (onLoggedOut != null) onLoggedOut();
-  }}
+  }
+}
