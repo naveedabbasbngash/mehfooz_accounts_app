@@ -1,7 +1,6 @@
 // lib/data/local/database_manager.dart
 
 import 'dart:io';
-import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -10,19 +9,22 @@ import 'package:logger/logger.dart';
 import 'app_database.dart';
 
 class DatabaseManager {
+  DatabaseManager._internal();
   static final DatabaseManager _instance = DatabaseManager._internal();
-  static AppDatabase? _database;
+  static DatabaseManager get instance => _instance;
 
   final Logger _log = Logger();
 
-  DatabaseManager._internal();
+  /// SINGLE active Drift instance at any time (for currently logged-in user only)
+  static AppDatabase? _database;
 
-  static DatabaseManager get instance => _instance;
-
-  static const String _savedDbFileName = "mahfooz_imported.sqlite";
-
+  /// Debug info only
   String? activeDbPath;
+  String? activeUserEmail;
 
+  // =====================================================================
+  // SAFE getter
+  // =====================================================================
   AppDatabase get db {
     if (_database == null) {
       throw Exception("❌ AppDatabase not loaded. Import or restore first.");
@@ -30,166 +32,208 @@ class DatabaseManager {
     return _database!;
   }
 
-  Future<String> _getInternalDbPath() async {
+  // =====================================================================
+  // 🔥 HARD RESET (logout / user switch)
+  // =====================================================================
+  Future<void> reset() async {
+    _log.w("🧹 DatabaseManager.reset() called");
+
+    if (_database != null) {
+      try {
+        await _database!.close();
+        _log.i("🔌 Closed active Drift DB");
+      } catch (e) {
+        _log.w("⚠ Failed to close DB: $e");
+      }
+    }
+
+    _database = null;
+    activeDbPath = null;
+    activeUserEmail = null;
+
+    _log.i("✅ DatabaseManager reset completed");
+  }
+
+  // =====================================================================
+  // Helper: Safe email → filename
+  // =====================================================================
+  Future<String> _getUserDbPath(String email) async {
     final dir = await getApplicationDocumentsDirectory();
-    return p.join(dir.path, _savedDbFileName);
+    final safeEmail = email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+
+    final folder = p.join(dir.path, "mahfooz_users");
+    return p.join(folder, "db_$safeEmail.sqlite");
   }
 
-  Future<String> _copyToInternal(String importedPath) async {
-    final importedFile = File(importedPath);
+  Future<void> _ensureUserFolder() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final folder = Directory(p.join(dir.path, "mahfooz_users"));
 
-    if (!await importedFile.exists()) {
-      throw Exception("❌ Imported file does not exist: $importedPath");
+    if (!await folder.exists()) {
+      await folder.create(recursive: true);
+      _log.i("📁 Created DB folder: ${folder.path}");
     }
-
-    final internalPath = await _getInternalDbPath();
-    final internalFile = File(internalPath);
-
-    if (await internalFile.exists()) {
-      await internalFile.delete();
-    }
-
-    await importedFile.copy(internalPath);
-
-    _log.i("📦 Copied imported DB → $internalPath");
-
-    activeDbPath = internalPath;
-    return internalPath;
   }
 
-  // --------------------------------------------------------------------------
-  // 🛠 AUTO MIGRATION FUNCTIONS
-  // --------------------------------------------------------------------------
-
+  // =====================================================================
+  // AUTO MIGRATION (per-file)
+  // =====================================================================
   Future<void> _ensureColumnExists(
-      DatabaseConnectionUser exec,
+      AppDatabase db,
       String table,
       String column,
       String definition,
       ) async {
-    final res = await exec.customSelect(
+    final res = await db.customSelect(
       "PRAGMA table_info('$table');",
     ).get();
 
     final columns = res.map((row) => row.data['name'] as String).toList();
 
     if (!columns.contains(column)) {
-      await exec.customStatement(
+      await db.customStatement(
         "ALTER TABLE $table ADD COLUMN $column $definition;",
       );
-      _log.i("🧩 Added missing column $column to $table");
+      _log.i("🧩 Added $column to $table");
     }
   }
 
-  /// 🔧 Run auto-migration using an *existing* AppDatabase
   Future<void> _runAutoMigration(AppDatabase db) async {
-    _log.i("🔧 Running AUTO-MIGRATION checks...");
+    _log.i("🔧 Running auto-migration...");
 
-    // --------------------------
-    // Acc_Personal Fixes
-    // --------------------------
     await _ensureColumnExists(db, "Acc_Personal", "IsSynced", "INTEGER DEFAULT 0");
     await _ensureColumnExists(db, "Acc_Personal", "UpdatedAt", "TEXT");
     await _ensureColumnExists(db, "Acc_Personal", "IsDeleted", "INTEGER DEFAULT 0");
 
-    // --------------------------
-    // AccType Fixes
-    // --------------------------
     await _ensureColumnExists(db, "AccType", "IsSynced", "INTEGER DEFAULT 0");
     await _ensureColumnExists(db, "AccType", "UpdatedAt", "TEXT");
 
-    // --------------------------
-    // Transactions_P Fixes
-    // --------------------------
     await _ensureColumnExists(db, "Transactions_P", "IsSynced", "INTEGER DEFAULT 0");
     await _ensureColumnExists(db, "Transactions_P", "UpdatedAt", "TEXT");
     await _ensureColumnExists(db, "Transactions_P", "IsDeleted", "INTEGER DEFAULT 0");
 
-    _log.i("✅ Auto-migration completed successfully.");
+    _log.i("✅ Auto-migration done.");
   }
 
-  // --------------------------------------------------------------------------
-  // ACTIVATE DB
-  // --------------------------------------------------------------------------
-  Future<void> _activateFromPath(String sqlitePath) async {
+  // =====================================================================
+  // INTERNAL: Activate DB by path (for current user)
+  // =====================================================================
+  Future<void> _activateFromPath(String sqlitePath, {String? email}) async {
     final file = File(sqlitePath);
+
     if (!file.existsSync()) {
-      _log.e("❌ Missing database file: $sqlitePath");
-      throw Exception("Database file missing: $sqlitePath");
+      throw Exception("❌ DB file does not exist: $sqlitePath");
     }
 
-    _log.i("🛠 Activating Drift DB from: $sqlitePath");
+    _log.i("🛠 Activating DB: $sqlitePath  for user: ${email ?? activeUserEmail}");
 
-    // Close old DB (if any)
-    await _database?.close();
-    _database = null;
+    // Close previous instance if any
+    if (_database != null) {
+      try {
+        await _database!.close();
+      } catch (_) {}
+      _database = null;
+    }
 
-    // Create executor for this file
-    final executor = NativeDatabase(
-      file,
-      logStatements: false,
-    );
-
-    // ✅ Create ONE AppDatabase for this executor
+    final executor = NativeDatabase(file, logStatements: false);
     final appDb = AppDatabase(executor);
 
-    // 🧠 Run auto-migration on the same instance
     await _runAutoMigration(appDb);
 
-    // Now assign as the active DB
     _database = appDb;
     activeDbPath = sqlitePath;
+    activeUserEmail = email ?? activeUserEmail;
 
-    _log.i("✅ Drift DB activated successfully.");
+    _log.i("✅ Activated DB: $sqlitePath");
   }
 
-  Future<void> useImportedDb(String importedPath) async {
-    final internalPath = await _copyToInternal(importedPath);
-    await _activateFromPath(internalPath);
+  // =====================================================================
+  // COPY IMPORTED DB → PER-USER FILE → ACTIVATE
+  // =====================================================================
+  Future<void> useImportedDbForUser(String importedPath, String email) async {
+    await _ensureUserFolder();
+
+    final importedFile = File(importedPath);
+    if (!await importedFile.exists()) {
+      _log.e("❌ useImportedDbForUser: Source missing: $importedPath");
+      return;
+    }
+
+    final userDbPath = await _getUserDbPath(email);
+    final userFile = File(userDbPath);
+
+    if (await userFile.exists()) {
+      await userFile.delete();
+      _log.w("♻ Old DB deleted for user: $email");
+    }
+
+    await importedFile.copy(userDbPath);
+    _log.i("📦 User DB stored → $userDbPath");
+
+    await _activateFromPath(userDbPath, email: email);
   }
 
-  Future<void> activateAndThen(
-      String importedPath,
-      Future<void> Function(AppDatabase db) callback,
-      ) async {
-    await useImportedDb(importedPath);
-    _log.i("🚀 Running post-activation tasks...");
-    await callback(db);
-  }
+  // =====================================================================
+  // RESTORE USER DB (called on login / app start)
+  // =====================================================================
+  Future<bool> restoreDatabaseForUser(String email) async {
+    await _ensureUserFolder();
 
-  Future<bool> restoreDatabaseIfExists() async {
-    final internalPath = await _getInternalDbPath();
-    final file = File(internalPath);
+    final userDbPath = await _getUserDbPath(email);
+    final file = File(userDbPath);
 
     if (!file.existsSync()) {
-      _log.w("⚠ No stored DB found at: $internalPath");
+      _log.w("⚠ No DB stored for user: $email");
+      activeUserEmail = email;
+      activeDbPath = null;
+
+      // Ensure previous DB instance is closed
+      await reset();
+      // keep activeUserEmail for debug
+      activeUserEmail = email;
+
       return false;
     }
 
-    _log.i("📦 Restoring existing DB: $internalPath");
-
-    try {
-      await _activateFromPath(internalPath);
-      return true;
-    } catch (e, st) {
-      _log.e("❌ Failed to restore DB", error: e, stackTrace: st);
-      return false;
-    }
+    _log.i("📂 Restoring DB for user: $email → $userDbPath");
+    await _activateFromPath(userDbPath, email: email);
+    return true;
   }
 
-  Future<void> clear() async {
-    await _database?.close();
-    _database = null;
-
-    final path = await _getInternalDbPath();
+  // =====================================================================
+  // CLEAR SPECIFIC USER DB (optional)
+  // =====================================================================
+  Future<void> clearUserDb(String email) async {
+    final path = await _getUserDbPath(email);
     final file = File(path);
 
     if (file.existsSync()) {
       await file.delete();
-      _log.w("🗑 Deleted DB file at: $path");
+      _log.w("🗑 Deleted DB for: $email");
     }
 
-    activeDbPath = null;
-    _log.w("⚠️ DatabaseManager cleared.");
+    if (activeUserEmail == email) {
+      await reset();
+      _log.w("🔌 Closed active DB after deleting user DB");
+    }
+  }
+
+  // =====================================================================
+  // PREVIEW (WITHOUT AFFECTING ACTIVE DB)
+  // =====================================================================
+  Future<AppDatabase> previewDatabase(String path) async {
+    final file = File(path);
+
+    if (!file.existsSync()) {
+      throw Exception("❌ previewDatabase: File not found → $path");
+    }
+
+    final executor = NativeDatabase(file, logStatements: false);
+    return AppDatabase(executor);
+  }
+
+  Future<bool> userDatabaseExists(String email) async {
+    final path = await _getUserDbPath(email);
+    return File(path).existsSync();
   }
 }

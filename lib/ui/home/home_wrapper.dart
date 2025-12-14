@@ -6,10 +6,8 @@ import 'dart:io';
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
-import 'package:mehfooz_accounts_app/ui/transcations/transaction_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../main.dart';
 import '../../model/user_model.dart';
@@ -19,22 +17,28 @@ import '../../services/sqlite_import_service.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodel/home/home_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
+
 import '../drawer/drawer_menu.dart';
-import '../settings/settings_screen.dart';
-import 'home_screen.dart';
-import 'import_summary_screen.dart';
 import '../profile/profile_screen.dart';
 import '../reports/reports.dart';
+import '../settings/settings_screen.dart';
 import '../settings/settings_wrapper.dart';
+import '../transcations/transaction_screen.dart';
+import 'home_screen.dart';
+
+import '../../services/logging/logger_service.dart';
 
 class HomeWrapper extends StatefulWidget {
   final UserModel user;
   final GlobalKey<SliderDrawerState> sliderDrawerKey;
 
+  final int initialTabIndex;
+
   const HomeWrapper({
     super.key,
     required this.user,
     required this.sliderDrawerKey,
+    this.initialTabIndex = 0,
   });
 
   @override
@@ -43,211 +47,157 @@ class HomeWrapper extends StatefulWidget {
 
 class _HomeWrapperState extends State<HomeWrapper> {
   StreamSubscription<List<SharedMediaFile>>? _intentStream;
-  int _pageIndex = 0;
 
-  late final List<Widget> _screens = [
-    const HomeScreenContent(),
-    const TransactionScreen(),
-    const ReportsScreen(),
-    ChangeNotifierProvider(
-      create: (_) => ProfileViewModel(loggedInUser: widget.user),
-      child: const ProfileScreen(),
-    )  ];
+  late int _pageIndex = widget.initialTabIndex;
+  bool _initDone = false;
 
-  final List<String> _titles = [
-    "Home",
-    "Transaction",
-    "Reports",
-    "Profile"
+  final List<String> _titles = ["Home", "Transaction", "Reports", "Profile"];
+
+  final List<Widget> _screens = const [
+    HomeScreenContent(),
+    TransactionScreen(),
+    ReportsScreen(),
+    ProfileScreen(),
   ];
 
-  // ================================================================
-  // INIT
-  // ================================================================
   @override
   void initState() {
     super.initState();
-
-    // Restore DB only if user is logged in
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<HomeViewModel>().init(
-        isUserLoggedIn:
-        widget.user.isLogin == 1 && widget.user.email.isNotEmpty,
-      );
-    });
-
     _listenToSharedFiles();
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initDone) return;
+    _initDone = true;
+
+    Future.microtask(() async {
+      final homeVM = context.read<HomeViewModel>();
+      final profileVM = context.read<ProfileViewModel>();
+
+      await homeVM.init(user: widget.user);
+      await profileVM.refresh();
+
+      // 🚨 Always force Profile tab if restricted
+      if (profileVM.isRestricted && mounted) {
+        setState(() => _pageIndex = 3);
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    LoggerService.info("🏠 HomeWrapper.dispose()");
     _intentStream?.cancel();
-    _intentStream = null;
     super.dispose();
   }
 
-  // ================================================================
+  // ============================================================
   // ANDROID SHARE INTENT
-  // ================================================================
+  // ============================================================
   void _listenToSharedFiles() {
     if (!Platform.isAndroid) return;
 
-    _intentStream = ReceiveSharingIntent.instance
-        .getMediaStream()
-        .listen((files) => _processShare(files));
+    _intentStream =
+        ReceiveSharingIntent.instance.getMediaStream().listen((files) {
+          _handleImport(files);
+        });
 
-    ReceiveSharingIntent.instance
-        .getInitialMedia()
-        .then((files) => _processShare(files));
+    ReceiveSharingIntent.instance.getInitialMedia().then((files) async {
+      if (files.isNotEmpty) {
+        await _handleImport(files);
+      }
+      await ReceiveSharingIntent.instance.reset();
+    });
   }
 
-  Future<void> _processShare(List<SharedMediaFile> files) async {
+  // ============================================================
+  // IMPORT HANDLER
+  // ============================================================
+  Future<void> _handleImport(List<SharedMediaFile> files) async {
     if (files.isEmpty) return;
 
-    final f = files.first;
+    try {
+      final file = files.first;
+      final path = file.path.toLowerCase();
 
-    if (!f.path.toLowerCase().endsWith(".sqlite") &&
-        !f.path.toLowerCase().endsWith(".db")) {
-      _showError("❌ Only .sqlite or .db allowed.");
-      return;
+      if (!path.endsWith(".sqlite") && !path.endsWith(".db")) {
+        _showError("Only .sqlite or .db files allowed");
+        return;
+      }
+
+      final savedPath =
+      await SqliteImportService.importAndSaveDb(file.path);
+
+      if (savedPath == null) {
+        _showError("Import failed");
+        return;
+      }
+
+      await context
+          .read<HomeViewModel>()
+          .importDatabase(savedPath, widget.user);
+
+      await context.read<ProfileViewModel>().refresh();
+
+      if (mounted) setState(() => _pageIndex = 3);
+    } catch (e) {
+      _showError(e.toString());
     }
-
-    final savedPath = await SqliteImportService.importAndSaveDb(f.path);
-    if (savedPath == null) {
-      _showError("❌ Failed to import file.");
-      return;
-    }
-
-    final vm = context.read<HomeViewModel>();
-    await vm.importDatabase(savedPath);
-
-    if (!mounted) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ImportSummaryScreen(
-          filePath: savedPath,
-          user: widget.user,
-        ),
-      ),
-    );
   }
 
-  // ================================================================
-  // IOS FILE PICKER
-  // ================================================================
-  Future<void> importForIOS() async {
+  // ============================================================
+  // iOS IMPORT
+  // ============================================================
+  Future<void> _importForIOS() async {
     final path = await FilePickerService.pickSqliteFile();
-    if (path == null) {
-      _showError("No file selected");
-      return;
-    }
+    if (path == null) return;
 
-    final vm = context.read<HomeViewModel>();
-    await vm.importDatabase(path);
+    await context.read<HomeViewModel>().importDatabase(path, widget.user);
+    await context.read<ProfileViewModel>().refresh();
 
-    if (!mounted) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ImportSummaryScreen(
-          filePath: path,
-          user: widget.user,
-        ),
-      ),
-    );
+    if (mounted) setState(() => _pageIndex = 3);
   }
 
-  // ================================================================
-  // POPUP MENU ACTIONS
-  // ================================================================
-  void onMenuSelected(String value) {
-    switch (value) {
-      case "import_android":
-        _showError("Android: Share a .sqlite file via WhatsApp");
-        break;
-
-      case "import_ios":
-        importForIOS();
-        break;
-
-      case "debug":
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const SettingsWrapper()),
-        );
-        break;
-    }
-  }
-
-  // ================================================================
-  // ERROR DIALOG
-  // ================================================================
-  void _showError(String msg) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Error"),
-        content: Text(msg),
-        actions: [
-          TextButton(
-            child: const Text("OK"),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ================================================================
-  // APP BAR COLOR
-  // ================================================================
-  Color get _getAppBarColor {
-    switch (_pageIndex) {
-      case 0:
-        return AppColors.homeColor;
-      case 1:
-        return AppColors.searchColor;
-      case 2:
-        return AppColors.reportsColor;
-      case 3:
-        return AppColors.profileColor;
-      default:
-        return AppColors.primary;
-    }
-  }
-
-  // ================================================================
+  // ============================================================
   // UI
-  // ================================================================
+  // ============================================================
   @override
   Widget build(BuildContext context) {
+    final profileVM = context.watch<ProfileViewModel>();
+    final isRestricted = profileVM.isRestricted;
+
     return Scaffold(
       backgroundColor: AppColors.app_bg,
       body: SafeArea(
         child: SliderDrawer(
           key: widget.sliderDrawerKey,
           isDraggable: false,
+          sliderOpenSize: 240,
           appBar: SliderAppBar(
             config: SliderAppBarConfig(
-              backgroundColor: _getAppBarColor,
+              backgroundColor: _appBarColor,
               title: Text(
                 _titles[_pageIndex],
-                style: const TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold),
+                style:
+                const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               trailing: PopupMenuButton<String>(
-                onSelected: onMenuSelected,
+                onSelected: (value) {
+                  if (value == "import_ios") _importForIOS();
+                  if (value == "debug") {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const SettingsWrapper()),
+                    );
+                  }
+                },
                 itemBuilder: (_) => const [
                   PopupMenuItem(
-                    value: "import_android",
-                    child: Text("Import DB (Android Share)"),
-                  ),
-                  PopupMenuItem(
                     value: "import_ios",
-                    child: Text("Import DB (iOS)"),
+                    child: Text("Import DB"),
                   ),
                   PopupMenuItem(
                     value: "debug",
@@ -257,7 +207,6 @@ class _HomeWrapperState extends State<HomeWrapper> {
               ),
             ),
           ),
-          sliderOpenSize: 240,
           slider: DrawerMenu(
             currentPageIndex: _pageIndex,
             drawerKey: widget.sliderDrawerKey,
@@ -267,72 +216,123 @@ class _HomeWrapperState extends State<HomeWrapper> {
           child: _screens[_pageIndex],
         ),
       ),
-
       bottomNavigationBar: SafeArea(
         child: CurvedNavigationBar(
+          index: _pageIndex,
+          height: 60,
           backgroundColor: Colors.transparent,
           color: AppColors.darkgreen,
           buttonBackgroundColor: AppColors.darkgreen,
-          height: 60,
-          index: _pageIndex,
           items: const [
-            Icon(Icons.home, size: 30, color: Colors.white),
-            Icon(Icons.search, size: 30, color: Colors.white),
-            Icon(Icons.bar_chart, size: 30, color: Colors.white),
-            Icon(Icons.person, size: 30, color: Colors.white),
+            Icon(Icons.home, color: Colors.white),
+            Icon(Icons.search, color: Colors.white),
+            Icon(Icons.bar_chart, color: Colors.white),
+            Icon(Icons.person, color: Colors.white),
           ],
-          onTap: (i) => setState(() => _pageIndex = i),
+          onTap: (i) {
+            if (isRestricted && i != 3) {
+              _restrictedMessage();
+              return;
+            }
+            setState(() => _pageIndex = i);
+          },
         ),
-      ),  
+      ),
     );
   }
 
-  // ================================================================
-  // DRAWER ACTIONS
-  // ================================================================
-  void _onDrawerItemClick(String title) async {
+  // ============================================================
+  // HELPERS
+  // ============================================================
+  Color get _appBarColor {
+    switch (_pageIndex) {
+      case 0:
+        return AppColors.homeColor;
+      case 1:
+        return AppColors.searchColor;
+      case 2:
+        return AppColors.reportsColor;
+      default:
+        return AppColors.profileColor;
+    }
+  }
+
+  void _onDrawerItemClick(String title) {
     widget.sliderDrawerKey.currentState?.closeSlider();
 
-    Future.delayed(const Duration(milliseconds: 250), () async {
+    final isRestricted = context.read<ProfileViewModel>().isRestricted;
+
+    if (isRestricted && title != "Profile") {
+      _restrictedMessage();
+      return;
+    }
+
+    Future.delayed(const Duration(milliseconds: 200), () {
       switch (title) {
         case "Home":
           setState(() => _pageIndex = 0);
           break;
-
         case "Search":
           setState(() => _pageIndex = 1);
           break;
-
         case "Reports":
           setState(() => _pageIndex = 2);
           break;
-
         case "Profile":
           setState(() => _pageIndex = 3);
           break;
-
         case "Settings":
           Navigator.push(
             context,
             MaterialPageRoute(builder: (_) => const SettingsWrapper()),
           );
           break;
-
         case "Logout":
-          await AuthService.logout();
-
-          // RESET USER IN main.dart STATE
-          context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
-
-          // CLEAR SHARE INTENT STREAM
-          await _intentStream?.cancel();
-          _intentStream = null;
-
-          if (!mounted) return;
-
-          Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+          _logout();
           break;
       }
     });
+  }
+
+  Future<void> _logout() async {
+    // 1) signout + clear local saved user
+    await AuthService.logout();
+
+    // 2) HARD reset (DB + GlobalState + prefs)
+    final appState = context.findAncestorStateOfType<MahfoozAppState>();
+    await appState?.hardResetSession();
+
+    // 3) rebuild app state properly
+    appState?.resetUser();
+
+    if (!mounted) return;
+
+    // 4) go to login cleanly (no new MahfoozApp widget push)
+    Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
+  }
+
+  void _restrictedMessage() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text("Feature restricted by administrator."),
+        backgroundColor: Colors.red,
+      ),
+    );
+  }
+
+  void _showError(String msg) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Error"),
+        content: Text(msg),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("OK"),
+          )
+        ],
+      ),
+    );
   }
 }

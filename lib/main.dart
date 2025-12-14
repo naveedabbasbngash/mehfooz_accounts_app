@@ -2,21 +2,20 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
+import 'package:mehfooz_accounts_app/services/global_state.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
-
-// SQLite bindings for iOS/Android
-import 'package:sqlite3_flutter_libs/sqlite3_flutter_libs.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'model/user_model.dart';
 import 'services/auth_service.dart';
 import 'ui/auth/auth_screen.dart';
 import 'ui/home/home_wrapper.dart';
-import 'viewmodel/home/home_view_model.dart';
 
-// 🔥 SYNC
-import 'services/sync/sync_service.dart';
+import 'viewmodel/home/home_view_model.dart';
+import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/sync/sync_viewmodel.dart';
+import 'services/sync/sync_service.dart';
 
 import 'data/local/database_manager.dart';
 
@@ -48,11 +47,10 @@ class MahfoozApp extends StatefulWidget {
 class MahfoozAppState extends State<MahfoozApp> {
   UserModel? _user;
   bool _loading = true;
+  bool _userDbExists = false;
 
-  // Global Keys
-  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
-  final GlobalKey<SliderDrawerState> _sliderDrawerKey =
-  GlobalKey<SliderDrawerState>();
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey();
+  final GlobalKey<SliderDrawerState> _drawerKey = GlobalKey();
 
   @override
   void initState() {
@@ -62,14 +60,26 @@ class MahfoozAppState extends State<MahfoozApp> {
 
   Future<void> _loadUser() async {
     _user = await AuthService.loadSavedUser();
+
+    if (_user != null && _user!.isLogin == 1) {
+      _userDbExists = await DatabaseManager.instance
+          .restoreDatabaseForUser(_user!.email);
+    }
+
     setState(() => _loading = false);
   }
 
-  /// Called by logout
-  void resetUser() {
-    setState(() {
-      _user = null;
-    });
+  /// 🔁 Called by logout (from HomeWrapper)
+  void resetUser() async {
+    _userDbExists = false;
+    _loading = true;
+    setState(() {});
+
+    // Reload user & DB info fresh from disk
+    await _loadUser();
+
+    _loading = false;
+    setState(() {});
   }
 
   @override
@@ -77,42 +87,43 @@ class MahfoozAppState extends State<MahfoozApp> {
     if (_loading) {
       return const MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
-    final bool isLoggedIn = _user != null && _user!.isLogin == 1;
-
-    // 🔥 Create syncService only (NO syncRepo here)
-    final syncService =
-    SyncService(baseUrl: "https://kheloaurjeeto.net/mahfooz_accounts/");
+    final isLoggedIn = _user != null && _user!.isLogin == 1;
 
     return MultiProvider(
+      key: ValueKey(_user?.email ?? "no_user"),
       providers: [
-        /// --------------------------------------------------------------
-        /// HOME VIEWMODEL
-        /// --------------------------------------------------------------
-        ChangeNotifierProvider<HomeViewModel>(
+        // 🔹 Home VM
+        ChangeNotifierProvider(
           create: (_) => HomeViewModel(
             navigatorKey: _navigatorKey,
-            drawerKey: _sliderDrawerKey,
+            drawerKey: _drawerKey,
           ),
         ),
 
-        /// --------------------------------------------------------------
-        /// SYNC VIEWMODEL
-        /// --------------------------------------------------------------
-        ChangeNotifierProvider<SyncViewModel>(
+        // 🔹 Sync VM (only creates service, DB is attached later)
+        ChangeNotifierProvider(
           create: (_) => SyncViewModel(
-            syncService: syncService,
+            syncService: SyncService(
+              baseUrl: "https://kheloaurjeeto.net/mahfooz_accounts/",
+            ),
           ),
         ),
+
+        // 🔹 Profile VM (only when logged in)
+        if (isLoggedIn)
+          ChangeNotifierProvider(
+            create: (_) => ProfileViewModel(
+              loggedInUser: _user!, // real logged-in user
+            ),
+          ),
       ],
       child: Builder(
         builder: (context) {
-          // 🔥 CONNECT HomeViewModel → SyncViewModel
+          // ⭐ IMPORTANT: connect HomeViewModel ↔ SyncViewModel here
           final homeVM = context.read<HomeViewModel>();
           final syncVM = context.read<SyncViewModel>();
           homeVM.registerSyncVM(syncVM);
@@ -121,25 +132,43 @@ class MahfoozAppState extends State<MahfoozApp> {
             debugShowCheckedModeBanner: false,
             navigatorKey: _navigatorKey,
 
-            // Localization support
+            // EasyLocalization hookup
             locale: context.locale,
             supportedLocales: context.supportedLocales,
             localizationsDelegates: context.localizationDelegates,
 
-            // --------------------------------------------------------------
-            // App startup screen (login or home)
-            // --------------------------------------------------------------
             home: isLoggedIn
                 ? HomeWrapper(
               user: _user!,
-              sliderDrawerKey: _sliderDrawerKey,
+              sliderDrawerKey: _drawerKey,
+              initialTabIndex: _userDbExists ? 0 : 3,
             )
-                : AuthScreen(
-              sliderDrawerKey: _sliderDrawerKey,
-            ),
+                : AuthScreen(sliderDrawerKey: _drawerKey),
           );
         },
       ),
     );
+  }
+
+  Future<void> hardResetSession() async {
+    // 1) Reset DB (prevents drift reusing old user DB)
+    await DatabaseManager.instance.reset();
+
+    // 2) Reset GlobalState (you must add reset() in GlobalState, see below)
+    try {
+      GlobalState.instance.reset();
+    } catch (_) {}
+
+    // 3) Clear non-user-scoped prefs
+    //    (These keys caused leakage across accounts)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove("selected_company_id");
+      await prefs.remove("profile_is_restricted");
+    } catch (_) {}
+
+    // 4) Reset in-memory app state
+    _user = null;
+    _userDbExists = false;
   }
 }

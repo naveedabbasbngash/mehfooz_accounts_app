@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 
 class GoogleStyleSyncIcon extends StatefulWidget {
   final bool syncing;
@@ -8,14 +9,16 @@ class GoogleStyleSyncIcon extends StatefulWidget {
 
   const GoogleStyleSyncIcon({
     super.key,
-    required this.syncing,
-    required this.success,
-    required this.error,
+    this.syncing = false,
+    this.success = false,
+    this.error = false,
   });
 
   @override
   State<GoogleStyleSyncIcon> createState() => _GoogleStyleSyncIconState();
 }
+
+
 
 class _GoogleStyleSyncIconState extends State<GoogleStyleSyncIcon>
     with TickerProviderStateMixin {
@@ -81,7 +84,7 @@ class _GoogleStyleSyncIconState extends State<GoogleStyleSyncIcon>
     final Color color = widget.error
         ? Colors.red
         : widget.success
-        ? Colors.green
+        ? AppColors.darkgreen
         : Colors.blue;
 
     return FadeTransition(

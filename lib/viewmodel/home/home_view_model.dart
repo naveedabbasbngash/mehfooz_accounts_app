@@ -8,23 +8,31 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/local/database_manager.dart';
 import '../../model/cash_in_hand_row.dart';
 import '../../model/cash_summary_row.dart';
+import '../../model/pending_amount_row.dart';
 import '../../repository/account_repository.dart';
 import '../../services/global_state.dart';
 import '../../services/sqlite_import_service.dart';
 import '../../services/sqlite_validation_service.dart';
-import '../../model/pending_amount_row.dart';
 
-// 🔥 NEW
 import '../../viewmodel/sync/sync_viewmodel.dart';
+import '../../model/user_model.dart';
 
 class HomeViewModel extends ChangeNotifier {
   final Logger _log = Logger();
 
+  final GlobalKey<NavigatorState> navigatorKey;
+  final GlobalKey drawerKey;
+
   int? selectedCompanyId;
   String? selectedCompanyName;
 
-  final GlobalKey<NavigatorState> navigatorKey;
-  final GlobalKey drawerKey;
+  String? verifiedDbPath;
+
+  bool _hasRestored = false;
+  bool _isImporting = false;
+  bool get isImporting => _isImporting;
+
+  SyncViewModel? syncVM;
 
   List<CashInHandRow> cashInHandSummary = [];
   List<CashSummaryRow> acc1CashSummary = [];
@@ -35,132 +43,137 @@ class HomeViewModel extends ChangeNotifier {
     required this.drawerKey,
   });
 
-  /// Active database path
-  String? verifiedDbPath;
-
-  bool _isImporting = false;
-  bool get isImporting => _isImporting;
-
-  bool _hasRestored = false;
-
-  // 🔥 NEW: Sync ViewModel reference
-  SyncViewModel? syncVM;
-
-  // ---------------------------------------------------------------------------
-  // NEW → Register SyncViewModel (called from main.dart)
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------
+  // CONNECT SyncVM to DB (called from main.dart)
+  // ------------------------------------------------------------
   void registerSyncVM(SyncViewModel vm) {
     syncVM = vm;
-    _log.i("🔗 SyncViewModel registered inside HomeViewModel");
+    _log.i("🔗 SyncViewModel linked");
 
-    // If DB already restored, attach immediately
+    // If DB already restored → attach immediately
     if (DatabaseManager.instance.activeDbPath != null) {
       try {
         vm.attachDatabase(DatabaseManager.instance.db);
-        _log.i("🔗 Attached existing DB to SyncViewModel");
+        _log.i("🔗 Existing DB attached to SyncVM (registerSyncVM)");
       } catch (e) {
-        _log.e("❌ Failed attaching DB to SyncViewModel", error: e);
+        _log.e("❌ Failed attaching DB to SyncVM", error: e);
       }
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // INIT — Only restore DB when user is logged in
-  // ---------------------------------------------------------------------------
-  Future<void> init({required bool isUserLoggedIn}) async {
-    _log.i("🔄 HomeViewModel.init() → Checking login + DB state...");
-
-    if (!isUserLoggedIn) {
-      _log.w("⚠ User not logged in → Skipping DB restore");
-      _hasRestored = false;
-      return;
-    }
+  // ------------------------------------------------------------
+  // INIT — Restore per-user DB
+  // ------------------------------------------------------------
+  Future<void> init({required UserModel user}) async {
+    _log.i("🏁 HomeViewModel.init() → ${user.email}");
 
     if (_hasRestored) {
-      _log.i("ℹ DB already restored in this session → Skipping");
+      _log.i("ℹ Already restored → skipping");
       return;
     }
 
-    final restored = await DatabaseManager.instance.restoreDatabaseIfExists();
+    // Try restore DB
+    final restored =
+    await DatabaseManager.instance.restoreDatabaseForUser(user.email);
 
     if (restored) {
+      _log.i("✅ User DB restored");
+
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
-      // 🔹 Restore (or default) company selection + name + GlobalState
       await _restoreCompanySelection();
+      await loadPendingAmounts();
 
-      // Load summary only if company selected
-      if (selectedCompanyId != null) {
-        await loadPendingAmounts();
-      }
-
-      _log.i("✅ Database restored successfully.");
-
-      // 🔥 NEW → Attach DB to SyncVM after restore
+      // ⭐ CRITICAL: Attach DB to SyncVM here
       if (syncVM != null) {
         try {
           syncVM!.attachDatabase(DatabaseManager.instance.db);
-          _log.i("🔗 DB attached to SyncViewModel after restore");
+          _log.i("🔗 DB attached to SyncVM (init)");
         } catch (e) {
-          _log.e("❌ Failed attaching restored DB to SyncVM", error: e);
+          _log.e("❌ SyncVM attach failed", error: e);
         }
       }
     } else {
-      _log.w("⚠ No saved database found.");
+      _log.w("⚠ No DB restored for this user");
     }
 
     _hasRestored = true;
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // IMPORT DATABASE (.sqlite / .db)
-  // ---------------------------------------------------------------------------
-  Future<void> importDatabase(String inputPath) async {
+  // ------------------------------------------------------------
+  // IMPORT DATABASE — includes email validation
+  // ------------------------------------------------------------
+  Future<void> importDatabase(String inputPath, UserModel user) async {
     _isImporting = true;
     notifyListeners();
 
     try {
-      _log.i("📂 Importing DB: $inputPath");
+      _log.i("📥 Starting import for → ${user.email}");
 
-      final importedPath = await SqliteImportService.importAndSaveDb(inputPath);
+      // 1️⃣ Copy to app folder
+      final importedTempPath =
+      await SqliteImportService.importAndSaveDb(inputPath);
 
-      if (importedPath == null) {
-        throw Exception("❌ Invalid database file.");
+      if (importedTempPath == null) {
+        throw Exception("❌ Failed importing DB");
       }
 
-      // Validate schema
-      await SqliteValidationService().validateDatabase(importedPath);
+      // 2️⃣ Validate schema
+      await SqliteValidationService().validateDatabase(importedTempPath);
 
-      // Activate the DB and load summary (company must be selected)
-      await DatabaseManager.instance.activateAndThen(
-        importedPath,
-            (db) async {
-          final repo = AccountRepository(db);
+      // 3️⃣ Read Db_Info BEFORE switching database
+      final previewDb =
+      await DatabaseManager.instance.previewDatabase(importedTempPath);
 
-          if (selectedCompanyId != null) {
-            pendingAmounts = await repo.getPendingAmountSummary(
-              selectedCompanyId: selectedCompanyId!,
-            );
-          }
-        },
+      final info = await previewDb.select(previewDb.dbInfoTable).get();
+      if (info.isEmpty) {
+        throw Exception("❌ Invalid database: Db_Info missing");
+      }
+
+      final dbEmail =
+      (info.first.emailAddress ?? "").trim().toLowerCase();
+      final userEmail = user.email.trim().toLowerCase();
+
+      // 4️⃣ SECURITY: prevent wrong DB import
+      if (dbEmail != userEmail) {
+        throw Exception(
+          "❌ Import Blocked!\n\n"
+              "This SQLite file belongs to another Mahfooz user.\n\n"
+              "DB Email: $dbEmail\n"
+              "Your Email: $userEmail\n",
+        );
+      }
+
+      _log.i("🔐 DB ownership verified — safe to import");
+
+      // 5️⃣ Activate NEW DB for this user
+      await DatabaseManager.instance.useImportedDbForUser(
+        importedTempPath,
+        user.email,
       );
 
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
-      _log.i("✅ Database imported + activated.");
+      // 6️⃣ Reload summaries
+      if (selectedCompanyId != null) {
+        await loadPendingAmounts();
+      }
 
-      // 🔥 NEW → Attach DB to SyncVM after import
+      // 7️⃣ Re-attach DB to SyncVM
       if (syncVM != null) {
         try {
           syncVM!.attachDatabase(DatabaseManager.instance.db);
-          _log.i("🔗 DB attached to SyncViewModel after import");
+          _log.i("🔗 DB attached to SyncVM (import)");
         } catch (e) {
-          _log.e("❌ Failed attaching imported DB to SyncVM", error: e);
+          _log.e("❌ SyncVM attach failed", error: e);
         }
       }
+
+      _log.i("🎉 Import completed successfully");
+
     } catch (e, st) {
-      _log.e("❌ DB import failed", error: e, stackTrace: st);
+      _log.e("❌ Import failed", error: e, stackTrace: st);
       rethrow;
     } finally {
       _isImporting = false;
@@ -168,134 +181,108 @@ class HomeViewModel extends ChangeNotifier {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // COMPANY SELECTION (legacy entry point - delegate to setCompany)
-  // ---------------------------------------------------------------------------
-  Future<void> selectCompany(int companyId) async {
-    await setCompany(companyId);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Restore previously selected company
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------
+  // Restore company selection
+  // ------------------------------------------------------------
   Future<void> _restoreCompanySelection() async {
     final prefs = await SharedPreferences.getInstance();
-    final storedId = prefs.getInt("selected_company_id");
-
-    if (storedId != null) {
-      selectedCompanyId = storedId;
-      _log.i("🏢 Restored company selection from prefs: $selectedCompanyId");
-    } else {
-      selectedCompanyId = 1;
-      await prefs.setInt("selected_company_id", 1);
-      _log.w("ℹ No company in prefs → defaulting to companyId=1");
-    }
-
-    // Load company name
-    if (selectedCompanyId != null) {
-      final db = DatabaseManager.instance.db;
-      final result = await (db.select(db.companyTable)
-        ..where((tbl) => tbl.companyId.equals(selectedCompanyId!)))
-          .get();
-
-      selectedCompanyName = result.isNotEmpty
-          ? (result.first.companyName ?? "Your Company")
-          : "Your Company";
-
-      GlobalState.instance.setCompany(
-        id: selectedCompanyId!,
-        name: selectedCompanyName!,
-      );
-
-      _log.i(
-        "🏢 Company restored → id=$selectedCompanyId, name=$selectedCompanyName",
-      );
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Set company ID
-  // ---------------------------------------------------------------------------
-  Future<void> setCompany(int id) async {
-    selectedCompanyId = id;
+    selectedCompanyId = prefs.getInt("selected_company_id") ?? 1;
 
     final db = DatabaseManager.instance.db;
     final result = await (db.select(db.companyTable)
-      ..where((tbl) => tbl.companyId.equals(id)))
+      ..where((t) => t.companyId.equals(selectedCompanyId!)))
         .get();
 
-    selectedCompanyName = result.isNotEmpty
-        ? (result.first.companyName ?? "Your Company")
-        : "Your Company";
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt("selected_company_id", id);
+    selectedCompanyName =
+    result.isNotEmpty ? (result.first.companyName ?? "Your Company") : "Your Company";
 
     GlobalState.instance.setCompany(
       id: selectedCompanyId!,
       name: selectedCompanyName!,
     );
 
-    _log.i("🏢 setCompany → $selectedCompanyId / $selectedCompanyName");
+    _log.i("🏢 Company restored → $selectedCompanyId | $selectedCompanyName");
+  }
+
+  // ------------------------------------------------------------
+  // Change company
+  // ------------------------------------------------------------
+  Future<void> setCompany(int id) async {
+    selectedCompanyId = id;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt("selected_company_id", id);
+
+    final db = DatabaseManager.instance.db;
+
+    final rows = await (db.select(db.companyTable)
+      ..where((t) => t.companyId.equals(id)))
+        .get();
+
+    selectedCompanyName =
+    rows.isNotEmpty ? (rows.first.companyName ?? "Your Company") : "Your Company";
+
+    GlobalState.instance.setCompany(
+      id: id,
+      name: selectedCompanyName!,
+    );
 
     await loadPendingAmounts();
     notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // LOAD PENDING SUMMARY
-  // ---------------------------------------------------------------------------
+  // ------------------------------------------------------------
+  // Load Dashboard Summaries
+  // ------------------------------------------------------------
   Future<void> loadPendingAmounts() async {
-    try {
-      if (selectedCompanyId == null) {
-        _log.w("⚠ Cannot load summary → Company not selected.");
-        pendingAmounts = [];
-        notifyListeners();
-        return;
-      }
+    if (selectedCompanyId == null) {
+      _log.w("⚠ Cannot load summaries — No company selected");
+      return;
+    }
 
+    try {
       final repo = AccountRepository(DatabaseManager.instance.db);
 
-      pendingAmounts = await repo.getPendingAmountSummary(
-        selectedCompanyId: selectedCompanyId!,
-      );
+      pendingAmounts =
+      await repo.getPendingAmountSummary(selectedCompanyId: selectedCompanyId!);
 
-      cashInHandSummary = await repo.getCashInHandSummary(
-        selectedCompanyId: selectedCompanyId!,
-      );
+      cashInHandSummary =
+      await repo.getCashInHandSummary(selectedCompanyId: selectedCompanyId!);
 
       acc1CashSummary =
       await repo.getAcc1CashSummary(selectedCompanyId!);
 
-      _log.i("📊 Summary loaded for company $selectedCompanyId");
+      _log.i("📊 Dashboard summaries loaded");
 
-      notifyListeners();
-    } catch (e) {
-      _log.e("❌ loadPendingAmounts failed: $e");
+    } catch (e, st) {
+      _log.e("❌ Error loading dashboard summaries", error: e, stackTrace: st);
     }
+
+    notifyListeners();
   }
 
-  // ---------------------------------------------------------------------------
-  // LOGOUT — Reset full state
-  // ---------------------------------------------------------------------------
-  Future<void> clearOnLogout() async {
-    _log.w("🚪 HomeViewModel.clearOnLogout() → Resetting state...");
+  // ------------------------------------------------------------
+  // LOGOUT CLEANUP
+  // ------------------------------------------------------------
+  Future<void> clearOnLogout(UserModel user) async {
+    _log.w("🚪 Clearing HomeViewModel state...");
 
     verifiedDbPath = null;
     selectedCompanyId = null;
     selectedCompanyName = null;
-    pendingAmounts = [];
-    cashInHandSummary = [];
-    acc1CashSummary = [];
+
+    pendingAmounts.clear();
+    cashInHandSummary.clear();
+    acc1CashSummary.clear();
+
     _hasRestored = false;
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("selected_company_id");
 
-    GlobalState.instance.setCompany(
-      id: 1,
-      name: "Your Company",
-    );
+    await DatabaseManager.instance.clearUserDb(user.email);
+
+    GlobalState.instance.setCompany(id: 1, name: "Your Company");
 
     notifyListeners();
   }
