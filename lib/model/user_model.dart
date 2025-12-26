@@ -32,23 +32,15 @@ class UserModel {
     this.subscription,
   });
 
-  /// ✅ Parse from full API response (handles all 5 scenarios)
+  /// ============================================================
+  /// API RESPONSE PARSER
+  /// ============================================================
   factory UserModel.fromApiResponse(Map<String, dynamic> json) {
     final bool apiStatus = json["status"] == true;
     final String apiMessage = json["message"]?.toString() ?? "";
 
     if (!apiStatus || json["data"] == null) {
-      return UserModel(
-        status: false,
-        message: apiMessage,
-        id: "",
-        email: "",
-        firstName: "",
-        lastName: "",
-        fullName: "",
-        imageUrl: "",
-        isLogin: 0,
-      );
+      return UserModel.empty(message: apiMessage);
     }
 
     final data = json["data"];
@@ -61,7 +53,7 @@ class UserModel {
       firstName: data["first_name"] ?? "",
       lastName: data["last_name"] ?? "",
       fullName: data["full_name"] ??
-          "\${data['first_name'] ?? ''} \${data['last_name'] ?? ''}".trim(),
+          "${data['first_name'] ?? ''} ${data['last_name'] ?? ''}".trim(),
       imageUrl: data["image_url"] ?? "",
       isLogin: data["is_login"] is int
           ? data["is_login"]
@@ -78,7 +70,9 @@ class UserModel {
     );
   }
 
-  /// ✅ Parse from local storage
+  /// ============================================================
+  /// LOCAL STORAGE PARSER
+  /// ============================================================
   factory UserModel.fromJson(Map<String, dynamic> json) {
     final data = json["data"] ?? json;
 
@@ -90,7 +84,7 @@ class UserModel {
       firstName: data["first_name"] ?? "",
       lastName: data["last_name"] ?? "",
       fullName: data["full_name"] ??
-          "\${data['first_name'] ?? ''} \${data['last_name'] ?? ''}".trim(),
+          "${data['first_name'] ?? ''} ${data['last_name'] ?? ''}".trim(),
       imageUrl: data["image_url"] ?? "",
       isLogin: data["is_login"] is int
           ? data["is_login"]
@@ -105,12 +99,12 @@ class UserModel {
           ? SubscriptionInfo.fromJson(data["subscription"])
           : null,
     );
-
   }
-  factory UserModel.empty() {
+
+  factory UserModel.empty({String message = ""}) {
     return UserModel(
       status: false,
-      message: "",
+      message: message,
       id: "",
       email: "",
       firstName: "",
@@ -123,7 +117,10 @@ class UserModel {
       subscription: null,
     );
   }
-  /// ✅ Save to storage
+
+  /// ============================================================
+  /// STORAGE SERIALIZER
+  /// ============================================================
   Map<String, dynamic> toJson() => {
     "status": status,
     "message": message,
@@ -139,37 +136,65 @@ class UserModel {
     "subscription": subscription?.toJson(),
   };
 
-  /// ✅ Logging (debug)
+  /// ============================================================
+  /// DEBUG
+  /// ============================================================
   @override
   String toString() => '''
 🧍‍♂️ UserModel:
 - fullName   : $fullName
 - email      : $email
-- imageUrl   : $imageUrl
 - isLogin    : $isLogin
-- planStatus : \${planStatus?.statusText ?? 'N/A'}
-- expiry     : \${expiry?.remainingDays ?? 'N/A'} days
-- subscription: \${subscription?.planTitle ?? 'N/A'}
+- plan       : ${planStatus?.statusText ?? 'N/A'}
+- canSync    : ${planStatus?.canSync ?? 'N/A'}
+- expiry     : ${expiry?.remainingDays ?? 'N/A'} days
 ''';
 }
 
+/// ============================================================
+/// PLAN STATUS (UPDATED WITH canSync)
+/// ============================================================
 class PlanStatus {
   final String statusCode;
   final String statusText;
 
-  PlanStatus({required this.statusCode, required this.statusText});
+  /// 🔑 ADMIN-CONTROLLED PERMISSION
+  final bool canSync;
 
-  factory PlanStatus.fromJson(Map<String, dynamic> json) => PlanStatus(
-    statusCode: json["status_code"]?.toString() ?? "",
-    statusText: json["status_text"]?.toString() ?? "",
-  );
+  PlanStatus({
+    required this.statusCode,
+    required this.statusText,
+    required this.canSync,
+  });
+
+  factory PlanStatus.fromJson(Map<String, dynamic> json) {
+    return PlanStatus(
+      statusCode: json["status_code"]?.toString() ?? "",
+      statusText: json["status_text"]?.toString() ?? "",
+
+      // ========================================================
+      // 🔥 BACKWARD SAFE LOGIC
+      // If backend does NOT send canSync → ALLOW SYNC
+      // ========================================================
+      canSync: json.containsKey("canSync")
+          ? json["canSync"].toString() == "1"
+          : true,
+
+      // 👉 TEMP OVERRIDE (uncomment if needed)
+      // canSync: true,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
     "status_code": statusCode,
     "status_text": statusText,
+    "canSync": canSync ? "1" : "0",
   };
 }
 
+/// ============================================================
+/// EXPIRY
+/// ============================================================
 class ExpiryInfo {
   final bool isExpired;
   final int remainingDays;
@@ -194,6 +219,9 @@ class ExpiryInfo {
   };
 }
 
+/// ============================================================
+/// SUBSCRIPTION
+/// ============================================================
 class SubscriptionInfo {
   final String planTitle;
   final String planDescription;
@@ -229,6 +257,4 @@ class SubscriptionInfo {
     "start_date": startDate,
     "end_date": endDate,
   };
-
-
 }

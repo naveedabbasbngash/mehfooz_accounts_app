@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ui';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 
@@ -10,9 +11,14 @@ import 'logging/logger_service.dart';
 class AuthService {
   static const List<String> scopes = ['email', 'profile', 'openid'];
 
-  static const String androidClientId = '800232142357-rvl2rpvongbct6vtafecct2rmva1vng9.apps.googleusercontent.com';
-  static const String iosClientId = '800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com';
+  static const String androidClientId =
+      '800232142357-rvl2rpvongbct6vtafecct2rmva1vng9.apps.googleusercontent.com';
+  static const String iosClientId =
+      '800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com';
 
+  // ============================================================
+  // LOGIN WITH GOOGLE
+  // ============================================================
   static Future<UserModel?> loginWithGoogle() async {
     LoggerService.info("🔵 Google login started");
 
@@ -24,79 +30,92 @@ class AuthService {
         serverClientId: androidClientId,
       );
 
-      final GoogleSignInAccount? user = await signIn.authenticate();
+      final GoogleSignInAccount? googleUser =
+      await signIn.authenticate();
 
-      if (user == null) {
+      if (googleUser == null) {
         LoggerService.warn("⚠️ User cancelled login");
         return null;
       }
 
-      final headers = await user.authorizationClient.authorizationHeaders(
-          scopes);
-      // final accessToken = headers['Authorization']?.replaceFirst('Bearer ', '');
+      // 🔑 STEP 1: Google auth tokens
+      final GoogleSignInAuthentication googleAuth =
+      await googleUser.authentication;
 
-      final email = user.email;
-      final name = user.displayName ?? '';
-      final imageUrl = user.photoUrl ?? '';
+      // 🔑 STEP 2: Firebase credential
+      final credential = GoogleAuthProvider.credential(
+        idToken: googleAuth.idToken,
+      );
 
-      LoggerService.info("✅ Google login successful for $email");
+      // 🔥 STEP 3: SIGN IN TO FIREBASE (THIS WAS MISSING)
+      final firebaseUser =
+      await FirebaseAuth.instance.signInWithCredential(credential);
+
+      LoggerService.info(
+        "🔥 Firebase user signed in: ${firebaseUser.user?.email}",
+      );
+
+      // ========================================================
+      // YOUR EXISTING BACKEND LOGIN (KEEP AS-IS)
+      // ========================================================
+      final email = googleUser.email;
+      final imageUrl = googleUser.photoUrl ?? '';
 
       final response = await http.post(
-        Uri.parse("https://kheloaurjeeto.net/mahfooz_accounts/api/login"),
+        Uri.parse(
+          "https://kheloaurjeeto.net/mahfooz_accounts/api/login",
+        ),
         body: {
           "email": email,
           "image_url": imageUrl,
         },
       );
 
-      LoggerService.debug(
-          "🌐 API response (${response.statusCode}): ${response.body}");
-
       if (response.statusCode != 200) {
-        // LoggerService.error("❌ API error", error: response.body);
+        LoggerService.warn("❌ API error: ${response.statusCode}");
         return null;
       }
 
       final json = jsonDecode(response.body);
-      final status = json['status'] == true;
-      final message = json['message'] ?? 'Unknown message';
 
-      if (!status || json['data'] == null) {
-        LoggerService.warn("⚠ Login failed: $message");
-        await signIn.disconnect();
+      if (json['status'] != true || json['data'] == null) {
+        LoggerService.warn("⚠ Login failed: ${json['message']}");
+
+        await FirebaseAuth.instance.signOut();
         await signIn.signOut();
-
-        return UserModel(
-          status: false,
-          message: message,
-          id: '',
-          email: email,
-          firstName: '',
-          lastName: '',
-          fullName: name,
-          imageUrl: imageUrl,
-          isLogin: 0,
-        );
+        return null;
       }
 
       final userModel = UserModel.fromApiResponse(json);
+
       await LocalStorageService.saveUser(userModel);
-      LoggerService.info("🎉 LOGIN COMPLETE");
+
+      LoggerService.info(
+        "🎉 LOGIN COMPLETE | canSync=${userModel.planStatus?.canSync}",
+      );
+
       return userModel;
     } catch (e, s) {
-      // LoggerService.error("❌ Login failed", error: e, stackTrace: s);
+      LoggerService.warn("❌ Login failed: $e");
       return null;
     }
   }
-
+  // ============================================================
+  // AUTO LOGIN
+  // ============================================================
   static Future<UserModel?> loadSavedUser() async {
     final user = await LocalStorageService.loadLatestUser();
     if (user != null) {
-      LoggerService.info("🔁 Auto-login user: ${user.email}");
+      LoggerService.info(
+        "🔁 Auto-login user: ${user.email} | canSync=${user.planStatus?.canSync}",
+      );
     }
     return user;
   }
 
+  // ============================================================
+  // LOGOUT
+  // ============================================================
   static Future<void> logout({VoidCallback? onLoggedOut}) async {
     try {
       await GoogleSignIn.instance.disconnect();
@@ -104,7 +123,7 @@ class AuthService {
 
     await GoogleSignIn.instance.signOut();
 
-    // ✅ Clear all saved users (your existing behavior)
+    // ✅ Clear all saved users
     await LocalStorageService.clearAllUsers();
 
     LoggerService.info("👋 Logged out successfully");

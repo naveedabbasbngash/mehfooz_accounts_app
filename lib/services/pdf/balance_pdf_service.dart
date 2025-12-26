@@ -1,6 +1,6 @@
 // lib/services/pdf/balance_pdf_service.dart
 import 'dart:io';
-
+import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -11,23 +11,58 @@ class BalancePdfService extends BasePdfService {
   BalancePdfService._();
   static final BalancePdfService instance = BalancePdfService._();
 
+  late pw.Font urduFont;
+
+  // ------------------------------------------------------------------
+  // Load Unicode (Arabic / Urdu / Pashto) font
+  // ------------------------------------------------------------------
+  Future<void> _loadUrduFont() async {
+    final data =
+    await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+    urduFont = pw.Font.ttf(data.buffer.asByteData());
+  }
+
+  // ------------------------------------------------------------------
+  // RTL detection
+  // ------------------------------------------------------------------
+  bool _isRtl(String? s) {
+    if (s == null || s.trim().isEmpty) return false;
+    final r = RegExp(
+        r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]');
+    return r.hasMatch(s);
+  }
+
+  pw.TextDirection _dir(String v) =>
+      _isRtl(v) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
+
+  pw.Font _pickFont(
+      String text,
+      pw.Font latin,
+      pw.Font latinBold,
+      bool bold,
+      ) {
+    if (_isRtl(text)) return urduFont;
+    return bold ? latinBold : latin;
+  }
+
+  // ==================================================================
+  // MAIN RENDER
+  // ==================================================================
   Future<File> render({
     required List<String> currencies,
     required List<BalanceRow> rows,
   }) async {
+    await _loadUrduFont();
+
     final pdf = pw.Document();
 
-    // Mobile-friendly tall page to avoid vertical centering in viewers
-    final double pageWidth = PdfPageFormat.cm * 29.7;   // ~A4 width
-    final double pageHeight = PdfPageFormat.cm * 55;    // tall page
+    // Tall page (same as before)
+    final double pageWidth = PdfPageFormat.cm * 29.7;
+    final double pageHeight = PdfPageFormat.cm * 55;
+    final pageFormat = PdfPageFormat(pageWidth, pageHeight, marginAll: 12);
 
-    final pageFormat = PdfPageFormat(
-      pageWidth,
-      pageHeight,
-      marginAll: 12,
-    );
+    final (latin, latinBold) = createFonts();
 
-    final (font, fontBold) = createFonts();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final greenBg = PdfColor.fromInt(0xFF4CAF50);
     final redBg = PdfColor.fromInt(0xFFC62828);
@@ -43,16 +78,16 @@ class BalancePdfService extends BasePdfService {
             children: [
               buildHeader(
                 title: 'Account Summary (All Currencies)',
-                font: font,
-                fontBold: fontBold,
+                font: latin,
+                fontBold: latinBold,
                 titleColor: deepBlue,
               ),
               pw.SizedBox(height: 10),
               _buildTable(
                 currencies: currencies,
                 rows: rows,
-                font: font,
-                fontBold: fontBold,
+                latin: latin,
+                latinBold: latinBold,
                 deepBlue: deepBlue,
                 greenBg: greenBg,
                 redBg: redBg,
@@ -68,11 +103,14 @@ class BalancePdfService extends BasePdfService {
     return savePdf(pdf, 'balance_report');
   }
 
+  // ==================================================================
+  // TABLE
+  // ==================================================================
   pw.Widget _buildTable({
     required List<String> currencies,
     required List<BalanceRow> rows,
-    required pw.Font font,
-    required pw.Font fontBold,
+    required pw.Font latin,
+    required pw.Font latinBold,
     required PdfColor deepBlue,
     required PdfColor greenBg,
     required PdfColor redBg,
@@ -91,8 +129,9 @@ class BalancePdfService extends BasePdfService {
         child: pw.Text(
           text,
           textAlign: align,
+          textDirection: _dir(text),
           style: pw.TextStyle(
-            font: fontBold,
+            font: latinBold,
             fontSize: BasePdfService.headerSize,
             color: white,
           ),
@@ -100,6 +139,7 @@ class BalancePdfService extends BasePdfService {
       );
     }
 
+    // ---------------- HEADER ROW ----------------
     tableRows.add(
       pw.TableRow(
         children: [
@@ -109,6 +149,7 @@ class BalancePdfService extends BasePdfService {
       ),
     );
 
+    // ---------------- NAME CELL ----------------
     pw.Widget nameCell(String name) {
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(
@@ -117,8 +158,9 @@ class BalancePdfService extends BasePdfService {
         ),
         child: pw.Text(
           name,
+          textDirection: _dir(name),
           style: pw.TextStyle(
-            font: fontBold,
+            font: _pickFont(name, latin, latinBold, true),
             fontSize: BasePdfService.bodySize,
             color: deepBlue,
           ),
@@ -126,6 +168,7 @@ class BalancePdfService extends BasePdfService {
       );
     }
 
+    // ---------------- VALUE CELL ----------------
     pw.Widget valueCell(int value) {
       PdfColor bg;
       PdfColor textColor;
@@ -151,7 +194,7 @@ class BalancePdfService extends BasePdfService {
           child: pw.Text(
             nf.format(value),
             style: pw.TextStyle(
-              font: font,
+              font: latin,
               fontSize: BasePdfService.bodySize,
               color: textColor,
             ),
@@ -160,6 +203,7 @@ class BalancePdfService extends BasePdfService {
       );
     }
 
+    // ---------------- DATA ROWS ----------------
     for (final row in rows) {
       tableRows.add(
         pw.TableRow(
@@ -171,6 +215,7 @@ class BalancePdfService extends BasePdfService {
       );
     }
 
+    // ---------------- TOTALS ----------------
     final totals = currencies.map(
           (cur) => rows.fold<int>(0, (sum, r) => sum + (r.byCurrency[cur] ?? 0)),
     );
@@ -189,7 +234,7 @@ class BalancePdfService extends BasePdfService {
         child: pw.Text(
           'Balance :',
           style: pw.TextStyle(
-            font: fontBold,
+            font: latinBold,
             fontSize: BasePdfService.headerSize,
             color: deepBlue,
           ),
@@ -217,7 +262,6 @@ class BalancePdfService extends BasePdfService {
           vertical: BasePdfService.cellPadV,
           horizontal: BasePdfService.cellPadH,
         ),
-        // ❗ FIX: use ONLY decoration, no separate `color:` param
         decoration: pw.BoxDecoration(
           color: bg,
           border: pw.Border(
@@ -228,7 +272,7 @@ class BalancePdfService extends BasePdfService {
           child: pw.Text(
             nf.format(value),
             style: pw.TextStyle(
-              font: fontBold,
+              font: latinBold,
               fontSize: BasePdfService.headerSize,
               color: textColor,
             ),

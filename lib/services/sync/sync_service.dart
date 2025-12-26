@@ -54,9 +54,11 @@ class SyncService {
   SyncService({
     String? baseUrl,
     Logger? logger,
-  })  : baseUrl = baseUrl!.trim().endsWith('/')
-      ? baseUrl!.trim()
-      : (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/'),
+  })  : baseUrl = (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/')
+      .trim()
+      .endsWith('/')
+      ? (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/').trim()
+      : (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/').trim(),
         _log = logger ?? Logger();
 
   Uri _buildUri(String path) {
@@ -86,6 +88,7 @@ class SyncService {
     final payload = <String, dynamic>{
       'email': email,
     };
+    _logRequest('POST', uri, payload);
 
     http.Response resp;
     try {
@@ -98,13 +101,18 @@ class SyncService {
         body: jsonEncode(payload),
       );
     } catch (e, st) {
-      _log.e('❌ [SyncService] pullForMobile network error', error: e, stackTrace: st);
+      _log.e(
+        '❌ [SyncService] pullForMobile network error',
+        error: e,
+        stackTrace: st,
+      );
       throw Exception('Network error while pulling sync batch: $e');
     }
 
     if (resp.statusCode != 200) {
       _log.e(
-          '❌ [SyncService] pullForMobile bad status ${resp.statusCode} body=${resp.body}');
+        '❌ [SyncService] pullForMobile bad status ${resp.statusCode} body=${resp.body}',
+      );
       throw Exception('pull-for-mobile failed with status ${resp.statusCode}');
     }
 
@@ -112,20 +120,30 @@ class SyncService {
     try {
       body = jsonDecode(resp.body) as Map<String, dynamic>;
     } catch (e, st) {
-      _log.e('❌ [SyncService] pullForMobile invalid JSON', error: e, stackTrace: st);
+      _log.e(
+        '❌ [SyncService] pullForMobile invalid JSON',
+        error: e,
+        stackTrace: st,
+      );
       throw Exception('Invalid JSON from pull-for-mobile: $e');
     }
 
     final status = (body['status'] ?? '').toString().toLowerCase();
     _log.d('📡 [SyncService] pullForMobile status=$status');
 
+    // ✅ SAME behavior: empty => null
     if (status == 'empty') {
       // No rows to sync for this email
       return null;
     }
+
+    // ✅ UPDATED: future-proof for permission denied / blocked responses
+    // Example server future:
+    // { "status": "denied", "message": "Sync not allowed" }
     if (status != 'ok') {
-      _log.e('❌ [SyncService] pullForMobile unexpected status=$status body=$body');
-      throw Exception('pull-for-mobile returned status=$status');
+      final msg = (body['message'] ?? 'pull-for-mobile returned status=$status').toString();
+      _log.w('⛔ [SyncService] pullForMobile blocked status=$status message=$msg');
+      throw Exception(msg);
     }
 
     final batchId = body['batch_id']?.toString() ?? '';
@@ -183,7 +201,8 @@ class SyncService {
     final status = success ? 'OK' : 'FAILED';
 
     _log.i(
-        '📡 [SyncService] ackBatch email=$email batchId=$batchId status=$status');
+      '📡 [SyncService] ackBatch email=$email batchId=$batchId status=$status',
+    );
 
     final payload = <String, dynamic>{
       'email': email,
@@ -202,13 +221,18 @@ class SyncService {
         body: jsonEncode(payload),
       );
     } catch (e, st) {
-      _log.e('❌ [SyncService] ackBatch network error', error: e, stackTrace: st);
+      _log.e(
+        '❌ [SyncService] ackBatch network error',
+        error: e,
+        stackTrace: st,
+      );
       throw Exception('Network error while sending ack-batch: $e');
     }
 
     if (resp.statusCode != 200) {
       _log.e(
-          '❌ [SyncService] ackBatch bad status ${resp.statusCode} body=${resp.body}');
+        '❌ [SyncService] ackBatch bad status ${resp.statusCode} body=${resp.body}',
+      );
       return false;
     }
 
@@ -217,15 +241,27 @@ class SyncService {
       final respStatus = decoded['status']?.toString().toLowerCase() ?? '';
       if (respStatus != 'ok') {
         _log.w(
-            '⚠️ [SyncService] ackBatch server responded with status=$respStatus body=$decoded');
+          '⚠️ [SyncService] ackBatch server responded with status=$respStatus body=$decoded',
+        );
         return false;
       }
     } catch (e, st) {
-      _log.e('❌ [SyncService] ackBatch invalid JSON', error: e, stackTrace: st);
+      _log.e(
+        '❌ [SyncService] ackBatch invalid JSON',
+        error: e,
+        stackTrace: st,
+      );
       return false;
     }
 
     _log.i('✅ [SyncService] ackBatch OK for batchId=$batchId');
     return true;
+  }
+
+  void _logRequest(String method, Uri uri, Map<String, dynamic>? body) {
+    _log.i('📡 [HTTP] $method ${uri.toString()}');
+    if (body != null) {
+      _log.d('📦 [HTTP] body=${jsonEncode(body)}');
+    }
   }
 }

@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:country_flags/country_flags.dart';
 
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../model/pending_amount_row.dart';
@@ -38,13 +39,71 @@ class PendingAmountsList extends StatelessWidget {
       final balanceStr = r.balance.toStringAsFixed(2);
 
       if (isNumeric) {
-        return balanceStr == q || balanceStr.startsWith(q);
+        return balanceStr.startsWith(q);
       }
 
       return currency.startsWith(q);
     }).toList();
   }
 
+  // --------------------------------------------------------
+  // Currency → Country Code Mapper
+  // --------------------------------------------------------
+  String _currencyToCountry(String currency) {
+    switch (currency.toUpperCase().trim()) {
+      case "PKR":
+        return "PK";
+      case "USD":
+        return "US";
+      case "AED":
+        return "AE";
+      case "SAR":
+        return "SA";
+      case "EUR":
+        return "EU";
+      case "GBP":
+      case "POUND":
+        return "GB";
+      case "INR":
+      case "IND":
+        return "IN";
+      case "AFG":
+        return "AF";
+      case "CAD":
+        return "CA";
+      case "JPY":
+        return "JP";
+      case "RMB":
+        return "CN";
+      case "IRR":
+        return "IR";
+      case "BHD":
+        return "BH";
+      case "OMR":
+        return "OM";
+      case "QAR":
+        return "QA";
+      case "DKK":
+        return "DK";
+      case "SEK":
+        return "SE";
+      case "NOK":
+        return "NO";
+      case "MYR":
+        return "MY";
+      case "AUD":
+        return "AU";
+      case "HKD":
+        return "HK";
+      case "SGD":
+      case "SGP":
+        return "SG";
+      case "RUB":
+        return "RU";
+      default:
+        return "UN"; // Safe fallback
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final filtered = _applyFilter();
@@ -60,97 +119,125 @@ class PendingAmountsList extends StatelessWidget {
       itemBuilder: (context, index) {
         final row = filtered[index];
 
-        return AnimatedOpacity(
-          opacity: 1,
-          duration: const Duration(milliseconds: 250),
-          child: GestureDetector(
-            onTap: () {
-              final companyId = Provider.of<HomeViewModel>(
-                context,
-                listen: false,
-              ).selectedCompanyId ?? 1;
+        return GestureDetector(
+          onTap: () {
+            final companyId = Provider.of<HomeViewModel>(
+              context,
+              listen: false,
+            ).selectedCompanyId ?? 1;
 
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) {
-                    return ChangeNotifierProvider(
-                      create: (_) => NotPaidViewModel(
-                        repository: TransactionsRepository(
-                          DatabaseManager.instance.db,
-                        ),
-                        accId: 3,
-                        companyId: companyId,
-                      )..loadRows(),
-                      child: NotPaidGroupedScreen(
-                        filterCurrency: row.currency,
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) {
+                  return ChangeNotifierProvider(
+                    create: (_) => NotPaidViewModel(
+                      repository: TransactionsRepository(
+                        DatabaseManager.instance.db,
                       ),
-                    );
-                  },
-                ),
-              );
-            },
-            child: Card(
-              elevation: 0,
-              margin: const EdgeInsets.only(bottom: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                      accId: 3,
+                      companyId: companyId,
+                    )..loadRows(),
+                    child: NotPaidGroupedScreen(
+                      filterCurrency: row.currency,
+                    ),
+                  );
+                },
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    // LEFT ICON
-                    CircleAvatar(
-                      radius: 20,
-                      backgroundColor: AppColors.primary.withOpacity(0.10),
-                      child: Icon(
-                        Icons.currency_exchange,
-                        color: AppColors.primary,
+            );
+          },
+          child: Card(
+            elevation: 0,
+            margin: const EdgeInsets.only(bottom: 12),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  // ------------------------------------------------
+                  // LEFT: Currency Flag
+                  // ------------------------------------------------
+                  CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.transparent,
+                    child: CountryFlag.fromCountryCode(
+                      _currencyToCountry(row.currency),
+                      theme: const ImageTheme(
+                        width: 36,
+                        height: 36,
+                        shape: Circle(),
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 16),
 
-                    const SizedBox(width: 16),
-
-                    // MAIN TEXTS
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Currency Title
-                          Text(
-                            row.currency,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              color: AppColors.textDark,
-                            ),
+                  // ------------------------------------------------
+                  // CENTER: Texts
+                  // ------------------------------------------------
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Currency Code
+                        Text(
+                          row.currency,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 16,
+                            color: AppColors.textDark,
                           ),
+                        ),
 
-                          const SizedBox(height: 6),
+                        const SizedBox(height: 6),
 
-                          // Balance ONLY (CR/DR removed)
-                          Text(
-                            "Balance: ${fmt.format(row.balance)}",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,   // BOLD
-                              color: AppColors.primary,      // PRIMARY COLOR
-                            ),
+                        // Balance (Professional light-black style)
+                        RichText(
+                          text: TextSpan(
+                            children: [
+                              TextSpan(
+                                text: "Balance: ",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.black54,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              TextSpan(
+                                text: fmt.format(row.balance),
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
+                  ),
 
-                    const SizedBox(width: 12),
+                  const SizedBox(width: 12),
 
-                    // CHEVRON ARROW UPDATED
-                    Icon(
+                  // ------------------------------------------------
+                  // RIGHT: Circular Chevron
+                  // ------------------------------------------------
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primary.withOpacity(0.08),
+                    ),
+                    child: Icon(
                       Icons.chevron_right,
-                      color: AppColors.primary,  // PRIMARY COLOR
+                      color: AppColors.primary,
+                      size: 22,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),

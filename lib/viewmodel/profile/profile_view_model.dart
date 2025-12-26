@@ -22,6 +22,9 @@ class ProfileViewModel extends ChangeNotifier {
   bool isLoading = true;
 
   late UserModel loggedInUser;
+  /// 🔑 Admin permission from backend
+  bool get isAdminSyncAllowed =>
+      loggedInUser.planStatus?.canSync ?? false;
 
   // Company selection
   List<CompanyTableData> companies = [];
@@ -52,8 +55,24 @@ class ProfileViewModel extends ChangeNotifier {
   /// True when subscription is finished (expired or 0 days)
   bool get isSubscriptionExpired {
     final expiry = loggedInUser.expiry;
+
+    // 🆓 FREE plan NEVER expires
+    if (isFreePlan) {
+      debugPrint("🟢 [SUBSCRIPTION] FREE plan → never expired");
+      return false;
+    }
+
     if (expiry == null) return false;
-    return expiry.isExpired == true || expiry.remainingDays <= 0;
+
+    final expired =
+        expiry.isExpired == true || expiry.remainingDays <= 0;
+
+    debugPrint(
+      "🟡 [SUBSCRIPTION] PAID plan | "
+          "remainingDays=${expiry.remainingDays} | expired=$expired",
+    );
+
+    return expired;
   }
 
   /// Can we safely use this DB?
@@ -64,8 +83,11 @@ class ProfileViewModel extends ChangeNotifier {
   bool get canToggleRestriction => canUseDatabase;
 
   /// Sync allowed?
-  bool get canSync => databaseFound && emailMatch && !isSubscriptionExpired;
-
+  bool get canSync =>
+      isAdminSyncAllowed &&
+          databaseFound &&
+          emailMatch &&
+          !isSubscriptionExpired;
   /// Import allowed? (blocked only when subscription expired)
   bool get canImport => !isSubscriptionExpired;
 
@@ -90,14 +112,17 @@ class ProfileViewModel extends ChangeNotifier {
       databaseFound = false;
 
       // 1️⃣ Restore database from disk
-      final hasDb = await dbManager.restoreDatabaseForUser(loggedInUser.email);
-      databaseFound = hasDb;
-
-      if (!hasDb) {
-        // Force restriction since there's no DB
-        isRestricted = true;
-        return;
+      // 🔒 If DB is already active for this user, DO NOT restore again
+      if (DatabaseManager.instance.activeDbPath != null &&
+          DatabaseManager.instance.activeUserEmail ==
+              loggedInUser.email) {
+        databaseFound = true;
+      } else {
+        final hasDb =
+        await dbManager.restoreDatabaseForUser(loggedInUser.email);
+        databaseFound = hasDb;
       }
+
 
       final db = dbManager.db;
 
@@ -145,10 +170,15 @@ class ProfileViewModel extends ChangeNotifier {
               loggedInUser.email.trim().toLowerCase();
 
       // 5️⃣ Restriction engine
-      if (isSubscriptionExpired || !emailMatch) {
+      if (!emailMatch) {
+        debugPrint("🔴 [RESTRICTION:init] Email mismatch → restricted");
+        isRestricted = true;
+      } else if (isSubscriptionExpired) {
+        debugPrint("🔴 [RESTRICTION:init] Paid plan expired → restricted");
         isRestricted = true;
       } else {
-        isRestricted = prefs.getBool("profile_is_restricted") ?? false;
+        debugPrint("🟢 [RESTRICTION:init] Allowed (FREE or active paid plan)");
+        isRestricted = false;
       }
     } catch (e, st) {
       debugPrint("❌ Error in ProfileViewModel._init: $e");
@@ -169,6 +199,7 @@ class ProfileViewModel extends ChangeNotifier {
   // COMPANY SELECTOR
   // ─────────────────────────────────────────────────────────────
   Future<void> selectCompany(int id, {required BuildContext context}) async {
+
     try {
       selectedCompany = companies.firstWhere((c) => c.companyId == id);
 
@@ -206,4 +237,73 @@ class ProfileViewModel extends ChangeNotifier {
 
     notifyListeners();
   }
+
+
+  Future<void> onLocalDatabaseImported() async {
+    debugPrint("🟡 [IMPORT] onLocalDatabaseImported() called");
+
+    isLoading = true;
+    notifyListeners();
+
+    try {
+      final db = DatabaseManager.instance.db;
+
+      // 🔑 CRITICAL FLAG
+      databaseFound = true;
+
+      debugPrint("🟢 [IMPORT] databaseFound = $databaseFound");
+
+      // Reload Db_Info
+      final info = await db.select(db.dbInfoTable).get();
+
+      if (info.isNotEmpty) {
+        dbEmail = info.first.emailAddress;
+        dbName = info.first.databaseName;
+      }
+
+      debugPrint("🟢 [IMPORT] dbEmail from DB = $dbEmail");
+      debugPrint("🟢 [IMPORT] loggedInUser.email = ${loggedInUser.email}");
+
+      emailMatch = dbEmail != null &&
+          dbEmail!.trim().toLowerCase() ==
+              loggedInUser.email.trim().toLowerCase();
+
+      debugPrint("🟢 [IMPORT] emailMatch = $emailMatch");
+      debugPrint("🟢 [IMPORT] isSubscriptionExpired = $isSubscriptionExpired");
+
+      // FINAL DECISION
+      if (!databaseFound) {
+        debugPrint("🔴 [IMPORT] No database → restricted");
+        isRestricted = true;
+      } else if (!emailMatch) {
+        debugPrint("🔴 [IMPORT] Email mismatch → restricted");
+        isRestricted = true;
+      } else if (isSubscriptionExpired) {
+        debugPrint("🔴 [IMPORT] Paid plan expired → restricted");
+        isRestricted = true;
+      } else {
+        debugPrint("🟢 [IMPORT] FREE or active plan → restriction removed");
+        isRestricted = false;
+      }
+
+      debugPrint("🔴 [IMPORT] FINAL isRestricted = $isRestricted");
+    } catch (e, st) {
+      debugPrint("❌ [IMPORT] ERROR: $e");
+      debugPrintStack(stackTrace: st);
+      isRestricted = true;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+      debugPrint("✅ [IMPORT] onLocalDatabaseImported() finished");
+    }
+  }
+
+  /// 🆓 Detect FREE plan
+  bool get isFreePlan {
+    final text = loggedInUser.planStatus?.statusText.toLowerCase() ?? "";
+    return text.contains("free");
+  }
+
+  /// 💰 Paid plan = not free
+  bool get isPaidPlan => !isFreePlan;
 }

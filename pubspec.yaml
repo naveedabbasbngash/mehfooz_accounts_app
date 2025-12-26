@@ -58,6 +58,8 @@ dependencies:
   lottie: ^3.3.2
   async: ^2.13.0
   connectivity_plus: ^7.0.0
+  flutter_native_splash: ^2.4.7
+  country_flags: ^4.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -71,6 +73,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.10.4
   drift_dev: ^2.29.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -87,6 +90,7 @@ flutter:
   assets:
     - assets/lang/
     - assets/fonts/
+    - assets/icon/
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see
@@ -114,3 +118,21 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/app_icon.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true
+
+flutter_native_splash:
+  color: "ffffff"   # your brand background color
+  image: assets/icon/splash_icon.png
+
+  android: true
+  ios: true
+  web: false
+
+  android_12:
+    color: "#ffffff"
+    image: assets/icon/splash_icon.png

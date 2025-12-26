@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
 import 'package:async/async.dart';
@@ -9,22 +8,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../repository/sync/sync_repository.dart';
 import '../../services/sync/sync_service.dart';
 import '../../data/local/app_database.dart';
-import '../../data/local/database_manager.dart';
 
-/// =============================================================
-/// Auto Sync Interval Options (TOP LEVEL)
-/// =============================================================
-enum AutoSyncInterval {
-  off,
-  sec30,
-  min2,
-  min5,
-  min20,
-}
+enum AutoSyncInterval { off, sec30, min2, min5, min20 }
 
-/// =============================================================
-/// Sync History Entry
-/// =============================================================
 class SyncLogEntry {
   final DateTime timestamp;
   final bool success;
@@ -37,52 +23,107 @@ class SyncLogEntry {
   });
 }
 
-/// =============================================================
-/// Sync ViewModel
-/// =============================================================
 class SyncViewModel extends ChangeNotifier {
   final SyncService syncService;
   final Logger _log = Logger();
 
+  SyncViewModel({required this.syncService});
+
+  // 🔔 Callback for Home/Profile refresh
+  VoidCallback? onActivationChanged;
+
+  // ─────────────────────────────────────────────
+  // CORE STATE
+  // ─────────────────────────────────────────────
   SyncRepository? syncRepo;
+  String? _userEmail;
 
   bool isSyncing = false;
   bool isBackgroundSync = false;
-
   double syncProgress = 0.0;
   String lastMessage = '';
   DateTime? lastSyncedTime;
 
-  final List<SyncLogEntry> history = [];
-
-  /// 🔁 Auto sync
-  AutoSyncInterval autoSyncInterval = AutoSyncInterval.min5;
+  CancelableOperation<void>? _activeSync;
   Timer? _autoSyncTimer;
 
-  CancelableOperation<void>? _activeSync;
+  // ─────────────────────────────────────────────
+  // 🔐 PERMISSIONS (SOURCE OF TRUTH)
+  // ─────────────────────────────────────────────
 
-  static const _prefKey = "auto_sync_interval";
+  /// 🔑 SERVER DECIDES THIS (canSync from API)
+  bool _adminCanSync = false;
+
+  /// 📦 Local DB imported at least once
+  bool _hasLocalImport = false;
+
+  // ─────────────────────────────────────────────
+  // PREF KEYS
+  // ─────────────────────────────────────────────
+  static const _kLocalImportPrefix = "has_local_import_";
+  static const _kAutoSyncKeyPrefix = "auto_sync_interval_";
+
+  // ─────────────────────────────────────────────
+  // AUTO SYNC
+  // ─────────────────────────────────────────────
+  AutoSyncInterval autoSyncInterval = AutoSyncInterval.min5;
   static const int _maxRetries = 3;
   static const Duration _timeout = Duration(seconds: 30);
 
-  SyncViewModel({required this.syncService});
+  // ─────────────────────────────────────────────
+  // CONFIGURE USER (CALLED ON LOGIN ONLY)
+  // ─────────────────────────────────────────────
+  Future<void> configureForUser({
+    required String email,
+    required bool adminCanSync,
+  }) async {
+    _userEmail = email.trim().toLowerCase();
+    _adminCanSync = adminCanSync;
 
-  // ------------------------------------------------------------
-  // DB Attach
-  // ------------------------------------------------------------
+    _log.i("🔐 Admin sync permission = $_adminCanSync");
+
+    final prefs = await SharedPreferences.getInstance();
+
+    _hasLocalImport =
+        prefs.getBool("$_kLocalImportPrefix$_userEmail") ?? false;
+
+    await _loadAutoSyncSetting();
+    _restartAutoSync();
+    notifyListeners();
+  }
+
+  // ─────────────────────────────────────────────
+  // DB ATTACH
+  // ─────────────────────────────────────────────
   void attachDatabase(AppDatabase db) {
-    syncRepo = SyncRepository(db);
-    restoreAutoSync();
+    syncRepo = SyncRepository(db); // ✅ always replace
+    _log.i("🔗 SyncRepository attached/replaced");
+    _restartAutoSync();
     notifyListeners();
   }
 
   bool get isReady => syncRepo != null;
 
-  // ------------------------------------------------------------
-  // Auto Sync Helpers
-  // ------------------------------------------------------------
-  bool get isAutoSyncEnabled => autoSyncInterval != AutoSyncInterval.off;
+  // ─────────────────────────────────────────────
+  // 🔒 FINAL SYNC GATE (ONLY PLACE)
+  // ─────────────────────────────────────────────
+  bool get canSync {
+    if (!_adminCanSync) return false;
+    if (!_hasLocalImport) return false;
+    if (!isReady) return false;
+    return true;
+  }
 
+  String get syncBlockReason {
+    if (!_adminCanSync) return "🔒 Sync disabled by admin";
+    if (!_hasLocalImport) return "🟠 Import local database to enable sync";
+    if (!isReady) return "⚠ Database not ready";
+    return "";
+  }
+
+  // ─────────────────────────────────────────────
+  // AUTO SYNC
+  // ─────────────────────────────────────────────
   Duration? get autoSyncDuration {
     switch (autoSyncInterval) {
       case AutoSyncInterval.sec30:
@@ -98,7 +139,112 @@ class SyncViewModel extends ChangeNotifier {
     }
   }
 
-  String get autoSyncLabel {
+  Future<void> _loadAutoSyncSetting() async {
+    if (_userEmail == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getInt("$_kAutoSyncKeyPrefix$_userEmail");
+    if (raw != null) {
+      autoSyncInterval = AutoSyncInterval.values[raw];
+    }
+  }
+
+  void _restartAutoSync() {
+    _autoSyncTimer?.cancel();
+
+    final d = autoSyncDuration;
+    if (d == null || !canSync) {
+      _log.w("⛔ Auto-sync blocked → $syncBlockReason");
+      return;
+    }
+
+    _autoSyncTimer = Timer.periodic(d, (_) {
+      if (!isSyncing) syncNow(silent: true);
+    });
+  }
+
+  // ─────────────────────────────────────────────
+  // MANUAL SYNC
+  // ─────────────────────────────────────────────
+  Future<void> syncNow({bool silent = false}) async {
+    if (!canSync) {
+      _log.w("⛔ Sync blocked → $syncBlockReason");
+      _setState(syncing: false, progress: 0, message: syncBlockReason);
+      return;
+    }
+
+    if (isSyncing) return;
+    if (!await _hasNetwork()) return;
+
+    isBackgroundSync = silent;
+
+    _activeSync = CancelableOperation.fromFuture(
+      _runWithRetry(_userEmail!),
+    );
+
+    await _activeSync!.value;
+    isBackgroundSync = false;
+  }
+
+  // ─────────────────────────────────────────────
+  // SYNC FLOW
+  // ─────────────────────────────────────────────
+  Future<void> _runWithRetry(String email) async {
+    for (int i = 0; i < _maxRetries; i++) {
+      try {
+        await _runSyncFlow(email).timeout(_timeout);
+        return;
+      } catch (_) {
+        if (i == _maxRetries - 1) rethrow;
+        await Future.delayed(Duration(seconds: 2 << i));
+      }
+    }
+  }
+
+  Future<void> _runSyncFlow(String email) async {
+    _setState(syncing: true, progress: 0.1, message: "Starting sync…");
+
+    final batch = await syncService.pullForMobile(email: email);
+
+    if (batch == null) {
+      lastSyncedTime = DateTime.now();
+      _setState(syncing: false, progress: 1, message: "Nothing to update");
+      return;
+    }
+
+    _setState(syncing: true, progress: 0.6, message: "Applying updates…");
+
+    final ok = await syncRepo!.applyBatch(batch);
+    if (!ok) throw Exception("Apply failed");
+
+    await syncService.ackBatch(
+      email: email,
+      batchId: batch.batchId,
+      success: true,
+    );
+
+    lastSyncedTime = DateTime.now();
+    _setState(syncing: false, progress: 1, message: "✔ Sync complete");
+  }
+
+  // ─────────────────────────────────────────────
+  // IMPORT FLAG (IMPORT ≠ SYNC PERMISSION)
+  // ─────────────────────────────────────────────
+  Future<void> markLocalImportDone() async {
+    if (_userEmail == null) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool("$_kLocalImportPrefix$_userEmail", true);
+
+    _hasLocalImport = true;
+    _restartAutoSync();
+    notifyListeners();
+  }
+
+  // ─────────────────────────────────────────────
+  // UI HELPERS
+  // ─────────────────────────────────────────────
+  String get labelForInterval {
     switch (autoSyncInterval) {
       case AutoSyncInterval.off:
         return "Off";
@@ -113,159 +259,27 @@ class SyncViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> restoreAutoSync() async {
-    final prefs = await SharedPreferences.getInstance();
-    final index = prefs.getInt(_prefKey);
-    if (index != null && index < AutoSyncInterval.values.length) {
-      autoSyncInterval = AutoSyncInterval.values[index];
-    }
-    _restartAutoSync();
-    notifyListeners();
-  }
-
   Future<void> setAutoSyncInterval(AutoSyncInterval interval) async {
     autoSyncInterval = interval;
+    if (_userEmail == null) return;
+
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_prefKey, interval.index);
+    await prefs.setInt(
+      "$_kAutoSyncKeyPrefix$_userEmail",
+      autoSyncInterval.index,
+    );
+
     _restartAutoSync();
     notifyListeners();
   }
 
-  void _restartAutoSync() {
-    _autoSyncTimer?.cancel();
-    _autoSyncTimer = null;
-
-    final duration = autoSyncDuration;
-    if (duration == null || !isReady) return;
-
-    _autoSyncTimer = Timer.periodic(duration, (_) async {
-      if (!isSyncing) {
-        await syncNow(silent: true);
-      }
-    });
-  }
-
-  // ------------------------------------------------------------
-  // Network
-  // ------------------------------------------------------------
+  // ─────────────────────────────────────────────
+  // HELPERS
+  // ─────────────────────────────────────────────
   Future<bool> _hasNetwork() async {
-    final result = await Connectivity().checkConnectivity();
-    return result != ConnectivityResult.none;
+    return await Connectivity().checkConnectivity() != ConnectivityResult.none;
   }
 
-  // ------------------------------------------------------------
-  // Cancel Sync
-  // ------------------------------------------------------------
-  void cancelSync() {
-    if (_activeSync != null && !_activeSync!.isCompleted) {
-      _activeSync!.cancel();
-      _activeSync = null;
-
-      _setState(
-        syncing: false,
-        progress: 0,
-        message: "❌ Sync cancelled",
-      );
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Public Sync
-  // ------------------------------------------------------------
-  Future<void> syncNow({bool silent = false}) async {
-    if (!isReady || isSyncing) return;
-
-    if (!await _hasNetwork()) {
-      _setState(syncing: false, message: "❌ No internet connection");
-      return;
-    }
-
-    isBackgroundSync = silent;
-
-    _activeSync = CancelableOperation.fromFuture(
-      _runWithRetry(),
-      onCancel: () => _log.w("⛔ Sync cancelled"),
-    );
-
-    try {
-      await _activeSync!.value;
-    } finally {
-      _activeSync = null;
-      isBackgroundSync = false;
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Retry Wrapper
-  // ------------------------------------------------------------
-  Future<void> _runWithRetry() async {
-    int attempt = 0;
-
-    while (attempt < _maxRetries) {
-      try {
-        await _runSyncFlow().timeout(_timeout);
-        return;
-      } catch (e) {
-        attempt++;
-        if (attempt >= _maxRetries) {
-          _setState(
-            syncing: false,
-            progress: 0,
-            message: "❌ Sync failed after retries",
-          );
-          return;
-        }
-        final delay = Duration(seconds: 2 << attempt);
-        await Future.delayed(delay);
-      }
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Core Sync Flow
-  // ------------------------------------------------------------
-  Future<void> _runSyncFlow() async {
-    _setState(syncing: true, progress: 0.05, message: "Starting sync...");
-
-    final email = await _readEmail();
-    if (email == null) {
-      _setState(syncing: false, message: "❌ No email in Db_Info");
-      return;
-    }
-
-    _setState(syncing: true, progress: 0.2, message: "Pulling batch for $email...");
-
-    final batch = await syncService.pullForMobile(email: email);
-    if (batch == null) {
-      _setState(syncing: false, progress: 1, message: "✔ Nothing to sync");
-      return;
-    }
-
-    _setState(syncing: true, progress: 0.5, message: "Applying batch...");
-
-    final ok = await syncRepo!.applyBatch(batch);
-    if (!ok) {
-      await syncService.ackBatch(
-        email: email,
-        batchId: batch.batchId,
-        success: false,
-      );
-      throw Exception("Apply batch failed");
-    }
-
-    _setState(syncing: true, progress: 0.8, message: "Sending ACK...");
-
-    await syncService.ackBatch(
-      email: email,
-      batchId: batch.batchId,
-      success: true,
-    );
-
-    lastSyncedTime = DateTime.now();
-    _setState(syncing: false, progress: 1, message: "✔ Sync complete");
-  }
-
-  // ------------------------------------------------------------
   void _setState({
     required bool syncing,
     double? progress,
@@ -276,26 +290,25 @@ class SyncViewModel extends ChangeNotifier {
 
     if (!isBackgroundSync && message != null) {
       lastMessage = message;
-      history.insert(
-        0,
-        SyncLogEntry(
-          timestamp: DateTime.now(),
-          success: !message.startsWith("❌"),
-          message: message,
-        ),
-      );
+      notifyListeners();
+
+      Future.delayed(const Duration(seconds: 3), () {
+        if (lastMessage == message) {
+          lastMessage = '';
+          notifyListeners();
+        }
+      });
+      return;
     }
 
     notifyListeners();
   }
 
-  Future<String?> _readEmail() async {
-    try {
-      final db = DatabaseManager.instance.db;
-      final rows = await db.select(db.dbInfoTable).get();
-      return rows.isEmpty ? null : rows.first.emailAddress;
-    } catch (_) {
-      return null;
+  void cancelSync() {
+    if (_activeSync != null && !_activeSync!.isCompleted) {
+      _activeSync!.cancel();
+      _activeSync = null;
+      _setState(syncing: false, progress: 0, message: "❌ Sync cancelled");
     }
   }
 

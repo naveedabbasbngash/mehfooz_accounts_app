@@ -6,24 +6,45 @@ import 'package:intl/intl.dart';
 import '../../model/ledger_models.dart';
 import '../../repository/transactions_repository.dart';
 import '../../data/local/database_manager.dart';
+import '../../services/global_state.dart';
 
 class LedgerFilterViewModel extends ChangeNotifier {
-  final _repo = TransactionsRepository(DatabaseManager.instance.db);
+  final TransactionsRepository _repo =
+  TransactionsRepository(DatabaseManager.instance.db);
 
+  // =========================================================
+  // STATE
+  // =========================================================
   List<String> currencies = [];
   List<String> accountSuggestions = [];
 
   bool loading = false;
 
+  int get _companyId => GlobalState.instance.companyId;
+
   // =========================================================
-  // Load currencies (same as Kotlin loadCurrencies)
+  // LOAD CURRENCIES — COMPANY SCOPED ✅
   // =========================================================
   Future<void> loadCurrencies() async {
-    final result = await DatabaseManager.instance.db.customSelect(
-      'SELECT AccTypeName FROM AccType ORDER BY AccTypeName COLLATE NOCASE;',
+    final rows = await DatabaseManager.instance.db.customSelect(
+      '''
+      SELECT DISTINCT at.AccTypeName
+      FROM AccType at
+      INNER JOIN Transactions_P tp
+        ON tp.AccTypeID = at.AccTypeID
+      WHERE tp.CompanyID = ?1
+      ORDER BY at.AccTypeName COLLATE NOCASE;
+      ''',
+      variables: [
+        Variable.withInt(_companyId),
+      ],
+      readsFrom: {
+        DatabaseManager.instance.db.accType,
+        DatabaseManager.instance.db.transactionsP,
+      },
     ).get();
 
-    currencies = result
+    currencies = rows
         .map((r) => (r.data['AccTypeName'] as String).trim())
         .where((e) => e.isNotEmpty)
         .toList();
@@ -32,7 +53,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
   }
 
   // =========================================================
-  // Search accounts (like Kotlin searchAccounts)
+  // SEARCH ACCOUNTS — COMPANY SCOPED ✅
   // =========================================================
   Future<void> searchAccounts(String q) async {
     if (q.trim().isEmpty) {
@@ -47,10 +68,18 @@ class LedgerFilterViewModel extends ChangeNotifier {
       '''
       SELECT AccID, Name
       FROM Acc_Personal
-      WHERE Name LIKE ?1 ESCAPE '\\'
+      WHERE CompanyID = ?1
+        AND Name LIKE ?2 ESCAPE '\\'
+      ORDER BY Name COLLATE NOCASE
       LIMIT 25
       ''',
-      variables: [Variable.withString(like)],
+      variables: [
+        Variable.withInt(_companyId),
+        Variable.withString(like),
+      ],
+      readsFrom: {
+        DatabaseManager.instance.db.accPersonal,
+      },
     ).get();
 
     accountSuggestions =
@@ -60,25 +89,27 @@ class LedgerFilterViewModel extends ChangeNotifier {
   }
 
   // =========================================================
-  // Resolve Account ID (Kotlin resolveAccId)
+  // RESOLVE ACCOUNT ID — COMPANY SAFE ✅ FIXED
   // =========================================================
   Future<int?> resolveAccId(String name) async {
-    final exact = await _repo.resolveAccIdExact(name);
-    if (exact != null) return exact;
-
-    final loose = await _repo.resolveAccIdLoose(name);
-    return loose;
+    return _repo.findAccIdByExactNameLoose(
+      companyId: _companyId,
+      name: name,
+    );
   }
 
   // =========================================================
-  // Resolve Currency Type ID (Kotlin resolveAccTypeId)
+  // RESOLVE CURRENCY TYPE ID — COMPANY SAFE ✅ FIXED
   // =========================================================
   Future<int?> resolveAccTypeId(String currency) async {
-    return await _repo.findAccTypeIdByName(currency);
+    return _repo.resolveAccTypeIdByName(
+      companyId: _companyId,
+      currencyName: currency,
+    );
   }
 
   // =========================================================
-  // Fetch Ledger + Opening balance (Kotlin fetchLedgerData)
+  // LOAD LEDGER (OPENING + ROWS) — COMPANY SCOPED ✅
   // =========================================================
   Future<LedgerResult?> loadLedger({
     required String accountName,
@@ -98,12 +129,18 @@ class LedgerFilterViewModel extends ChangeNotifier {
       return null;
     }
 
+    // -------------------------
+    // OPENING BALANCE
+    // -------------------------
     final opening = await _repo.ledgerOpeningBalance(
       accId: accId,
       accTypeId: accTypeId,
       fromDate: fromDate,
     );
 
+    // -------------------------
+    // LEDGER ROWS
+    // -------------------------
     final rowsRaw = await _repo.fetchLedgerRowsRaw(
       accId: accId,
       accTypeId: accTypeId,
@@ -119,8 +156,8 @@ class LedgerFilterViewModel extends ChangeNotifier {
         voucherNo: "${e['voucherNo']}",
         tDate: dateParser.parse(d),
         description: e['description'] ?? '',
-        dr: e['dr'] as int,
-        cr: e['cr'] as int,
+        dr: (e['dr'] as int?) ?? 0,
+        cr: (e['cr'] as int?) ?? 0,
       );
     }).toList();
 

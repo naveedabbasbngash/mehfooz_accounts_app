@@ -1,26 +1,35 @@
 // lib/main.dart
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
-import 'package:mehfooz_accounts_app/services/global_state.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'firebase_options.dart';
 import 'model/user_model.dart';
 import 'services/auth_service.dart';
+import 'services/global_state.dart';
+
 import 'ui/auth/auth_screen.dart';
 import 'ui/home/home_wrapper.dart';
 
 import 'viewmodel/home/home_view_model.dart';
 import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/sync/sync_viewmodel.dart';
-import 'services/sync/sync_service.dart';
 
+import 'services/sync/sync_service.dart';
 import 'data/local/database_manager.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 🔥 REQUIRED
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   await EasyLocalization.ensureInitialized();
 
   runApp(
@@ -41,7 +50,7 @@ class MahfoozApp extends StatefulWidget {
   const MahfoozApp({super.key});
 
   @override
-  MahfoozAppState createState() => MahfoozAppState();
+  State<MahfoozApp> createState() => MahfoozAppState();
 }
 
 class MahfoozAppState extends State<MahfoozApp> {
@@ -58,45 +67,54 @@ class MahfoozAppState extends State<MahfoozApp> {
     _loadUser();
   }
 
+  // ─────────────────────────────────────────────
+  // LOAD USER + DB STATE
+  // ─────────────────────────────────────────────
   Future<void> _loadUser() async {
     _user = await AuthService.loadSavedUser();
 
     if (_user != null && _user!.isLogin == 1) {
-      _userDbExists = await DatabaseManager.instance
-          .restoreDatabaseForUser(_user!.email);
+      _userDbExists =
+      await DatabaseManager.instance.restoreDatabaseForUser(_user!.email);
     }
 
     setState(() => _loading = false);
   }
 
-  /// 🔁 Called by logout (from HomeWrapper)
+  // ─────────────────────────────────────────────
+  // LOGOUT RESET
+  // ─────────────────────────────────────────────
   void resetUser() async {
     _userDbExists = false;
     _loading = true;
     setState(() {});
 
-    // Reload user & DB info fresh from disk
     await _loadUser();
 
     _loading = false;
     setState(() {});
   }
 
+  // ─────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return const MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(body: Center(child: CircularProgressIndicator())),
+        home: Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
       );
     }
 
-    final isLoggedIn = _user != null && _user!.isLogin == 1;
+    final bool isLoggedIn = _user != null && _user!.isLogin == 1;
 
     return MultiProvider(
       key: ValueKey(_user?.email ?? "no_user"),
       providers: [
-        // 🔹 Home VM
+        // ─── Home VM
         ChangeNotifierProvider(
           create: (_) => HomeViewModel(
             navigatorKey: _navigatorKey,
@@ -104,7 +122,7 @@ class MahfoozAppState extends State<MahfoozApp> {
           ),
         ),
 
-        // 🔹 Sync VM (only creates service, DB is attached later)
+        // ─── Sync VM
         ChangeNotifierProvider(
           create: (_) => SyncViewModel(
             syncService: SyncService(
@@ -113,26 +131,29 @@ class MahfoozAppState extends State<MahfoozApp> {
           ),
         ),
 
-        // 🔹 Profile VM (only when logged in)
+        // ─── Profile VM (only when logged in)
         if (isLoggedIn)
           ChangeNotifierProvider(
             create: (_) => ProfileViewModel(
-              loggedInUser: _user!, // real logged-in user
+              loggedInUser: _user!,
             ),
           ),
       ],
       child: Builder(
         builder: (context) {
-          // ⭐ IMPORTANT: connect HomeViewModel ↔ SyncViewModel here
           final homeVM = context.read<HomeViewModel>();
           final syncVM = context.read<SyncViewModel>();
-          homeVM.registerSyncVM(syncVM);
+
+          // 🔗 CONNECT HOME ↔ SYNC (PASS USER!)
+          if (_user != null) {
+            homeVM.registerSyncVM(syncVM, _user!);
+          }
 
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             navigatorKey: _navigatorKey,
 
-            // EasyLocalization hookup
+            // 🌍 Localization
             locale: context.locale,
             supportedLocales: context.supportedLocales,
             localizationsDelegates: context.localizationDelegates,
@@ -150,24 +171,22 @@ class MahfoozAppState extends State<MahfoozApp> {
     );
   }
 
+  // ─────────────────────────────────────────────
+  // HARD RESET (SAFETY)
+  // ─────────────────────────────────────────────
   Future<void> hardResetSession() async {
-    // 1) Reset DB (prevents drift reusing old user DB)
     await DatabaseManager.instance.reset();
 
-    // 2) Reset GlobalState (you must add reset() in GlobalState, see below)
     try {
       GlobalState.instance.reset();
     } catch (_) {}
 
-    // 3) Clear non-user-scoped prefs
-    //    (These keys caused leakage across accounts)
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove("selected_company_id");
       await prefs.remove("profile_is_restricted");
     } catch (_) {}
 
-    // 4) Reset in-memory app state
     _user = null;
     _userDbExists = false;
   }

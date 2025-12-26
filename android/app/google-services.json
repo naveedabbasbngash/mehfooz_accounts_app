@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "800232142357",
+    "project_id": "mahfooz-acocunts-app",
+    "storage_bucket": "mahfooz-acocunts-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:800232142357:android:ffd585f4e0453ef4a2801c",
+        "android_client_info": {
+          "package_name": "www.mahfooz.account.app.mehfooz_accounts_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "800232142357-c20lf2tjt81p1u8squ1ii2dvpv1kdd4g.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "www.mahfooz.account.app.mehfooz_accounts_app",
+            "certificate_hash": "16b35794ad4aded947bcec34a903e93f10fbda88"
+          }
+        },
+        {
+          "client_id": "800232142357-rvl2rpvongbct6vtafecct2rmva1vng9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnh4xTm_UAcgY8QH2xH7HJw3lix0DU4PE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "800232142357-rvl2rpvongbct6vtafecct2rmva1vng9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "www.mahfooz.account.app.mehfoozAccountsApp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:800232142357:android:9bf64fc03e9e897aa2801c",
+        "android_client_info": {
+          "package_name": "www.mehfoozapp.com.mahfooz_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "800232142357-eqkpdtjbjr0018le7ctsgika5521faq5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "www.mehfoozapp.com.mahfooz_app",
+            "certificate_hash": "16b35794ad4aded947bcec34a903e93f10fbda88"
+          }
+        },
+        {
+          "client_id": "800232142357-rvl2rpvongbct6vtafecct2rmva1vng9.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAnh4xTm_UAcgY8QH2xH7HJw3lix0DU4PE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "800232142357-rvl2rpvongbct6vtafecct2rmva1vng9.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "www.mahfooz.account.app.mehfoozAccountsApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

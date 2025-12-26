@@ -1,5 +1,3 @@
-// lib/ui/home/home_wrapper.dart
-
 import 'dart:async';
 import 'dart:io';
 
@@ -18,6 +16,7 @@ import '../../theme/app_colors.dart';
 import '../../viewmodel/home/home_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 
+import '../../viewmodel/sync/sync_viewmodel.dart';
 import '../drawer/drawer_menu.dart';
 import '../profile/profile_screen.dart';
 import '../reports/reports.dart';
@@ -31,14 +30,15 @@ import '../../services/logging/logger_service.dart';
 class HomeWrapper extends StatefulWidget {
   final UserModel user;
   final GlobalKey<SliderDrawerState> sliderDrawerKey;
-
   final int initialTabIndex;
+  final Future<Null> Function()? onLogoutReset;
 
   const HomeWrapper({
     super.key,
     required this.user,
     required this.sliderDrawerKey,
-    this.initialTabIndex = 0,
+    required this.initialTabIndex,
+    this.onLogoutReset,
   });
 
   @override
@@ -51,7 +51,12 @@ class _HomeWrapperState extends State<HomeWrapper> {
   late int _pageIndex = widget.initialTabIndex;
   bool _initDone = false;
 
-  final List<String> _titles = ["Home", "Transaction", "Reports", "Profile"];
+  final List<String> _titles = [
+    "Home",
+    "Transaction",
+    "Reports",
+    "Profile",
+  ];
 
   final List<Widget> _screens = const [
     HomeScreenContent(),
@@ -75,11 +80,16 @@ class _HomeWrapperState extends State<HomeWrapper> {
     Future.microtask(() async {
       final homeVM = context.read<HomeViewModel>();
       final profileVM = context.read<ProfileViewModel>();
+      final syncVM = context.read<SyncViewModel>();
+
+      // 🔗 CONNECT ACTIVATION → PROFILE
+      syncVM.onActivationChanged = () async {
+        await profileVM.refresh();
+      };
 
       await homeVM.init(user: widget.user);
       await profileVM.refresh();
 
-      // 🚨 Always force Profile tab if restricted
       if (profileVM.isRestricted && mounted) {
         setState(() => _pageIndex = 3);
       }
@@ -100,9 +110,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     if (!Platform.isAndroid) return;
 
     _intentStream =
-        ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-          _handleImport(files);
-        });
+        ReceiveSharingIntent.instance.getMediaStream().listen(_handleImport);
 
     ReceiveSharingIntent.instance.getInitialMedia().then((files) async {
       if (files.isNotEmpty) {
@@ -137,7 +145,11 @@ class _HomeWrapperState extends State<HomeWrapper> {
 
       await context
           .read<HomeViewModel>()
-          .importDatabase(savedPath, widget.user);
+          .confirmAndImportDatabase(
+        context: context,
+        inputPath: savedPath,
+        user: widget.user,
+      );
 
       await context.read<ProfileViewModel>().refresh();
 
@@ -154,10 +166,32 @@ class _HomeWrapperState extends State<HomeWrapper> {
     final path = await FilePickerService.pickSqliteFile();
     if (path == null) return;
 
-    await context.read<HomeViewModel>().importDatabase(path, widget.user);
+    await context.read<HomeViewModel>().confirmAndImportDatabase(
+      context: context,
+      inputPath: path,
+      user: widget.user,
+    );
     await context.read<ProfileViewModel>().refresh();
 
     if (mounted) setState(() => _pageIndex = 3);
+  }
+
+  // ============================================================
+  // DRAWER ITEM CLICK (FIX-1 APPLIED)
+  // ============================================================
+  void _onDrawerItemClick(int index) {
+    widget.sliderDrawerKey.currentState?.closeSlider();
+
+    final isRestricted = context.read<ProfileViewModel>().isRestricted;
+
+    if (isRestricted && index != 3) {
+      _restrictedMessage();
+      return;
+    }
+
+    if (_pageIndex == index) return;
+
+    setState(() => _pageIndex = index);
   }
 
   // ============================================================
@@ -180,8 +214,10 @@ class _HomeWrapperState extends State<HomeWrapper> {
               backgroundColor: _appBarColor,
               title: Text(
                 _titles[_pageIndex],
-                style:
-                const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               trailing: PopupMenuButton<String>(
                 onSelected: (value) {
@@ -190,7 +226,8 @@ class _HomeWrapperState extends State<HomeWrapper> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                          builder: (_) => const SettingsWrapper()),
+                        builder: (_) => const SettingsWrapper(),
+                      ),
                     );
                   }
                 },
@@ -210,7 +247,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
           slider: DrawerMenu(
             currentPageIndex: _pageIndex,
             drawerKey: widget.sliderDrawerKey,
-            onItemClick: _onDrawerItemClick,
+            onItemClick: _onDrawerItemClick, // ✅ FIX-1
             user: widget.user,
           ),
           child: _screens[_pageIndex],
@@ -257,59 +294,6 @@ class _HomeWrapperState extends State<HomeWrapper> {
     }
   }
 
-  void _onDrawerItemClick(String title) {
-    widget.sliderDrawerKey.currentState?.closeSlider();
-
-    final isRestricted = context.read<ProfileViewModel>().isRestricted;
-
-    if (isRestricted && title != "Profile") {
-      _restrictedMessage();
-      return;
-    }
-
-    Future.delayed(const Duration(milliseconds: 200), () {
-      switch (title) {
-        case "Home":
-          setState(() => _pageIndex = 0);
-          break;
-        case "Search":
-          setState(() => _pageIndex = 1);
-          break;
-        case "Reports":
-          setState(() => _pageIndex = 2);
-          break;
-        case "Profile":
-          setState(() => _pageIndex = 3);
-          break;
-        case "Settings":
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const SettingsWrapper()),
-          );
-          break;
-        case "Logout":
-          _logout();
-          break;
-      }
-    });
-  }
-
-  Future<void> _logout() async {
-    // 1) signout + clear local saved user
-    await AuthService.logout();
-
-    // 2) HARD reset (DB + GlobalState + prefs)
-    final appState = context.findAncestorStateOfType<MahfoozAppState>();
-    await appState?.hardResetSession();
-
-    // 3) rebuild app state properly
-    appState?.resetUser();
-
-    if (!mounted) return;
-
-    // 4) go to login cleanly (no new MahfoozApp widget push)
-    Navigator.pushNamedAndRemoveUntil(context, '/', (_) => false);
-  }
 
   void _restrictedMessage() {
     ScaffoldMessenger.of(context).showSnackBar(

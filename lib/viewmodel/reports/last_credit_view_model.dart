@@ -1,5 +1,4 @@
 import 'dart:io';
-
 import 'package:flutter/foundation.dart';
 
 import '../../repository/transactions_repository.dart';
@@ -9,15 +8,21 @@ import '../../services/pdf/last_credit_pdf_service.dart';
 
 class LastCreditViewModel extends ChangeNotifier {
   final TransactionsRepository repo;
+  final int companyId; // 🔥 COMPANY CONTEXT
 
-  LastCreditViewModel({required this.repo});
+  LastCreditViewModel({
+    required this.repo,
+    required this.companyId,
+  });
 
   bool isLoading = false;
   String? error;
+
+  /// Currency names (AccTypeName)
   List<String> currencies = [];
 
   // ----------------------------------------------------------
-  // Load currencies (reuse Balance Matrix currencies)
+  // Load currencies (company-scoped)
   // ----------------------------------------------------------
   Future<void> loadCurrencies() async {
     isLoading = true;
@@ -25,7 +30,9 @@ class LastCreditViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final BalanceMatrixResult matrix = await repo.getBalanceMatrix();
+      final BalanceMatrixResult matrix =
+      await repo.getBalanceMatrix(companyId: companyId);
+
       currencies = matrix.currencies;
     } catch (e) {
       error = e.toString();
@@ -36,20 +43,31 @@ class LastCreditViewModel extends ChangeNotifier {
   }
 
   // ----------------------------------------------------------
-  // Internal helpers
+  // Resolve AccTypeID (currency) — ✅ CORRECT
   // ----------------------------------------------------------
   Future<int?> _resolveAccTypeId(String currencyName) {
-    return repo.resolveAccTypeIdByName(currencyName);
+    return repo.resolveAccTypeIdByName(
+      companyId: companyId,
+      currencyName: currencyName,
+    );
   }
 
+  // ----------------------------------------------------------
+  // Load last-credit rows (company-scoped)
+  // ----------------------------------------------------------
   Future<List<LastCreditRow>> _loadRows(int currencyId) {
-    return repo.getLastCreditSummary(currencyId: currencyId);
+    return repo.getLastCreditSummary(
+      companyId: companyId,
+      currencyId: currencyId,
+    );
   }
 
   // ----------------------------------------------------------
-  // PUBLIC: generate PDF for selected currency
+  // PUBLIC: Generate PDF for selected currency
   // ----------------------------------------------------------
-  Future<File?> generatePdf({required String currencyName}) async {
+  Future<File?> generatePdf({
+    required String currencyName,
+  }) async {
     try {
       final id = await _resolveAccTypeId(currencyName);
       if (id == null) {
@@ -57,14 +75,13 @@ class LastCreditViewModel extends ChangeNotifier {
       }
 
       final rows = await _loadRows(id);
-      if (rows.isEmpty) {
-        return null;
-      }
+      if (rows.isEmpty) return null;
 
       final file = await LastCreditPdfService.instance.render(
         currencyName: currencyName,
         rows: rows,
       );
+
       return file;
     } catch (e) {
       error = e.toString();

@@ -7,6 +7,7 @@ import '../../model/tx_filter.dart';
 import '../../model/tx_item_ui.dart';
 import '../../repository/transactions_repository.dart';
 import '../../data/local/database_manager.dart';
+import '../../services/global_state.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodel/transaction_view_model.dart';
 
@@ -22,9 +23,12 @@ class TransactionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final companyId = GlobalState.instance.companyId; // 🔥 FIX
+
     return ChangeNotifierProvider(
       create: (_) => TransactionsViewModel(
         repo: TransactionsRepository(DatabaseManager.instance.db),
+        companyId: companyId, // 🔥 PASS COMPANY
       ),
       child: const _TransactionScreenBody(),
     );
@@ -44,25 +48,23 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
 
   @override
   Widget build(BuildContext context) {
-    final vm = Provider.of<TransactionsViewModel>(context);
+    final vm = context.watch<TransactionsViewModel>();
 
     final softBg = const Color(0xFFF7F9FC);
     final isBalanceMode = vm.filter == TxFilter.balance;
 
     return Scaffold(
       backgroundColor: softBg,
-
       body: SafeArea(
         top: true,
         bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-
             const SizedBox(height: 20),
 
             // ------------------------------------------------------------
-            // SEARCH BAR (auto closes panel)
+            // SEARCH BAR
             // ------------------------------------------------------------
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -71,7 +73,6 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                 onChanged: vm.setSearch,
                 suggestions: vm.suggestions,
                 onFocus: () {
-                  // 🔥 AUTO CLOSE details panel when search focused
                   setState(() => showDetails = false);
                 },
               ),
@@ -106,15 +107,14 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
             const SizedBox(height: 10),
 
             // ------------------------------------------------------------
-            // MAIN CONTENT AREA
+            // MAIN CONTENT
             // ------------------------------------------------------------
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(22),
-                  ),
+                  borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(22)),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.05),
@@ -125,20 +125,6 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                 ),
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 260),
-                  switchInCurve: Curves.easeOut,
-                  switchOutCurve: Curves.easeIn,
-                  transitionBuilder: (child, anim) {
-                    return FadeTransition(
-                      opacity: anim,
-                      child: SlideTransition(
-                        position: Tween<Offset>(
-                          begin: const Offset(0, 0.03),
-                          end: Offset.zero,
-                        ).animate(anim),
-                        child: child,
-                      ),
-                    );
-                  },
                   child: isBalanceMode
                       ? BalanceList(
                     key: const ValueKey("BALANCE"),
@@ -148,22 +134,22 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                       : TxList(
                     key: const ValueKey("LIST"),
                     items: vm.items,
-                      onRowTap: (row) async {
-                        FocusScope.of(context).unfocus();     // close keyboard
-                        await Future.delayed(const Duration(milliseconds: 120));
-
-                        setState(() {
-                          selectedRow = row;
-                          showDetails = true;
-                        });
-                      }
-                      ),
+                    onRowTap: (row) async {
+                      FocusScope.of(context).unfocus();
+                      await Future.delayed(
+                          const Duration(milliseconds: 120));
+                      setState(() {
+                        selectedRow = row;
+                        showDetails = true;
+                      });
+                    },
+                  ),
                 ),
               ),
             ),
 
             // ------------------------------------------------------------
-            // DETAILS PANEL (closes automatically on search)
+            // DETAILS PANEL
             // ------------------------------------------------------------
             if (showDetails && selectedRow != null)
               SafeArea(
@@ -180,9 +166,9 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
     );
   }
 
-  // ==============================================================================
-  // DATE PICKER BOTTOM SHEET — UPDATED COLORS + FIXED NAV OVERLAP
-  // ==============================================================================
+  // ------------------------------------------------------------
+  // DATE PICKER
+  // ------------------------------------------------------------
   Future<void> _openDatePickerSheet(
       BuildContext context, TransactionsViewModel vm) async {
     final bottomPadding = MediaQuery.of(context).viewPadding.bottom;
@@ -195,7 +181,6 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
       ),
-
       builder: (_) {
         return SafeArea(
           top: false,
@@ -204,7 +189,6 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // HEADER
                 Text(
                   "Select Date",
                   style: TextStyle(
@@ -213,15 +197,12 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                     color: AppColors.textDark,
                   ),
                 ),
-
                 const SizedBox(height: 16),
 
-                // SINGLE DAY
                 ListTile(
                   leading: Icon(Icons.calendar_today_outlined,
                       color: AppColors.primary),
-                  title: Text("Pick single day",
-                      style: TextStyle(color: AppColors.textDark)),
+                  title: Text("Pick single day"),
                   onTap: () async {
                     Navigator.pop(context);
                     final picked = await showDatePicker(
@@ -238,11 +219,9 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                   },
                 ),
 
-                // RANGE PICKER
                 ListTile(
                   leading: Icon(Icons.date_range, color: AppColors.primary),
-                  title: Text("Pick date range",
-                      style: TextStyle(color: AppColors.textDark)),
+                  title: Text("Pick date range"),
                   onTap: () async {
                     Navigator.pop(context);
                     final picked = await showDateRangePicker(
@@ -250,12 +229,14 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                       firstDate: DateTime(2000),
                       lastDate: DateTime.now(),
                       initialDateRange: DateTimeRange(
-                        start: DateTime.now().subtract(const Duration(days: 3)),
+                        start:
+                        DateTime.now().subtract(const Duration(days: 3)),
                         end: DateTime.now(),
                       ),
                     );
                     if (picked != null) {
-                      final s = picked.start.toIso8601String().substring(0, 10);
+                      final s =
+                      picked.start.toIso8601String().substring(0, 10);
                       final e = picked.end.toIso8601String().substring(0, 10);
                       vm.setDateRange(s, e);
                       vm.setFilter(TxFilter.dateRange);
@@ -263,7 +244,6 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                   },
                 ),
 
-                // CLEAR
                 if (vm.startDate != null || vm.endDate != null)
                   ListTile(
                     leading: Icon(Icons.clear, color: AppColors.error),

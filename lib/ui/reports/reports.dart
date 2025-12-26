@@ -200,15 +200,15 @@ class _ReportsScreenBody extends StatelessWidget {
                       onTap: () {
                         Navigator.push(
                           context,
-                          MaterialPageRoute(
-                            builder: (_) => ChangeNotifierProvider(
-                              create: (_) => LastCreditViewModel(
-                                repo: TransactionsRepository(DatabaseManager.instance.db),
+                            MaterialPageRoute(
+                              builder: (_) => ChangeNotifierProvider(
+                                create: (_) => LastCreditViewModel(
+                                  repo: TransactionsRepository(DatabaseManager.instance.db),
+                                  companyId: GlobalState.instance.companyId, // ✅ FIX
+                                ),
+                                child: const LastCreditSummaryScreen(),
                               ),
-                              child: const LastCreditSummaryScreen(),
-                            ),
-                          ),
-                        );
+                            )                        );
                       },
                     ),
                   ],

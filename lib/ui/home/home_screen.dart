@@ -12,6 +12,8 @@ import '../../data/local/database_manager.dart';
 
 // Extracted Widgets
 import '../../viewmodel/home/not_paid_view_model.dart';
+import '../commons/confirm_action.dart';
+import '../commons/confirm_action_dialog.dart';
 import '../pending/pending_grouped_screen.dart';
 import 'widgets/cash_in_hand_card.dart';
 import 'widgets/acc1_summary_card.dart';
@@ -44,8 +46,22 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
       try {
         final svm = context.read<SyncViewModel>();
         if (!svm.isSyncing) {
-          await svm.syncNow();
-        }
+          showDialog(
+            context: context,
+            builder: (_) => ConfirmActionDialog(
+              action: ConfirmAction(
+                type: ConfirmActionType.manualSync,
+                title: "Sync Now",
+                message:
+                "This will sync local data with the server.\n\n"
+                    "Make sure your internet connection is stable.",
+                confirmText: "Sync",
+                onConfirm: () async {
+                  await svm.syncNow();
+                },
+              ),
+            ),
+          );        }
       } catch (_) {}
     });
   }

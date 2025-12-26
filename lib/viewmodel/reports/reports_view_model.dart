@@ -8,6 +8,7 @@ import '../../model/balance_matrix_result.dart';
 import '../../model/pending_row.dart';
 
 // PDF services
+import '../../services/global_state.dart';
 import '../../services/pdf/balance_pdf_service.dart';
 import '../../services/pdf/credit_pdf_service.dart';
 import '../../services/pdf/debit_pdf_service.dart';
@@ -61,12 +62,19 @@ class ReportsViewModel extends ChangeNotifier {
   // ----------------------------------------------------------------------
   // LOAD BALANCE MATRIX (for Balance, Debit reports)
   // ----------------------------------------------------------------------
+
+
   Future<void> loadBalanceMatrix() async {
     try {
       _ui = _ui.copyWith(loading: true, error: null);
       notifyListeners();
 
-      final BalanceMatrixResult result = await repo.getBalanceMatrix();
+      final companyId = GlobalState.instance.companyId;
+
+      print('🧪 BalanceMatrix → companyId=$companyId');
+
+      final BalanceMatrixResult result =
+      await repo.getBalanceMatrix(companyId: companyId);
 
       _ui = _ui.copyWith(
         loading: false,
@@ -78,9 +86,7 @@ class ReportsViewModel extends ChangeNotifier {
       _ui = _ui.copyWith(loading: false, error: e.toString());
       notifyListeners();
     }
-  }
-
-  // ----------------------------------------------------------------------
+  }  // ----------------------------------------------------------------------
   // BALANCE REPORT
   // ----------------------------------------------------------------------
   Future<File?> generateBalanceReport() async {

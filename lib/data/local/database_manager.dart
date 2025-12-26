@@ -15,25 +15,20 @@ class DatabaseManager {
 
   final Logger _log = Logger();
 
-  /// SINGLE active Drift instance at any time (for currently logged-in user only)
   static AppDatabase? _database;
 
-  /// Debug info only
   String? activeDbPath;
   String? activeUserEmail;
 
-  // =====================================================================
-  // SAFE getter
-  // =====================================================================
   AppDatabase get db {
     if (_database == null) {
-      throw Exception("❌ AppDatabase not loaded. Import or restore first.");
+      throw Exception("❌ AppDatabase not loaded.");
     }
     return _database!;
   }
 
   // =====================================================================
-  // 🔥 HARD RESET (logout / user switch)
+  // HARD RESET
   // =====================================================================
   Future<void> reset() async {
     _log.w("🧹 DatabaseManager.reset() called");
@@ -60,7 +55,6 @@ class DatabaseManager {
   Future<String> _getUserDbPath(String email) async {
     final dir = await getApplicationDocumentsDirectory();
     final safeEmail = email.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
-
     final folder = p.join(dir.path, "mahfooz_users");
     return p.join(folder, "db_$safeEmail.sqlite");
   }
@@ -76,7 +70,95 @@ class DatabaseManager {
   }
 
   // =====================================================================
-  // AUTO MIGRATION (per-file)
+  // ✅ NEW: Ensure base tables exist (EMPTY DB SUPPORT)
+  // =====================================================================
+  Future<void> _ensureBaseSchema(AppDatabase db) async {
+    // These are safe to run repeatedly.
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS Acc_Personal (
+        AccID INTEGER PRIMARY KEY,
+        RDate TEXT,
+        Name TEXT,
+        Phone TEXT,
+        Fax TEXT,
+        Address TEXT,
+        Description TEXT,
+        UAccName TEXT,
+        statusg TEXT,
+        UserID INTEGER,
+        CompanyID INTEGER,
+        WName TEXT,
+        IsSynced INTEGER DEFAULT 0,
+        UpdatedAt TEXT,
+        IsDeleted INTEGER DEFAULT 0
+      );
+    ''');
+
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS AccType (
+        AccTypeID INTEGER PRIMARY KEY,
+        AccTypeName TEXT,
+        AccTypeNameu TEXT,
+        FLAG TEXT,
+        IsSynced INTEGER DEFAULT 0,
+        UpdatedAt TEXT
+      );
+    ''');
+
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS Company (
+        CompanyID INTEGER PRIMARY KEY,
+        CompanyName TEXT,
+        Remarks TEXT
+      );
+    ''');
+
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS Db_Info (
+        email_address TEXT,
+        database_name TEXT
+      );
+    ''');
+
+    // You said now: VoucherNo is primary.
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS Transactions_P (
+        VoucherNo REAL PRIMARY KEY,
+        TDate TEXT,
+        AccID INTEGER,
+        AccTypeID INTEGER,
+        Description TEXT,
+        Dr REAL,
+        Cr REAL,
+        Status TEXT,
+        st TEXT,
+        updatestatus TEXT,
+        currencystatus TEXT,
+        cashstatus TEXT,
+        UserID INTEGER,
+        CompanyID INTEGER,
+        WName TEXT,
+        msgno TEXT,
+        hwls1 TEXT,
+        hwls TEXT,
+        advancemess TEXT,
+        cbal INTEGER,
+        cbal1 INTEGER,
+        TTIME TEXT,
+        PD TEXT,
+        msgno2 TEXT,
+        OTHERS TEXT,
+        IsSynced INTEGER DEFAULT 0,
+        UpdatedAt TEXT,
+        IsDeleted INTEGER DEFAULT 0
+      );
+    ''');
+
+    _log.i("✅ Base schema ensured (tables exist).");
+  }
+
+  // =====================================================================
+  // AUTO MIGRATION (columns)
   // =====================================================================
   Future<void> _ensureColumnExists(
       AppDatabase db,
@@ -116,7 +198,7 @@ class DatabaseManager {
   }
 
   // =====================================================================
-  // INTERNAL: Activate DB by path (for current user)
+  // INTERNAL: Activate DB by path
   // =====================================================================
   Future<void> _activateFromPath(String sqlitePath, {String? email}) async {
     final file = File(sqlitePath);
@@ -125,19 +207,24 @@ class DatabaseManager {
       throw Exception("❌ DB file does not exist: $sqlitePath");
     }
 
-    _log.i("🛠 Activating DB: $sqlitePath  for user: ${email ?? activeUserEmail}");
+    _log.i("🛠 Activating DB: $sqlitePath for user: ${email ?? activeUserEmail}");
 
-    // Close previous instance if any
+    // ✅ If a DB is open, close it here (extra safety)
     if (_database != null) {
+      _log.w("🔁 Reopening Drift DB (closing old connection first)");
       try {
         await _database!.close();
-      } catch (_) {}
+      } catch (e) {
+        _log.w("⚠ Failed to close old DB: $e");
+      }
       _database = null;
     }
 
     final executor = NativeDatabase(file, logStatements: false);
     final appDb = AppDatabase(executor);
 
+    // ✅ Only for empty DB support (ok to keep)
+    await _ensureBaseSchema(appDb);
     await _runAutoMigration(appDb);
 
     _database = appDb;
@@ -170,11 +257,21 @@ class DatabaseManager {
     await importedFile.copy(userDbPath);
     _log.i("📦 User DB stored → $userDbPath");
 
+    // ✅ CRITICAL: Always close & reopen Drift after file replacement
+    await reset();
     await _activateFromPath(userDbPath, email: email);
-  }
 
+    // ✅ DEBUG: confirm Db_Info after activation
+    try {
+      final info = await db.select(db.dbInfoTable).get();
+      _log.i("🧪 Db_Info after import activation → "
+          "rows=${info.length}, email=${info.isNotEmpty ? info.first.emailAddress : 'EMPTY'}");
+    } catch (e) {
+      _log.e("❌ Failed reading Db_Info after activation", error: e);
+    }
+  }
   // =====================================================================
-  // RESTORE USER DB (called on login / app start)
+  // ✅ RESTORE OR CREATE EMPTY (Decision A)
   // =====================================================================
   Future<bool> restoreDatabaseForUser(String email) async {
     await _ensureUserFolder();
@@ -182,17 +279,18 @@ class DatabaseManager {
     final userDbPath = await _getUserDbPath(email);
     final file = File(userDbPath);
 
+    activeUserEmail = email;
+
     if (!file.existsSync()) {
-      _log.w("⚠ No DB stored for user: $email");
-      activeUserEmail = email;
-      activeDbPath = null;
+      _log.w("⚠ No DB stored for user: $email → creating empty DB now");
 
-      // Ensure previous DB instance is closed
-      await reset();
-      // keep activeUserEmail for debug
-      activeUserEmail = email;
+      // create empty file
+      await file.create(recursive: true);
 
-      return false;
+      // activate it (this will create tables)
+      await _activateFromPath(userDbPath, email: email);
+
+      return true; // ✅ DB is now available
     }
 
     _log.i("📂 Restoring DB for user: $email → $userDbPath");
@@ -200,8 +298,6 @@ class DatabaseManager {
     return true;
   }
 
-  // =====================================================================
-  // CLEAR SPECIFIC USER DB (optional)
   // =====================================================================
   Future<void> clearUserDb(String email) async {
     final path = await _getUserDbPath(email);
@@ -218,9 +314,6 @@ class DatabaseManager {
     }
   }
 
-  // =====================================================================
-  // PREVIEW (WITHOUT AFFECTING ACTIVE DB)
-  // =====================================================================
   Future<AppDatabase> previewDatabase(String path) async {
     final file = File(path);
 

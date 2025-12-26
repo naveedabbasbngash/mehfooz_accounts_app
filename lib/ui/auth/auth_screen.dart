@@ -80,9 +80,13 @@ class _AuthBodyState extends State<_AuthBody>
       return;
     }
 
-    context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
+    // ✅ CORRECT: Access root app state
+    final appState = context.findAncestorStateOfType<MahfoozAppState>();
+    if (appState != null) {
+      await appState.hardResetSession();
+      appState.resetUser();
+    }
   }
-
   @override
   Widget build(BuildContext context) {
     final vm = context.watch<AuthViewModel>();
