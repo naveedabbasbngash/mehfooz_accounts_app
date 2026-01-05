@@ -196,19 +196,27 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
     try {
       final rows = groups.map((g) {
         return PendingRow(
-          voucherNo: 0,
+          voucherNo: g.voucherNo,
           dateIso: g.beginDate,
           pd: g.pd ?? "",
           msg: g.msgNo ?? "",
           sender: g.sender ?? "",
           receiver: g.receiver ?? "",
           description: "",
+
+          // ✅ SAFE double pass-through
           notPaidAmount: g.notPaidAmount,
           paidAmount: g.paidAmount,
           balance: g.balance,
+
           currency: g.accTypeName ?? "",
         );
       }).toList();
+
+      if (rows.isEmpty) {
+        _error("No data available for export");
+        return;
+      }
 
       final file = await PendingPdfService.instance.render(
         officeName: "Mahfooz Accounts",
@@ -217,11 +225,12 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
       );
 
       await OpenFilex.open(file.path);
-    } catch (e) {
-      _error("Failed to generate PDF: $e");
+    } catch (e, s) {
+      debugPrint("❌ ExportAll PDF error: $e");
+      debugPrintStack(stackTrace: s);
+      _error("Failed to generate PDF");
     }
   }
-
   // ============================================================
   // EXPORT SELECTED
   // ============================================================
@@ -229,19 +238,27 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
     try {
       final rows = _selectedRows.map((g) {
         return PendingRow(
-          voucherNo: 0,
+          voucherNo: g.voucherNo,
           dateIso: g.beginDate,
           pd: g.pd ?? "",
           msg: g.msgNo ?? "",
           sender: g.sender ?? "",
           receiver: g.receiver ?? "",
           description: "",
+
+          // ✅ SAFE double pass-through
           notPaidAmount: g.notPaidAmount,
           paidAmount: g.paidAmount,
           balance: g.balance,
+
           currency: g.accTypeName ?? "",
         );
       }).toList();
+
+      if (rows.isEmpty) {
+        _error("No selected rows to export");
+        return;
+      }
 
       final file = await PendingPdfService.instance.render(
         officeName: "Mahfooz Accounts",
@@ -250,8 +267,10 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
       );
 
       await OpenFilex.open(file.path);
-    } catch (e) {
-      _error("Failed to generate PDF: $e");
+    } catch (e, s) {
+      debugPrint("❌ ExportSelected PDF error: $e");
+      debugPrintStack(stackTrace: s);
+      _error("Failed to generate PDF");
     }
   }
 

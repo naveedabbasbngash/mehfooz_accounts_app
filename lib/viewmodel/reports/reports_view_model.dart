@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../repository/transactions_repository.dart';
-import '../../repository/pending_repository.dart';  // <-- NEW
+import '../../repository/pending_repository.dart';
 import '../../model/balance_row.dart';
 import '../../model/balance_matrix_result.dart';
 import '../../model/pending_row.dart';
@@ -14,16 +14,19 @@ import '../../services/pdf/credit_pdf_service.dart';
 import '../../services/pdf/debit_pdf_service.dart';
 import '../../services/pdf/pending_pdf_service.dart';
 
+/// =====================================================
+/// UI STATE
+/// =====================================================
 class ReportsUiState {
   final bool loading;
   final String? error;
 
   final List<String> currencies;
-  final List<BalanceRow> rows;     // For balance, debit, credit
-  final List<PendingRow> pending;  // For pending report
+  final List<BalanceRow> rows;
+  final List<PendingRow> pending;
 
   const ReportsUiState({
-    this.loading = false,
+    this.loading = false, // ✅ idle by default
     this.error,
     this.currencies = const [],
     this.rows = const [],
@@ -47,11 +50,15 @@ class ReportsUiState {
   }
 }
 
+/// =====================================================
+/// VIEW MODEL
+/// =====================================================
 class ReportsViewModel extends ChangeNotifier {
   final TransactionsRepository repo;
-  final PendingRepository pendingRepo; // <-- NEW REPO FOR PENDING ROWS
+  final PendingRepository pendingRepo;
 
-  ReportsUiState _ui = const ReportsUiState(loading: true);
+  // ✅ FIX 1: start idle
+  ReportsUiState _ui = const ReportsUiState();
   ReportsUiState get ui => _ui;
 
   ReportsViewModel({
@@ -59,38 +66,42 @@ class ReportsViewModel extends ChangeNotifier {
     required this.pendingRepo,
   });
 
-  // ----------------------------------------------------------------------
-  // LOAD BALANCE MATRIX (for Balance, Debit reports)
-  // ----------------------------------------------------------------------
+  // =====================================================
+  // INTERNAL LOADING HELPERS (simple & safe)
+  // =====================================================
+  void _startLoading() {
+    _ui = _ui.copyWith(loading: true, error: null);
+    notifyListeners();
+  }
 
+  void _stopLoading() {
+    _ui = _ui.copyWith(loading: false);
+    notifyListeners();
+  }
 
+  // =====================================================
+  // LOAD BALANCE MATRIX (LAZY, ONLY WHEN NEEDED)
+  // =====================================================
   Future<void> loadBalanceMatrix() async {
-    try {
-      _ui = _ui.copyWith(loading: true, error: null);
-      notifyListeners();
+    final companyId = GlobalState.instance.companyId;
+    if (companyId == null) return;
 
-      final companyId = GlobalState.instance.companyId;
+    final BalanceMatrixResult result =
+    await repo.getBalanceMatrix(companyId: companyId);
 
-      print('🧪 BalanceMatrix → companyId=$companyId');
+    _ui = _ui.copyWith(
+      currencies: result.currencies,
+      rows: result.rows,
+    );
+  }
 
-      final BalanceMatrixResult result =
-      await repo.getBalanceMatrix(companyId: companyId);
-
-      _ui = _ui.copyWith(
-        loading: false,
-        currencies: result.currencies,
-        rows: result.rows,
-      );
-      notifyListeners();
-    } catch (e) {
-      _ui = _ui.copyWith(loading: false, error: e.toString());
-      notifyListeners();
-    }
-  }  // ----------------------------------------------------------------------
+  // =====================================================
   // BALANCE REPORT
-  // ----------------------------------------------------------------------
+  // =====================================================
   Future<File?> generateBalanceReport() async {
     try {
+      _startLoading();
+
       if (_ui.rows.isEmpty || _ui.currencies.isEmpty) {
         await loadBalanceMatrix();
       }
@@ -102,16 +113,19 @@ class ReportsViewModel extends ChangeNotifier {
       );
     } catch (e) {
       _ui = _ui.copyWith(error: e.toString());
-      notifyListeners();
       return null;
+    } finally {
+      _stopLoading(); // ✅ always stop
     }
   }
 
-  // ----------------------------------------------------------------------
+  // =====================================================
   // CREDIT REPORT
-  // ----------------------------------------------------------------------
+  // =====================================================
   Future<File?> generateCreditReport() async {
     try {
+      _startLoading();
+
       final result = await repo.getCreditMatrix();
       if (result.rows.isEmpty || result.currencies.isEmpty) return null;
 
@@ -121,72 +135,98 @@ class ReportsViewModel extends ChangeNotifier {
       );
     } catch (e) {
       _ui = _ui.copyWith(error: e.toString());
-      notifyListeners();
       return null;
+    } finally {
+      _stopLoading(); // ✅ always stop
     }
   }
 
-  // ----------------------------------------------------------------------
-  // DEBIT REPORT (uses same matrix but only negative values)
-  // ----------------------------------------------------------------------
+  // =====================================================
+  // DEBIT REPORT
+  // =====================================================
   Future<File?> generateDebitReport() async {
     try {
+      _startLoading();
+
+      // Ensure matrix loaded
       if (_ui.rows.isEmpty || _ui.currencies.isEmpty) {
         await loadBalanceMatrix();
       }
       if (_ui.rows.isEmpty) return null;
 
+      // 🔥 BUILD PURE DEBIT MATRIX
+      final List<BalanceRow> debitRows = [];
+
+      for (final row in _ui.rows) {
+        final Map<String, double> debitMap = {};
+
+        row.byCurrency.forEach((cur, value) {
+          if (value < 0) {
+            // 🔑 convert to POSITIVE debit amount
+            debitMap[cur] = value.abs();
+          }
+        });
+
+        if (debitMap.isNotEmpty) {
+          debitRows.add(
+            BalanceRow(
+              name: row.name,
+              byCurrency: debitMap,
+            ),
+          );
+        }
+      }
+
+      if (debitRows.isEmpty) return null;
+
+      // 🔥 IMPORTANT: rebuild currencies list
+      final debitCurrencies = <String>{};
+      for (final r in debitRows) {
+        debitCurrencies.addAll(r.byCurrency.keys);
+      }
+
       return await DebitPdfService.instance.render(
-        currencies: _ui.currencies,
-        rows: _ui.rows,
+        currencies: debitCurrencies.toList(),
+        rows: debitRows,
       );
     } catch (e) {
       _ui = _ui.copyWith(error: e.toString());
-      notifyListeners();
       return null;
+    } finally {
+      _stopLoading();
     }
-  }
-
-  // ----------------------------------------------------------------------
+  }  // =====================================================
   // PENDING REPORT
-  // ----------------------------------------------------------------------
+  // =====================================================
   Future<File?> generatePendingReport({
     required String officeName,
     required int accId,
     required int companyId,
   }) async {
     try {
-      _ui = _ui.copyWith(loading: true, error: null);
-      notifyListeners();
+      _startLoading();
 
-      // Fetch from PendingRepository (Drift)
       final List<PendingRow> rows = await pendingRepo.getPendingRows(
         accId: accId,
         companyId: companyId,
       );
 
-      _ui = _ui.copyWith(
-        loading: false,
-        pending: rows,
-      );
-      notifyListeners();
-
       if (rows.isEmpty) return null;
 
-      // Generate PDF
       return await PendingPdfService.instance.render(
         officeName: officeName,
         rows: rows,
       );
     } catch (e) {
-      _ui = _ui.copyWith(loading: false, error: e.toString());
-      notifyListeners();
+      _ui = _ui.copyWith(error: e.toString());
       return null;
+    } finally {
+      _stopLoading(); // ✅ always stop
     }
   }
 
-  // ----------------------------------------------------------------------
-  // LAST CREDIT SUMMARY (future work)
-  // ----------------------------------------------------------------------
+  // =====================================================
+  // LAST CREDIT SUMMARY (future)
+  // =====================================================
   Future<File?> generateLastCreditSummary() async => null;
 }

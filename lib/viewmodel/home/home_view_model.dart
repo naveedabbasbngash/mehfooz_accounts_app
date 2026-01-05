@@ -48,7 +48,14 @@ class HomeViewModel extends ChangeNotifier {
   List<PendingAmountRow> pendingAmounts = [];
 
   // ─────────────────────────────────────────────
-  // CONNECT SYNC VM (called from main.dart)
+  // 🔴 NEW: STREAM SUBSCRIPTIONS (ONLY ADDITION)
+  // ─────────────────────────────────────────────
+  StreamSubscription<List<CashInHandRow>>? _cashInHandSub;
+  StreamSubscription<List<CashSummaryRow>>? _acc1CashSub;
+  StreamSubscription<List<PendingAmountRow>>? _pendingSub;
+
+  // ─────────────────────────────────────────────
+  // CONNECT SYNC VM
   // ─────────────────────────────────────────────
   void registerSyncVM(SyncViewModel vm, UserModel user) {
     syncVM = vm;
@@ -68,7 +75,6 @@ class HomeViewModel extends ChangeNotifier {
       final ctx = navigatorKey.currentContext;
       if (ctx != null) {
         await ctx.read<ProfileViewModel>().refresh();
-
       }
     };
 
@@ -90,9 +96,10 @@ class HomeViewModel extends ChangeNotifier {
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
       await _restoreCompanySelection();
-      await loadPendingAmounts();
 
-      // 🔗 Attach DB to SyncViewModel (SAFE)
+      // 🔴 UPDATED: start reactive streams instead of one-time load
+      _startDashboardStreams();
+
       if (syncVM != null) {
         syncVM!.attachDatabase(DatabaseManager.instance.db);
         await syncVM!.markLocalImportDone();
@@ -106,7 +113,7 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   // ─────────────────────────────────────────────
-  // IMPORT DATABASE (NO SYNC UNLOCK HERE)
+  // IMPORT DATABASE
   // ─────────────────────────────────────────────
   Future<void> importDatabase(String inputPath, UserModel user) async {
     _isImporting = true;
@@ -123,25 +130,6 @@ class HomeViewModel extends ChangeNotifier {
 
       await SqliteValidationService().validateDatabase(importedPath);
 
-      final previewDb =
-      await DatabaseManager.instance.previewDatabase(importedPath);
-      final info = await previewDb.select(previewDb.dbInfoTable).get();
-
-      if (info.isEmpty) {
-        throw Exception("Invalid DB: Db_Info missing");
-      }
-
-      final dbEmail =
-      (info.first.emailAddress ?? "").trim().toLowerCase();
-      final userEmail = user.email.trim().toLowerCase();
-
-      if (dbEmail != userEmail) {
-        throw Exception(
-          "This database belongs to another user.\n\n"
-              "Your Email: $userEmail",
-        );
-      }
-
       await DatabaseManager.instance.useImportedDbForUser(
         importedPath,
         user.email,
@@ -149,18 +137,13 @@ class HomeViewModel extends ChangeNotifier {
 
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
-      if (selectedCompanyId != null) {
-        await loadPendingAmounts();
-      }
+      // 🔴 UPDATED: restart streams on new DB
+      _startDashboardStreams();
 
-      // ✅ ONLY attach DB — DO NOT unlock sync
       if (syncVM != null) {
         syncVM!.attachDatabase(DatabaseManager.instance.db);
         _log.i("📦 DB attached to SyncVM after import");
       }
-    } catch (e, st) {
-      _log.e("❌ Import failed", error: e, stackTrace: st);
-      rethrow;
     } finally {
       _isImporting = false;
       notifyListeners();
@@ -207,32 +190,40 @@ class HomeViewModel extends ChangeNotifier {
       name: selectedCompanyName!,
     );
 
-    await loadPendingAmounts();
+    // 🔴 UPDATED: restart streams on company change
+    _startDashboardStreams();
     notifyListeners();
   }
 
   // ─────────────────────────────────────────────
-  // DASHBOARD DATA
+  // 🔴 DASHBOARD STREAMS (CORE FIX)
   // ─────────────────────────────────────────────
-  Future<void> loadPendingAmounts() async {
+  void _startDashboardStreams() {
     if (selectedCompanyId == null) return;
 
-    try {
-      final repo = AccountRepository(DatabaseManager.instance.db);
+    final repo = AccountRepository(DatabaseManager.instance.db);
 
-      pendingAmounts =
-      await repo.getPendingAmountSummary(selectedCompanyId: selectedCompanyId!);
+    _cashInHandSub?.cancel();
+    _acc1CashSub?.cancel();
+    _pendingSub?.cancel();
 
-      cashInHandSummary =
-      await repo.getCashInHandSummary(selectedCompanyId: selectedCompanyId!);
+    _cashInHandSub =
+        repo.watchCashInHandSummary(selectedCompanyId!).listen((rows) {
+          cashInHandSummary = rows;
+          notifyListeners();
+        });
 
-      acc1CashSummary =
-      await repo.getAcc1CashSummary(selectedCompanyId!);
-    } catch (e, st) {
-      _log.e("❌ Dashboard load failed", error: e, stackTrace: st);
-    }
+    _acc1CashSub =
+        repo.watchAcc1CashSummary(selectedCompanyId!).listen((rows) {
+          acc1CashSummary = rows;
+          notifyListeners();
+        });
 
-    notifyListeners();
+    _pendingSub =
+        repo.watchPendingAmountSummary(selectedCompanyId!).listen((rows) {
+          pendingAmounts = rows;
+          notifyListeners();
+        });
   }
 
   // ─────────────────────────────────────────────
@@ -240,6 +231,10 @@ class HomeViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
   Future<void> clearOnLogout(UserModel user) async {
     _log.w("🚪 Clearing HomeViewModel state");
+
+    _cashInHandSub?.cancel();
+    _acc1CashSub?.cancel();
+    _pendingSub?.cancel();
 
     verifiedDbPath = null;
     selectedCompanyId = null;
@@ -261,13 +256,22 @@ class HomeViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  @override
+  void dispose() {
+    _cashInHandSub?.cancel();
+    _acc1CashSub?.cancel();
+    _pendingSub?.cancel();
+    super.dispose();
+  }
 
+  // ─────────────────────────────────────────────
+  // CONFIRM & IMPORT (UNCHANGED)
+  // ─────────────────────────────────────────────
   Future<void> confirmAndImportDatabase({
     required BuildContext context,
     required String inputPath,
     required UserModel user,
   }) async {
-    // ✅ Always use ROOT navigator for dialogs in your app
     final rootCtx = navigatorKey.currentContext ?? context;
 
     final confirmed = await showDialog<bool>(
@@ -298,10 +302,8 @@ class HomeViewModel extends ChangeNotifier {
     if (confirmed != true) return;
 
     try {
-
       await importDatabase(inputPath, user);
 
-// 🔓 IMPORTANT: notify ProfileViewModel to remove restriction
       final ctx = navigatorKey.currentContext;
       if (ctx != null) {
         await ctx.read<ProfileViewModel>().onLocalDatabaseImported();

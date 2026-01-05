@@ -74,17 +74,23 @@ class LedgerPdfService extends BasePdfService {
     final green = PdfColor.fromInt(0xFF4CAF50);
     final black = PdfColors.black;
 
-    final nf = NumberFormat('#,##0');
+    // 🔹 DECIMAL FORMAT (matches Kotlin / accounting style)
+    final nf = NumberFormat('#,##0.00');
 
-    // Pre-compute totals like Kotlin
-    int opening = result.openingBalanceCents;
-    int sumDr = 0;
-    int sumCr = 0;
+    // =========================================================
+    // SAFE DECIMAL TOTALS (NO int casting ❌)
+    // =========================================================
+    final double opening = result.openingBalance;
+
+    double sumDr = 0.0;
+    double sumCr = 0.0;
+
     for (final r in result.rows) {
-      sumDr += r.dr;
-      sumCr += r.cr;
+      sumDr += r.dr.toDouble();
+      sumCr += r.cr.toDouble();
     }
-    final closing = opening + sumCr - sumDr;
+
+    final double closing = opening + sumCr - sumDr;
 
     pdf.addPage(
       pw.MultiPage(
@@ -98,7 +104,7 @@ class LedgerPdfService extends BasePdfService {
         build: (_) {
           final widgets = <pw.Widget>[];
 
-          // ---------------- TOP "Printed Date" row ----------------
+          // ---------------- Printed Date ----------------
           widgets.add(
             _buildPrintedRow(
               latin: latin,
@@ -109,7 +115,7 @@ class LedgerPdfService extends BasePdfService {
 
           widgets.add(pw.SizedBox(height: 4));
 
-          // ---------------- Name / Company (underline rows) ----------------
+          // ---------------- Name / Company ----------------
           widgets.add(
             _buildNameAddressBlock(
               accountName: accountName,
@@ -123,11 +129,11 @@ class LedgerPdfService extends BasePdfService {
 
           widgets.add(pw.SizedBox(height: 6));
 
-          // ---------------- Opening bar (Currency + Opening) ----------------
+          // ---------------- Opening Bar ----------------
           widgets.add(
             _buildOpeningBar(
               currency: currency,
-              opening: opening,
+              opening: opening, // ✅ double
               nf: nf,
               latin: latin,
               latinBold: latinBold,
@@ -139,21 +145,17 @@ class LedgerPdfService extends BasePdfService {
 
           widgets.add(pw.SizedBox(height: 4));
 
-          // ---------------- Black separator line ----------------
           widgets.add(
-            pw.Container(
-              height: 2,
-              color: black,
-            ),
+            pw.Container(height: 2, color: black),
           );
 
           widgets.add(pw.SizedBox(height: 6));
 
-          // ---------------- LEDGER TABLE ----------------
+          // ---------------- Ledger Table ----------------
           widgets.add(
             _buildLedgerTable(
               rows: result.rows,
-              opening: opening,
+              opening: opening, // ✅ double
               latin: latin,
               latinBold: latinBold,
               deepBlue: deepBlue,
@@ -167,7 +169,7 @@ class LedgerPdfService extends BasePdfService {
 
           widgets.add(pw.SizedBox(height: 6));
 
-          // ---------------- Closing & totals under table ----------------
+          // ---------------- Totals & Closing ----------------
           widgets.add(
             _buildTotalsAndClosingBar(
               opening: opening,
@@ -185,7 +187,7 @@ class LedgerPdfService extends BasePdfService {
 
           widgets.add(pw.SizedBox(height: 12));
 
-          // ---------------- Signature + Period (small) ----------------
+          // ---------------- Signature / Period ----------------
           widgets.add(
             _buildSignatureAndPeriod(
               periodText: periodText,
@@ -202,6 +204,7 @@ class LedgerPdfService extends BasePdfService {
 
     return savePdf(pdf, "ledger_report");
   }
+
 
   // ------------------------------------------------------------
   // Printed date row (top right)
@@ -246,7 +249,7 @@ class LedgerPdfService extends BasePdfService {
   // ------------------------------------------------------------
   pw.Widget _buildNameAddressBlock({
     required String accountName,
-    required String officeName,
+    required String officeName, // ← can stay (API compatibility)
     required pw.Font latin,
     required pw.Font latinBold,
     required PdfColor deepBlue,
@@ -265,7 +268,7 @@ class LedgerPdfService extends BasePdfService {
       bottom: pw.BorderSide(color: greyLine, width: 1.2),
     );
 
-    // Name row
+    // ---------------- Name row ONLY ----------------
     table.children.add(
       pw.TableRow(
         children: [
@@ -297,49 +300,14 @@ class LedgerPdfService extends BasePdfService {
       ),
     );
 
-    // "Company" row (was Address in Kotlin; mapped to officeName)
-    if (officeName.trim().isNotEmpty) {
-      table.children.add(
-        pw.TableRow(
-          children: [
-            pw.Container(
-              padding: const pw.EdgeInsets.only(top: 2, bottom: 2),
-              decoration: pw.BoxDecoration(border: underline),
-              child: pw.Text(
-                "Company:",
-                style: pw.TextStyle(
-                  font: latinBold,
-                  fontSize: 12,
-                  color: deepBlue,
-                ),
-              ),
-            ),
-            pw.Container(
-              padding: const pw.EdgeInsets.only(top: 2, bottom: 2),
-              decoration: pw.BoxDecoration(border: underline),
-              child: pw.Text(
-                officeName,
-                textDirection: _dir(officeName),
-                style: pw.TextStyle(
-                  font: _fontFor(officeName, latin, latinBold, true),
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return table;
   }
-
   // ------------------------------------------------------------
   // Opening bar (Currency + Opening Balance)
   // ------------------------------------------------------------
   pw.Widget _buildOpeningBar({
     required String currency,
-    required int opening,
+    required double opening, // ✅ FIXED
     required NumberFormat nf,
     required pw.Font latin,
     required pw.Font latinBold,
@@ -352,7 +320,8 @@ class LedgerPdfService extends BasePdfService {
     final openingTextColor = isPositive ? black : PdfColors.white;
 
     final leftText = "Currency : $currency";
-    final rightText = "Opening Balance : ${nf.format(opening)}";
+    final rightText =
+        "Opening Balance : ${nf.format(opening)}";
 
     return pw.Table(
       columnWidths: const {
@@ -362,10 +331,8 @@ class LedgerPdfService extends BasePdfService {
       children: [
         pw.TableRow(
           children: [
-            // Currency (left)
             pw.Container(
-              padding:
-              const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+              padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 2),
               child: pw.Text(
                 leftText,
                 textDirection: _dir(leftText),
@@ -376,12 +343,10 @@ class LedgerPdfService extends BasePdfService {
                 ),
               ),
             ),
-            // Opening Balance (right chip)
             pw.Align(
               alignment: pw.Alignment.centerRight,
               child: pw.Container(
-                padding:
-                const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+                padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 6),
                 decoration: pw.BoxDecoration(
                   color: openingBg,
                   borderRadius: pw.BorderRadius.circular(4),
@@ -402,13 +367,12 @@ class LedgerPdfService extends BasePdfService {
       ],
     );
   }
-
   // ------------------------------------------------------------
   // Ledger table (VNO | Date | Desc | Dr | Cr | Balance)
   // ------------------------------------------------------------
   pw.Widget _buildLedgerTable({
     required List<LedgerTxn> rows,
-    required int opening,
+    required double opening, // ✅ changed from int → double
     required pw.Font latin,
     required pw.Font latinBold,
     required PdfColor deepBlue,
@@ -419,6 +383,7 @@ class LedgerPdfService extends BasePdfService {
     required NumberFormat nf,
   }) {
     final dateFmt = DateFormat('d/M/yyyy');
+
     final cols = const <int, pw.FlexColumnWidth>{
       0: pw.FlexColumnWidth(0.10), // VNO
       1: pw.FlexColumnWidth(0.15), // Date
@@ -441,21 +406,24 @@ class LedgerPdfService extends BasePdfService {
       children: [],
     );
 
-    // header cell (white text, black background, bottom black border)
+    // ------------------------------------------------------------
+    // Header cell
+    // ------------------------------------------------------------
     pw.Widget head(String text) {
       final isRtl = _isRtl(text);
       final fontToUse = isRtl ? urduFontBold : latinBold;
 
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 5, horizontal: 4),
-        decoration: pw.BoxDecoration(
+        decoration: const pw.BoxDecoration(
           border: pw.Border(
             bottom: pw.BorderSide(color: PdfColors.black, width: 1.5),
           ),
         ),
         child: pw.Text(
           text,
-          textDirection: isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
+          textDirection:
+          isRtl ? pw.TextDirection.rtl : pw.TextDirection.ltr,
           style: pw.TextStyle(
             font: fontToUse,
             fontSize: 10,
@@ -465,7 +433,9 @@ class LedgerPdfService extends BasePdfService {
       );
     }
 
-    // header row
+    // ------------------------------------------------------------
+    // Header row
+    // ------------------------------------------------------------
     table.children.add(
       pw.TableRow(
         decoration: const pw.BoxDecoration(color: PdfColors.black),
@@ -480,27 +450,31 @@ class LedgerPdfService extends BasePdfService {
       ),
     );
 
-    // Running balance
-    int running = opening;
+    // ------------------------------------------------------------
+    // Running balance (DOUBLE ✅)
+    // ------------------------------------------------------------
+    double running = opening;
     int rowIndex = 0;
 
     for (final t in rows) {
       final rowBg =
-      (rowIndex++ % 2 == 0) ? PdfColors.white : subtleBg; // zebra rows
-      running += (t.cr - t.dr);
+      (rowIndex++ % 2 == 0) ? PdfColors.white : subtleBg;
+
+      final double dr = t.dr.toDouble();
+      final double cr = t.cr.toDouble();
+
+      running += (cr - dr);
 
       // Voucher color logic
       PdfColor vnoBg;
       PdfColor vnoTextColor;
 
-      if (t.cr > 0 && t.dr == 0) {
-        // pure credit
+      if (cr > 0 && dr == 0) {
         vnoBg = green;
         vnoTextColor = PdfColors.white;
-      } else if (t.dr > 0 && t.cr == 0) {
-        // pure debit
-        vnoBg = PdfColor.fromInt(0xFFFFFF96); // light yellow
-        vnoTextColor = PdfColor.fromInt(0xFFC80000); // dark red
+      } else if (dr > 0 && cr == 0) {
+        vnoBg = PdfColor.fromInt(0xFFFFFF96);
+        vnoTextColor = PdfColor.fromInt(0xFFC80000);
       } else {
         vnoBg = rowBg;
         vnoTextColor = PdfColors.black;
@@ -514,11 +488,13 @@ class LedgerPdfService extends BasePdfService {
       balPositive ? PdfColors.black : PdfColors.white;
 
       final dateStr = dateFmt.format(t.tDate);
-      final descRaw = (t.description ?? "").trim();
+      final descRaw = t.description.trim();
       final desc =
-      descRaw.length > 42 ? descRaw.substring(0, 42) : descRaw; // take(42)
+      descRaw.length > 42 ? descRaw.substring(0, 42) : descRaw;
 
-      // Small helper for normal cells
+      // ------------------------------------------------------------
+      // Cell helper
+      // ------------------------------------------------------------
       pw.Widget cell(
           String text, {
             bool bold = false,
@@ -526,12 +502,9 @@ class LedgerPdfService extends BasePdfService {
             PdfColor? bg,
             PdfColor? textColor,
           }) {
-        final bgColor = bg ?? rowBg;
-        final color = textColor ?? PdfColors.black;
-
         return pw.Container(
           padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-          color: bgColor,
+          color: bg ?? rowBg,
           child: pw.Text(
             text,
             textAlign: align,
@@ -539,44 +512,35 @@ class LedgerPdfService extends BasePdfService {
             style: pw.TextStyle(
               font: _fontFor(text, latin, latinBold, bold),
               fontSize: 9,
-              color: color,
+              color: textColor ?? PdfColors.black,
             ),
           ),
         );
       }
 
-      // Build row
+      // ------------------------------------------------------------
+      // Row
+      // ------------------------------------------------------------
       table.children.add(
         pw.TableRow(
           children: [
-            // VNO
             cell(
               t.voucherNo,
               bold: true,
               bg: vnoBg,
               textColor: vnoTextColor,
             ),
-
-            // Date
             cell(dateStr),
-
-            // Description (full RTL/LTR aware)
             cell(desc),
-
-            // Dr
             cell(
-              nf.format(t.dr),
+              nf.format(dr),
               align: pw.TextAlign.right,
-              textColor: t.dr > 0 ? red : PdfColors.black,
+              textColor: dr > 0 ? red : PdfColors.black,
             ),
-
-            // Cr
             cell(
-              nf.format(t.cr),
+              nf.format(cr),
               align: pw.TextAlign.right,
             ),
-
-            // Balance
             cell(
               nf.format(running),
               bold: true,
@@ -591,15 +555,14 @@ class LedgerPdfService extends BasePdfService {
 
     return table;
   }
-
   // ------------------------------------------------------------
   // Totals row & closing bar (under table)
   // ------------------------------------------------------------
   pw.Widget _buildTotalsAndClosingBar({
-    required int opening,
-    required int sumDr,
-    required int sumCr,
-    required int closing,
+    required double opening,
+    required double sumDr,
+    required double sumCr,
+    required double closing,
     required NumberFormat nf,
     required pw.Font latin,
     required pw.Font latinBold,
@@ -616,16 +579,19 @@ class LedgerPdfService extends BasePdfService {
       5: pw.FlexColumnWidth(0.10),
     };
 
-    // Totals row same layout as Kotlin (3 empty + Dr + Cr + Closing)
+    // ------------------------------------------------------------
+    // TOTALS ROW (Dr | Cr | Closing)
+    // ------------------------------------------------------------
     final totalsTable = pw.Table(
       columnWidths: cols,
       children: [
         pw.TableRow(
           children: [
-            // first 3 columns empty with top border
             _topBorderCell(),
             _topBorderCell(),
             _topBorderCell(),
+
+            // Total Dr
             _topBorderCell(
               child: pw.Align(
                 alignment: pw.Alignment.centerRight,
@@ -640,6 +606,8 @@ class LedgerPdfService extends BasePdfService {
                 ),
               ),
             ),
+
+            // Total Cr
             _topBorderCell(
               child: pw.Align(
                 alignment: pw.Alignment.centerRight,
@@ -654,6 +622,8 @@ class LedgerPdfService extends BasePdfService {
                 ),
               ),
             ),
+
+            // Closing
             _topBorderCell(
               child: pw.Align(
                 alignment: pw.Alignment.centerRight,
@@ -673,13 +643,19 @@ class LedgerPdfService extends BasePdfService {
       ],
     );
 
-    // Closing bar similar to Kotlin "Closing Balance : CR/DR ..."
-    final isCr = closing >= 0;
-    final absClosing = closing.abs();
-    final closingBg = isCr ? green : red;
-    final closingTextColor = isCr ? black : PdfColors.white;
-    final crdrText = isCr ? "CR" : "DR -";
-    final closingText =
+    // ------------------------------------------------------------
+    // CLOSING BALANCE BAR (CR / DR)
+    // ------------------------------------------------------------
+    final bool isCr = closing >= 0;
+    final double absClosing =
+    closing.abs() < 0.005 ? 0.0 : closing.abs();
+
+    final PdfColor closingBg = isCr ? green : red;
+    final PdfColor closingTextColor =
+    isCr ? black : PdfColors.white;
+
+    final String crdrText = isCr ? "CR" : "DR";
+    final String closingText =
         "Closing Balance : $crdrText ${nf.format(absClosing)}";
 
     final closingBar = pw.Table(
@@ -690,12 +666,14 @@ class LedgerPdfService extends BasePdfService {
       children: [
         pw.TableRow(
           children: [
-            pw.Container(), // empty left
+            pw.Container(),
             pw.Align(
               alignment: pw.Alignment.centerRight,
               child: pw.Container(
-                padding:
-                const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+                padding: const pw.EdgeInsets.symmetric(
+                  vertical: 2,
+                  horizontal: 6,
+                ),
                 decoration: pw.BoxDecoration(
                   color: closingBg,
                   borderRadius: pw.BorderRadius.circular(4),
@@ -704,7 +682,12 @@ class LedgerPdfService extends BasePdfService {
                   closingText,
                   textDirection: _dir(closingText),
                   style: pw.TextStyle(
-                    font: _fontFor(closingText, latin, latinBold, true),
+                    font: _fontFor(
+                      closingText,
+                      latin,
+                      latinBold,
+                      true,
+                    ),
                     fontSize: 9,
                     color: closingTextColor,
                   ),
@@ -725,7 +708,6 @@ class LedgerPdfService extends BasePdfService {
       ],
     );
   }
-
   pw.Widget _topBorderCell({pw.Widget? child}) {
     return pw.Container(
       padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 2),

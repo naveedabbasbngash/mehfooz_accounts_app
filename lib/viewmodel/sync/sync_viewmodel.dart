@@ -66,7 +66,7 @@ class SyncViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
   // AUTO SYNC
   // ─────────────────────────────────────────────
-  AutoSyncInterval autoSyncInterval = AutoSyncInterval.min5;
+  AutoSyncInterval autoSyncInterval = AutoSyncInterval.off;
   static const int _maxRetries = 3;
   static const Duration _timeout = Duration(seconds: 30);
 

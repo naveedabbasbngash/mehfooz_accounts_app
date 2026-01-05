@@ -5,12 +5,16 @@ class LastCreditRow extends Equatable {
   final int accId;
   final String customer;
   final String? address;
-  final int companyId; // keep for future (0 for now, like Kotlin)
+
+  final int companyId;   // keep for future (0 for now, like Kotlin)
   final int currencyId;
-  final int netBalance;
+
+  /// MONEY FIELDS — MUST BE double (SQLite REAL)
+  final double netBalance;
+  final double lastCreditAmount;
+
   final String? lastTransactionDate;
   final int daysSinceLastCredit;
-  final int lastCreditAmount;
 
   const LastCreditRow({
     required this.currencyName,
@@ -31,12 +35,18 @@ class LastCreditRow extends Equatable {
       accId: (row['AccID'] as int?) ?? 0,
       customer: (row['Customer'] as String?) ?? '',
       address: row['Address'] as String?,
+
       companyId: 0, // exactly like your Kotlin placeholder
       currencyId: (row['CurrencyID'] as int?) ?? 0,
-      netBalance: (row['NetBalance'] as int?) ?? 0,
+
+      // ✅ SAFE numeric mapping (NO crashes)
+      netBalance: (row['NetBalance'] as num?)?.toDouble() ?? 0.0,
+      lastCreditAmount:
+      (row['LastCreditAmount'] as num?)?.toDouble() ?? 0.0,
+
       lastTransactionDate: row['LastTransactionDate'] as String?,
-      daysSinceLastCredit: (row['DaysSinceLastCredit'] as int?) ?? 0,
-      lastCreditAmount: (row['LastCreditAmount'] as int?) ?? 0,
+      daysSinceLastCredit:
+      (row['DaysSinceLastCredit'] as num?)?.toInt() ?? 0,
     );
   }
 

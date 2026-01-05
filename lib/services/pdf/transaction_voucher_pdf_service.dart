@@ -19,11 +19,17 @@ class TxDetailsPdfService {
   Future<File> render(TxItemUi row) async {
     final pdf = pw.Document();
 
-    final isCredit = (row.crCents ?? 0) > 0;
-    final amountInt = isCredit ? (row.crCents ?? 0) : (row.drCents ?? 0);
-    final amount = fmt.format(amountInt / 100);
+    // ✅ REAL money logic
+    final bool isCredit = row.cr > 0;
+    final double rawAmount = row.amount;
 
-    final amountColor = isCredit ? PdfColors.green : PdfColors.red;
+    // 🔒 kill -0.00
+    final double safeAmount =
+    rawAmount.abs() < 0.005 ? 0.0 : rawAmount;
+
+    final String amount = fmt.format(safeAmount);
+    final PdfColor amountColor =
+    isCredit ? PdfColors.green : PdfColors.red;
 
     pdf.addPage(
       pw.Page(
@@ -33,7 +39,7 @@ class TxDetailsPdfService {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               // -------------------------------------------------
-              // HEADER TITLE
+              // HEADER
               // -------------------------------------------------
               pw.Text(
                 "Transaction Details",
@@ -57,11 +63,12 @@ class TxDetailsPdfService {
               pw.Divider(color: PdfColors.grey300, height: 24),
 
               // -------------------------------------------------
-              // INFO BLOCK
+              // INFO
               // -------------------------------------------------
-              _infoBlock("Name", row.name ?? "-"),
-              _infoBlock("Date", row.date ?? "-"),
-              _infoBlock("Currency", row.currency ?? "-"),
+              _infoBlock("Name", row.name.isNotEmpty ? row.name : "-"),
+              _infoBlock("Date", row.date.isNotEmpty ? row.date : "-"),
+              _infoBlock("Currency",
+                  row.currency.isNotEmpty ? row.currency : "-"),
 
               if ((row.description ?? "").isNotEmpty)
                 _infoBlock("Description", row.description!),
@@ -69,7 +76,7 @@ class TxDetailsPdfService {
               pw.SizedBox(height: 24),
 
               // -------------------------------------------------
-              // AMOUNT — LARGE & BEAUTIFUL
+              // AMOUNT
               // -------------------------------------------------
               pw.Center(
                 child: pw.Text(
@@ -83,7 +90,6 @@ class TxDetailsPdfService {
               ),
 
               pw.SizedBox(height: 30),
-
               pw.Divider(color: PdfColors.grey400),
 
               pw.Center(
@@ -102,7 +108,7 @@ class TxDetailsPdfService {
     );
 
     // -----------------------------------------------------------
-    // SAVE PDF
+    // SAVE
     // -----------------------------------------------------------
     final dir = await getTemporaryDirectory();
     final file = File("${dir.path}/tx_details_${row.voucherNo}.pdf");
@@ -112,7 +118,7 @@ class TxDetailsPdfService {
   }
 
   // -----------------------------------------------------------
-  // HELPER — INFO ROW
+  // INFO BLOCK
   // -----------------------------------------------------------
   pw.Widget _infoBlock(String title, String value) {
     return pw.Padding(

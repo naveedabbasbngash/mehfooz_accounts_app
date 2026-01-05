@@ -1,5 +1,5 @@
-// lib/services/pdf/credit_pdf_service.dart
 import 'dart:io';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -10,21 +10,17 @@ class CreditPdfService extends BasePdfService {
   CreditPdfService._();
   static final CreditPdfService instance = CreditPdfService._();
 
+  static final NumberFormat _money = NumberFormat('#,##0.00');
+
+  double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
+
+  String _fmtMoney(double v) => _money.format(_fixZero(v));
+
   Future<File> render({
     required List<String> currencies,
     required List<BalanceRow> rows,
   }) async {
     final pdf = pw.Document();
-
-    // 📌 Mobile-friendly tall page to avoid vertical-centering problem
-    final double pageWidth = PdfPageFormat.cm * 29.7;   // A4 width
-    final double pageHeight = PdfPageFormat.cm * 55;    // tall page
-
-    final pageFormat = PdfPageFormat(
-      pageWidth,
-      pageHeight,
-      marginAll: 12,
-    );
 
     final (font, fontBold) = createFonts();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
@@ -32,40 +28,33 @@ class CreditPdfService extends BasePdfService {
     final black = PdfColors.black;
 
     pdf.addPage(
-      pw.Page(
-        pageFormat: pageFormat,
-        build: (context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              buildHeader(
-                title: 'Jama / Credit Report',
-                font: font,
-                fontBold: fontBold,
-                titleColor: deepBlue,
-              ),
-              pw.SizedBox(height: 10),
-              _buildTable(
-                currencies: currencies,
-                rows: rows,
-                font: font,
-                fontBold: fontBold,
-                deepBlue: deepBlue,
-                white: white,
-                black: black,
-              ),
-            ],
-          );
-        },
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.all(12),
+        build: (context) => [
+          buildHeader(
+            title: 'Jama / Credit Report',
+            font: font,
+            fontBold: fontBold,
+            titleColor: deepBlue,
+          ),
+          pw.SizedBox(height: 10),
+          _buildTable(
+            currencies: currencies,
+            rows: rows,
+            font: font,
+            fontBold: fontBold,
+            deepBlue: deepBlue,
+            white: white,
+            black: black,
+          ),
+        ],
       ),
     );
 
     return savePdf(pdf, 'credit_report');
   }
 
-  // ===================================================================
-  // TABLE BUILDER
-  // ===================================================================
   pw.Widget _buildTable({
     required List<String> currencies,
     required List<BalanceRow> rows,
@@ -77,7 +66,6 @@ class CreditPdfService extends BasePdfService {
   }) {
     final List<pw.TableRow> tableRows = [];
 
-    // ---------------- HEADER CELL ----------------
     pw.Widget headerCell(String text, pw.TextAlign align) {
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(
@@ -85,6 +73,9 @@ class CreditPdfService extends BasePdfService {
           horizontal: BasePdfService.headerPadH,
         ),
         color: deepBlue,
+        alignment: align == pw.TextAlign.left
+            ? pw.Alignment.centerLeft
+            : pw.Alignment.center,
         child: pw.Text(
           text,
           textAlign: align,
@@ -97,7 +88,6 @@ class CreditPdfService extends BasePdfService {
       );
     }
 
-    // Add header row
     tableRows.add(
       pw.TableRow(
         children: [
@@ -107,7 +97,6 @@ class CreditPdfService extends BasePdfService {
       ),
     );
 
-    // ---------------- NAME CELL ----------------
     pw.Widget nameCell(String name) {
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(
@@ -125,45 +114,42 @@ class CreditPdfService extends BasePdfService {
       );
     }
 
-    // ---------------- VALUE CELL ----------------
-    pw.Widget valueCell(int rawNet) {
-      final int value = rawNet > 0 ? rawNet : 0;
+    pw.Widget valueCell(double rawNet) {
+      final v = _fixZero(rawNet);
+      if (v <= 0) return pw.Container();
 
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(
           vertical: BasePdfService.cellPadV,
           horizontal: BasePdfService.cellPadH,
         ),
-        child: pw.Center(
-          child: pw.Text(
-            nf.format(value),
-            style: pw.TextStyle(
-              font: font,
-              fontSize: BasePdfService.bodySize,
-              color: black,
-            ),
+        alignment: pw.Alignment.center,
+        child: pw.Text(
+          _fmtMoney(v),
+          style: pw.TextStyle(
+            font: font,
+            fontSize: BasePdfService.bodySize,
+            color: black,
           ),
         ),
       );
     }
 
-    // ---------------- DATA ROWS ----------------
     for (final row in rows) {
       tableRows.add(
         pw.TableRow(
           children: [
             nameCell(row.name),
-            ...currencies.map((c) => valueCell(row.byCurrency[c] ?? 0)),
+            ...currencies.map((c) => valueCell(row.byCurrency[c] ?? 0.0)),
           ],
         ),
       );
     }
 
-    // ---------------- TOTALS ----------------
     final totals = currencies.map((cur) {
-      return rows.fold<int>(0, (sum, r) {
-        final raw = r.byCurrency[cur] ?? 0;
-        return sum + (raw > 0 ? raw : 0);
+      return rows.fold<double>(0.0, (sum, r) {
+        final raw = _fixZero(r.byCurrency[cur] ?? 0.0);
+        return sum + (raw > 0 ? raw : 0.0);
       });
     }).toList();
 
@@ -189,25 +175,25 @@ class CreditPdfService extends BasePdfService {
       );
     }
 
-    pw.Widget totalsValueCell(int value) {
+    pw.Widget totalsValueCell(double value) {
+      final v = _fixZero(value);
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(
           vertical: BasePdfService.cellPadV,
           horizontal: BasePdfService.cellPadH,
         ),
+        alignment: pw.Alignment.center,
         decoration: pw.BoxDecoration(
           border: pw.Border(
             top: pw.BorderSide(color: deepBlue, width: 1),
           ),
         ),
-        child: pw.Center(
-          child: pw.Text(
-            nf.format(value),
-            style: pw.TextStyle(
-              font: fontBold,
-              fontSize: BasePdfService.headerSize,
-              color: deepBlue,
-            ),
+        child: pw.Text(
+          v > 0 ? _fmtMoney(v) : '',
+          style: pw.TextStyle(
+            font: fontBold,
+            fontSize: BasePdfService.headerSize,
+            color: deepBlue,
           ),
         ),
       );
@@ -222,7 +208,6 @@ class CreditPdfService extends BasePdfService {
       ),
     );
 
-    // ---------------- FINAL TABLE ----------------
     return pw.Table(
       border: pw.TableBorder.all(
         color: PdfColors.grey300,

@@ -1,128 +1,118 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-	<dict>
-		<!-- BASIC APP CONFIG -->
-		<key>CFBundleDevelopmentRegion</key>
-		<string>$(DEVELOPMENT_LANGUAGE)</string>
-		<key>CFBundleDisplayName</key>
-		<string>Mehfooz Account</string>
-		<key>CFBundleExecutable</key>
-		<string>$(EXECUTABLE_NAME)</string>
-		<key>CFBundleIdentifier</key>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-		<key>CFBundleInfoDictionaryVersion</key>
-		<string>6.0</string>
-		<key>CFBundleName</key>
-		<string>mehfooz_accounts_app</string>
-		<key>CFBundlePackageType</key>
-		<string>APPL</string>
-		<key>CFBundleShortVersionString</key>
-		<string>$(FLUTTER_BUILD_NAME)</string>
-		<key>CFBundleSignature</key>
-		<string>????</string>
-		<key>CFBundleVersion</key>
-		<string>$(FLUTTER_BUILD_NUMBER)</string>
-		<key>LSRequiresIPhoneOS</key>
-		<true/>
-		<!-- LAUNCH -->
-		<key>UILaunchStoryboardName</key>
-		<string>LaunchScreen</string>
-		<!-- MAIN -->
-		<key>UIMainStoryboardFile</key>
-		<string>Main</string>
-		<!-- ORIENTATIONS -->
-		<key>UISupportedInterfaceOrientations</key>
-		<array>
-			<string>UIInterfaceOrientationPortrait</string>
-			<string>UIInterfaceOrientationLandscapeLeft</string>
-			<string>UIInterfaceOrientationLandscapeRight</string>
-		</array>
-		<key>UISupportedInterfaceOrientations~ipad</key>
-		<array>
-			<string>UIInterfaceOrientationPortrait</string>
-			<string>UIInterfaceOrientationPortraitUpsideDown</string>
-			<string>UIInterfaceOrientationLandscapeLeft</string>
-			<string>UIInterfaceOrientationLandscapeRight</string>
-		</array>
-		<!-- SYSTEM -->
-		<key>CADisableMinimumFrameDurationOnPhone</key>
-		<true/>
-		<key>UIApplicationSupportsIndirectInputEvents</key>
-		<true/>
-		<!-- GOOGLE SIGN-IN -->
-		<key>CFBundleURLTypes</key>
-		<array>
-			<dict>
-				<key>CFBundleTypeRole</key>
-				<string>Editor</string>
-				<key>CFBundleURLSchemes</key>
-				<array>
-					<string>com.googleusercontent.apps.800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9</string>
-				</array>
-			</dict>
-		</array>
-		<key>GIDClientID</key>
-		<string>800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com</string>
-		<!-- iOS FILE IMPORT SUPPORT -->
-		<key>UIFileSharingEnabled</key>
-		<true/>
-		<key>LSSupportsOpeningDocumentsInPlace</key>
-		<true/>
-		<key>UISupportsDocumentBrowser</key>
-		<true/>
-		<!-- PERMISSIONS (REQUIRED BY APP STORE) -->
-		<key>NSPhotoLibraryUsageDescription</key>
-		<string>We need access to select images.</string>
-		<key>NSDocumentsFolderUsageDescription</key>
-		<string>We need access to your documents.</string>
-		<key>NSDownloadsFolderUsageDescription</key>
-		<string>We need access to import SQLite files.</string>
-		<!-- ALLOW IMPORTING .sqlite AND .db FILES -->
-		<key>CFBundleDocumentTypes</key>
-		<array>
-			<dict>
-				<key>CFBundleTypeName</key>
-				<string>SQLite Database</string>
-				<key>LSHandlerRank</key>
-				<string>Owner</string>
-				<key>LSItemContentTypes</key>
-				<array>
-					<string>public.data</string>
-					<string>public.database</string>
-					<string>public.item</string>
-					<string>com.sqlite3.db</string>
-					<string>org.sqlite.sqlite</string>
-					<string>dyn.ah62d4rv4ge81g6df</string>
-				</array>
-			</dict>
-		</array>
-		<!-- FILE TYPE DECLARATIONS -->
-		<key>UTExportedTypeDeclarations</key>
-		<array>
-			<dict>
-				<key>UTTypeIdentifier</key>
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Mehfooz Account</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>SQLite Database</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.data</string>
+				<string>public.database</string>
+				<string>public.item</string>
 				<string>com.sqlite3.db</string>
-				<key>UTTypeDescription</key>
-				<string>SQLite Database</string>
-				<key>UTTypeConformsTo</key>
+				<string>org.sqlite.sqlite</string>
+				<string>dyn.ah62d4rv4ge81g6df</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>mehfooz_accounts_app</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>We need access to your documents.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>We need access to import SQLite files.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>We need access to select images.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UIStatusBarHidden</key>
+	<false/>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportsDocumentBrowser</key>
+	<true/>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.database</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>SQLite Database</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.sqlite3.db</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
 				<array>
-					<string>public.data</string>
-					<string>public.database</string>
+					<string>sqlite</string>
+					<string>db</string>
 				</array>
-				<key>UTTypeTagSpecification</key>
-				<dict>
-					<key>public.filename-extension</key>
-					<array>
-						<string>sqlite</string>
-						<string>db</string>
-					</array>
-					<key>public.mime-type</key>
-					<string>application/x-sqlite3</string>
-				</dict>
+				<key>public.mime-type</key>
+				<string>application/x-sqlite3</string>
 			</dict>
-		</array>
-		<key>UIStatusBarHidden</key>
-		<false/>
-	</dict>
+		</dict>
+	</array>
+</dict>
 </plist>

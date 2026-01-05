@@ -158,7 +158,7 @@ class SyncRepository {
       final rawVoucher = row['VoucherNo'];
       if (rawVoucher == null) continue;
 
-      final voucher = _toDoubleOrNull(rawVoucher);
+      final voucher = _toInt(rawVoucher);
 
       final isDeleted = _toInt(row['IsDeleted']) == 1;
       final isSynced = _toInt(row['IsSynced']);

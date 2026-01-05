@@ -198,11 +198,13 @@ class PendingPdfService extends BasePdfService {
     final table = pw.Table(
       border: pw.TableBorder.all(color: greyLine, width: 0.4),
       columnWidths: {
-        for (int i = 0; i < colFlex.length; i++) i: pw.FlexColumnWidth(colFlex[i]),
+        for (int i = 0; i < colFlex.length; i++)
+          i: pw.FlexColumnWidth(colFlex[i]),
       },
       children: [],
     );
 
+    // ---------- HEADER ----------
     pw.Widget head(String text) {
       return pw.Container(
         padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
@@ -210,7 +212,11 @@ class PendingPdfService extends BasePdfService {
         child: pw.Text(
           text,
           textDirection: _dir(text),
-          style: pw.TextStyle(font: latinBold, fontSize: 10, color: PdfColors.white),
+          style: pw.TextStyle(
+            font: latinBold,
+            fontSize: 10,
+            color: PdfColors.white,
+          ),
         ),
       );
     }
@@ -230,52 +236,117 @@ class PendingPdfService extends BasePdfService {
       ),
     );
 
-    int totalNotPaid = 0, totalPaid = 0, totalBalance = 0;
-    int i = 0;
+    // ---------- TOTALS (DOUBLE SAFE) ----------
+    double totalNotPaid = 0;
+    double totalPaid = 0;
+    double totalBalance = 0;
 
+    int i = 0;
     final sorted = [...rows]..sort((a, b) => a.dateIso.compareTo(b.dateIso));
 
+    // ---------- HELPERS ----------
+    String money(double v) => nf.format(v.abs());
+
+    PdfColor moneyColor(double v) =>
+        v < 0 ? PdfColors.red : PdfColors.green;
+
+    pw.Widget cell(
+        String v, {
+          bool bold = false,
+          pw.TextAlign align = pw.TextAlign.left,
+          PdfColor? color,
+          PdfColor? bg,
+        }) {
+      return pw.Container(
+        color: bg,
+        padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: pw.Text(
+          v,
+          textDirection: _dir(v),
+          textAlign: align,
+          style: pw.TextStyle(
+            font: _pickFont(v, latinFont, latinBold, bold),
+            fontSize: 10,
+            color: color,
+          ),
+        ),
+      );
+    }
+
+    // ---------- ROWS ----------
     for (final r in sorted) {
-      final bg = i.isEven ? PdfColors.white : subtleBg;
+      final rowBg = i.isEven ? PdfColors.white : subtleBg;
       i++;
 
       totalNotPaid += r.notPaidAmount;
       totalPaid += r.paidAmount;
       totalBalance += r.balance;
 
-      pw.Widget cell(String v, {bool bold = false, pw.TextAlign align = pw.TextAlign.left}) {
-        return pw.Container(
-          color: bg,
-          padding: const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-          child: pw.Text(
-            v,
-            textDirection: _dir(v),
-            textAlign: align,
-            style: pw.TextStyle(
-              font: _pickFont(v, latinFont, latinBold, bold),
-              fontSize: 10,
-            ),
-          ),
-        );
-      }
-
       table.children.add(
         pw.TableRow(
           children: [
-            cell(_formatDate(r.dateIso)),
-            cell(r.pd ?? ""),
-            cell(r.msg ?? ""),
-            cell(r.sender ?? ""),
-            cell(r.receiver ?? ""),
-            cell(nf.format(r.notPaidAmount), bold: true, align: pw.TextAlign.left),
-            cell(nf.format(r.paidAmount), bold: true, align: pw.TextAlign.left),
-            cell(nf.format(r.balance), bold: true, align: pw.TextAlign.left),
+            cell(_formatDate(r.dateIso), bg: rowBg),
+            cell(r.pd ?? "", bg: rowBg),
+            cell(r.msg ?? "", bg: rowBg),
+            cell(r.sender ?? "", bg: rowBg),
+            cell(r.receiver ?? "", bg: rowBg),
+
+            // Not Paid
+            cell(
+              money(r.notPaidAmount),
+              bold: true,
+              align: pw.TextAlign.right,
+              color: moneyColor(r.notPaidAmount),
+              bg: rowBg,
+            ),
+
+            // Paid
+            cell(
+              money(r.paidAmount),
+              bold: true,
+              align: pw.TextAlign.right,
+              color: moneyColor(r.paidAmount),
+              bg: rowBg,
+            ),
+
+            // Balance (shows minus for debit)
+            cell(
+              r.balance < 0
+                  ? "-${money(r.balance)}"
+                  : money(r.balance),
+              bold: true,
+              align: pw.TextAlign.right,
+              color: moneyColor(r.balance),
+              bg: rowBg,
+            ),
           ],
         ),
       );
     }
 
-    // Totals Row
+    // ---------- TOTALS ROW ----------
+    pw.Widget totalsCell(String text,
+        {pw.TextAlign align = pw.TextAlign.right}) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        decoration: pw.BoxDecoration(
+          color: deepBlue,
+          border: pw.Border(
+            top: pw.BorderSide(color: deepBlue, width: 1),
+          ),
+        ),
+        child: pw.Text(
+          text,
+          textAlign: align,
+          style: pw.TextStyle(
+            font: latinBold,
+            fontSize: 11,
+            color: PdfColors.white,
+          ),
+        ),
+      );
+    }
+
     final totals = pw.Table(
       columnWidths: const {
         0: pw.FlexColumnWidth(1),
@@ -286,11 +357,14 @@ class PendingPdfService extends BasePdfService {
       children: [
         pw.TableRow(
           children: [
-            _totalsCell("Totals:", latinBold, deepBlue),
-            _totalsCell("Not Paid: ${nf.format(totalNotPaid)}", latinBold, deepBlue),
-            _totalsCell("Paid: ${nf.format(totalPaid)}", latinBold, deepBlue),
-            _totalsCell("Balance: ${nf.format(totalBalance)}", latinBold, deepBlue,
-                align: pw.TextAlign.right),
+            totalsCell("Totals:", align: pw.TextAlign.left),
+            totalsCell("Not Paid: ${money(totalNotPaid)}"),
+            totalsCell("Paid: ${money(totalPaid)}"),
+            totalsCell(
+              totalBalance < 0
+                  ? "Balance: -${money(totalBalance)}"
+                  : "Balance: ${money(totalBalance)}",
+            ),
           ],
         ),
       ],
@@ -305,7 +379,6 @@ class PendingPdfService extends BasePdfService {
       ],
     );
   }
-
   pw.Widget _totalsCell(String text, pw.Font font, PdfColor deepBlue,
       {pw.TextAlign align = pw.TextAlign.left}) {
     return pw.Padding(

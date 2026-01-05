@@ -219,29 +219,6 @@ class _HomeWrapperState extends State<HomeWrapper> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              trailing: PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == "import_ios") _importForIOS();
-                  if (value == "debug") {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SettingsWrapper(),
-                      ),
-                    );
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: "import_ios",
-                    child: Text("Import DB"),
-                  ),
-                  PopupMenuItem(
-                    value: "debug",
-                    child: Text("Debug Database"),
-                  ),
-                ],
-              ),
             ),
           ),
           slider: DrawerMenu(

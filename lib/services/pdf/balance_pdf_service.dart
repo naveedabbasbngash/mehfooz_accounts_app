@@ -1,6 +1,8 @@
 // lib/services/pdf/balance_pdf_service.dart
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -12,24 +14,32 @@ class BalancePdfService extends BasePdfService {
   static final BalancePdfService instance = BalancePdfService._();
 
   late pw.Font urduFont;
+  late pw.Font urduFontBold;
 
-  // ------------------------------------------------------------------
-  // Load Unicode (Arabic / Urdu / Pashto) font
-  // ------------------------------------------------------------------
+  static final NumberFormat _money = NumberFormat('#,##0.00');
+
+  // ⚠️ DISPLAY ONLY (never use for logic)
+  double _fixForDisplay(double v) =>
+      v.abs() < 0.005 ? 0.0 : v;
+
+  String _fmtMoney(double v) =>
+      _money.format(_fixForDisplay(v));
+
   Future<void> _loadUrduFont() async {
-    final data =
-    await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
-    urduFont = pw.Font.ttf(data.buffer.asByteData());
+    final regularData =
+    await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
+    final boldData =
+    await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
+
+    urduFont = pw.Font.ttf(regularData.buffer.asByteData());
+    urduFontBold = pw.Font.ttf(boldData.buffer.asByteData());
   }
 
-  // ------------------------------------------------------------------
-  // RTL detection
-  // ------------------------------------------------------------------
   bool _isRtl(String? s) {
     if (s == null || s.trim().isEmpty) return false;
-    final r = RegExp(
-        r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]');
-    return r.hasMatch(s);
+    return RegExp(
+      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
+    ).hasMatch(s);
   }
 
   pw.TextDirection _dir(String v) =>
@@ -45,9 +55,6 @@ class BalancePdfService extends BasePdfService {
     return bold ? latinBold : latin;
   }
 
-  // ==================================================================
-  // MAIN RENDER
-  // ==================================================================
   Future<File> render({
     required List<String> currencies,
     required List<BalanceRow> rows,
@@ -55,57 +62,45 @@ class BalancePdfService extends BasePdfService {
     await _loadUrduFont();
 
     final pdf = pw.Document();
-
-    // Tall page (same as before)
-    final double pageWidth = PdfPageFormat.cm * 29.7;
-    final double pageHeight = PdfPageFormat.cm * 55;
-    final pageFormat = PdfPageFormat(pageWidth, pageHeight, marginAll: 12);
-
-    final (latin, latinBold) = createFonts();
+    final (latin, latinBold) = await createFonts();
 
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final greenBg = PdfColor.fromInt(0xFF4CAF50);
     final redBg = PdfColor.fromInt(0xFFC62828);
-    final white = PdfColors.white;
-    final black = PdfColors.black;
+
+    final pageFormat = PdfPageFormat(
+      PdfPageFormat.cm * 29.7,
+      PdfPageFormat.cm * 55,
+      marginAll: 12,
+    );
 
     pdf.addPage(
-      pw.Page(
+      pw.MultiPage(
         pageFormat: pageFormat,
-        build: (_) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              buildHeader(
-                title: 'Account Summary (All Currencies)',
-                font: latin,
-                fontBold: latinBold,
-                titleColor: deepBlue,
-              ),
-              pw.SizedBox(height: 10),
-              _buildTable(
-                currencies: currencies,
-                rows: rows,
-                latin: latin,
-                latinBold: latinBold,
-                deepBlue: deepBlue,
-                greenBg: greenBg,
-                redBg: redBg,
-                white: white,
-                black: black,
-              ),
-            ],
-          );
-        },
+        build: (_) => [
+          buildHeader(
+            title: 'Account Summary (All Currencies)',
+            font: latin,
+            fontBold: latinBold,
+            titleColor: deepBlue,
+          ),
+          pw.SizedBox(height: 10),
+          _buildTable(
+            currencies: currencies,
+            rows: rows,
+            latin: latin,
+            latinBold: latinBold,
+            deepBlue: deepBlue,
+            greenBg: greenBg,
+            redBg: redBg,
+          ),
+        ],
       ),
     );
 
     return savePdf(pdf, 'balance_report');
   }
 
-  // ==================================================================
-  // TABLE
-  // ==================================================================
   pw.Widget _buildTable({
     required List<String> currencies,
     required List<BalanceRow> rows,
@@ -114,193 +109,106 @@ class BalancePdfService extends BasePdfService {
     required PdfColor deepBlue,
     required PdfColor greenBg,
     required PdfColor redBg,
-    required PdfColor white,
-    required PdfColor black,
   }) {
-    final List<pw.TableRow> tableRows = [];
+    final tableRows = <pw.TableRow>[];
 
-    pw.Widget headerCell(String text, pw.TextAlign align) {
-      return pw.Container(
-        color: deepBlue,
-        padding: const pw.EdgeInsets.symmetric(
-          vertical: BasePdfService.headerPadV,
-          horizontal: BasePdfService.headerPadH,
-        ),
-        child: pw.Text(
-          text,
-          textAlign: align,
-          textDirection: _dir(text),
-          style: pw.TextStyle(
-            font: latinBold,
-            fontSize: BasePdfService.headerSize,
-            color: white,
-          ),
-        ),
-      );
-    }
-
-    // ---------------- HEADER ROW ----------------
+    // Header
     tableRows.add(
       pw.TableRow(
         children: [
-          headerCell('NAME', pw.TextAlign.left),
-          ...currencies.map((c) => headerCell(c, pw.TextAlign.center)),
+          _header('NAME', latinBold, deepBlue),
+          ...currencies.map((c) => _header(c, latinBold, deepBlue)),
         ],
       ),
     );
 
-    // ---------------- NAME CELL ----------------
-    pw.Widget nameCell(String name) {
-      return pw.Container(
-        padding: const pw.EdgeInsets.symmetric(
-          vertical: BasePdfService.cellPadV,
-          horizontal: BasePdfService.cellPadH,
-        ),
-        child: pw.Text(
-          name,
-          textDirection: _dir(name),
-          style: pw.TextStyle(
-            font: _pickFont(name, latin, latinBold, true),
-            fontSize: BasePdfService.bodySize,
-            color: deepBlue,
-          ),
-        ),
-      );
-    }
-
-    // ---------------- VALUE CELL ----------------
-    pw.Widget valueCell(int value) {
-      PdfColor bg;
-      PdfColor textColor;
-
-      if (value > 0) {
-        bg = greenBg;
-        textColor = white;
-      } else if (value < 0) {
-        bg = redBg;
-        textColor = white;
-      } else {
-        bg = white;
-        textColor = black;
-      }
-
-      return pw.Container(
-        padding: const pw.EdgeInsets.symmetric(
-          vertical: BasePdfService.cellPadV,
-          horizontal: BasePdfService.cellPadH,
-        ),
-        color: bg,
-        child: pw.Center(
-          child: pw.Text(
-            nf.format(value),
-            style: pw.TextStyle(
-              font: latin,
-              fontSize: BasePdfService.bodySize,
-              color: textColor,
-            ),
-          ),
-        ),
-      );
-    }
-
-    // ---------------- DATA ROWS ----------------
     for (final row in rows) {
       tableRows.add(
         pw.TableRow(
           children: [
-            nameCell(row.name),
-            ...currencies.map((c) => valueCell(row.byCurrency[c] ?? 0)),
+            _nameCell(row.name, latin, latinBold, deepBlue),
+            ...currencies.map((c) {
+              final value = row.byCurrency[c];
+
+              // ✅ ONLY skip exact zero
+              if (value == null || value == 0.0) {
+                return pw.Container();
+              }
+
+              return _valueCell(
+                value,
+                latin,
+                greenBg,
+                redBg,
+              );
+            }),
           ],
         ),
       );
     }
 
-    // ---------------- TOTALS ----------------
-    final totals = currencies.map(
-          (cur) => rows.fold<int>(0, (sum, r) => sum + (r.byCurrency[cur] ?? 0)),
-    );
-
-    pw.Widget totalsLabelCell() {
-      return pw.Container(
-        padding: const pw.EdgeInsets.symmetric(
-          vertical: BasePdfService.cellPadV,
-          horizontal: BasePdfService.cellPadH,
-        ),
-        decoration: pw.BoxDecoration(
-          border: pw.Border(
-            top: pw.BorderSide(color: deepBlue, width: 1),
-          ),
-        ),
-        child: pw.Text(
-          'Balance :',
-          style: pw.TextStyle(
-            font: latinBold,
-            fontSize: BasePdfService.headerSize,
-            color: deepBlue,
-          ),
-        ),
-      );
-    }
-
-    pw.Widget totalsValueCell(int value) {
-      PdfColor bg;
-      PdfColor textColor;
-
-      if (value > 0) {
-        bg = greenBg;
-        textColor = white;
-      } else if (value < 0) {
-        bg = redBg;
-        textColor = white;
-      } else {
-        bg = white;
-        textColor = black;
-      }
-
-      return pw.Container(
-        padding: const pw.EdgeInsets.symmetric(
-          vertical: BasePdfService.cellPadV,
-          horizontal: BasePdfService.cellPadH,
-        ),
-        decoration: pw.BoxDecoration(
-          color: bg,
-          border: pw.Border(
-            top: pw.BorderSide(color: deepBlue, width: 1),
-          ),
-        ),
-        child: pw.Center(
-          child: pw.Text(
-            nf.format(value),
-            style: pw.TextStyle(
-              font: latinBold,
-              fontSize: BasePdfService.headerSize,
-              color: textColor,
-            ),
-          ),
-        ),
-      );
-    }
-
-    tableRows.add(
-      pw.TableRow(
-        children: [
-          totalsLabelCell(),
-          ...totals.map((v) => totalsValueCell(v)),
-        ],
-      ),
-    );
-
     return pw.Table(
-      border: pw.TableBorder.all(
-        color: PdfColors.grey300,
-        width: 0.3,
-      ),
+      border: pw.TableBorder.all(width: 0.3),
       columnWidths: {
         0: const pw.FlexColumnWidth(3),
         for (int i = 0; i < currencies.length; i++)
           i + 1: const pw.FlexColumnWidth(1),
       },
       children: tableRows,
+    );
+  }
+
+  pw.Widget _header(String text, pw.Font bold, PdfColor bg) {
+    return pw.Container(
+      color: bg,
+      padding: const pw.EdgeInsets.all(4),
+      child: pw.Text(
+        text,
+        textDirection: _dir(text),
+        style: pw.TextStyle(font: bold, color: PdfColors.white),
+      ),
+    );
+  }
+
+  pw.Widget _nameCell(
+      String name,
+      pw.Font latin,
+      pw.Font latinBold,
+      PdfColor color,
+      ) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(4),
+      child: pw.Text(
+        name,
+        textDirection: _dir(name),
+        style: pw.TextStyle(
+          font: _pickFont(name, latin, latinBold, true),
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _valueCell(
+      double value,
+      pw.Font latin,
+      PdfColor green,
+      PdfColor red,
+      ) {
+    final isCredit = value > 0;
+
+    return pw.Container(
+      alignment: pw.Alignment.center,
+      padding: const pw.EdgeInsets.all(4),
+      color: isCredit ? green : red,
+      child: pw.Text(
+        _fmtMoney(value),
+        style: pw.TextStyle(
+          font: latin,
+          color: PdfColors.white,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
     );
   }
 }

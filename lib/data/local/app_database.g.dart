@@ -1771,11 +1771,11 @@ class $TransactionsPTable extends TransactionsP
     'voucherNo',
   );
   @override
-  late final GeneratedColumn<double> voucherNo = GeneratedColumn<double>(
+  late final GeneratedColumn<int> voucherNo = GeneratedColumn<int>(
     'VoucherNo',
     aliasedName,
-    true,
-    type: DriftSqlType.double,
+    false,
+    type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
   static const VerificationMeta _tDateMeta = const VerificationMeta('tDate');
@@ -2256,15 +2256,15 @@ class $TransactionsPTable extends TransactionsP
   }
 
   @override
-  Set<GeneratedColumn> get $primaryKey => const {};
+  Set<GeneratedColumn> get $primaryKey => {voucherNo};
   @override
   TransactionsPData map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return TransactionsPData(
       voucherNo: attachedDatabase.typeMapping.read(
-        DriftSqlType.double,
+        DriftSqlType.int,
         data['${effectivePrefix}VoucherNo'],
-      ),
+      )!,
       tDate: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}TDate'],
@@ -2384,15 +2384,13 @@ class $TransactionsPTable extends TransactionsP
 
 class TransactionsPData extends DataClass
     implements Insertable<TransactionsPData> {
-  final double? voucherNo;
+  final int voucherNo;
   final String? tDate;
   final int? accId;
   final int? accTypeId;
   final String? description;
   final double? dr;
   final double? cr;
-
-  /// These are TEXT in SQLite — must remain TEXT!
   final String? status;
   final String? st;
   final String? updateStatus;
@@ -2405,8 +2403,6 @@ class TransactionsPData extends DataClass
   final String? hwls1;
   final String? hwls;
   final String? advanceMess;
-
-  /// These are INTEGER in SQLite
   final int? cbal;
   final int? cbal1;
   final String? tTime;
@@ -2417,7 +2413,7 @@ class TransactionsPData extends DataClass
   final String? updatedAt;
   final int? isDeleted;
   const TransactionsPData({
-    this.voucherNo,
+    required this.voucherNo,
     this.tDate,
     this.accId,
     this.accTypeId,
@@ -2449,9 +2445,7 @@ class TransactionsPData extends DataClass
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
-    if (!nullToAbsent || voucherNo != null) {
-      map['VoucherNo'] = Variable<double>(voucherNo);
-    }
+    map['VoucherNo'] = Variable<int>(voucherNo);
     if (!nullToAbsent || tDate != null) {
       map['TDate'] = Variable<String>(tDate);
     }
@@ -2538,9 +2532,7 @@ class TransactionsPData extends DataClass
 
   TransactionsPCompanion toCompanion(bool nullToAbsent) {
     return TransactionsPCompanion(
-      voucherNo: voucherNo == null && nullToAbsent
-          ? const Value.absent()
-          : Value(voucherNo),
+      voucherNo: Value(voucherNo),
       tDate: tDate == null && nullToAbsent
           ? const Value.absent()
           : Value(tDate),
@@ -2619,7 +2611,7 @@ class TransactionsPData extends DataClass
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return TransactionsPData(
-      voucherNo: serializer.fromJson<double?>(json['voucherNo']),
+      voucherNo: serializer.fromJson<int>(json['voucherNo']),
       tDate: serializer.fromJson<String?>(json['tDate']),
       accId: serializer.fromJson<int?>(json['accId']),
       accTypeId: serializer.fromJson<int?>(json['accTypeId']),
@@ -2653,7 +2645,7 @@ class TransactionsPData extends DataClass
   Map<String, dynamic> toJson({ValueSerializer? serializer}) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
-      'voucherNo': serializer.toJson<double?>(voucherNo),
+      'voucherNo': serializer.toJson<int>(voucherNo),
       'tDate': serializer.toJson<String?>(tDate),
       'accId': serializer.toJson<int?>(accId),
       'accTypeId': serializer.toJson<int?>(accTypeId),
@@ -2685,7 +2677,7 @@ class TransactionsPData extends DataClass
   }
 
   TransactionsPData copyWith({
-    Value<double?> voucherNo = const Value.absent(),
+    int? voucherNo,
     Value<String?> tDate = const Value.absent(),
     Value<int?> accId = const Value.absent(),
     Value<int?> accTypeId = const Value.absent(),
@@ -2714,7 +2706,7 @@ class TransactionsPData extends DataClass
     Value<String?> updatedAt = const Value.absent(),
     Value<int?> isDeleted = const Value.absent(),
   }) => TransactionsPData(
-    voucherNo: voucherNo.present ? voucherNo.value : this.voucherNo,
+    voucherNo: voucherNo ?? this.voucherNo,
     tDate: tDate.present ? tDate.value : this.tDate,
     accId: accId.present ? accId.value : this.accId,
     accTypeId: accTypeId.present ? accTypeId.value : this.accTypeId,
@@ -2889,7 +2881,7 @@ class TransactionsPData extends DataClass
 }
 
 class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
-  final Value<double?> voucherNo;
+  final Value<int> voucherNo;
   final Value<String?> tDate;
   final Value<int?> accId;
   final Value<int?> accTypeId;
@@ -2917,7 +2909,6 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   final Value<int?> isSynced;
   final Value<String?> updatedAt;
   final Value<int?> isDeleted;
-  final Value<int> rowid;
   const TransactionsPCompanion({
     this.voucherNo = const Value.absent(),
     this.tDate = const Value.absent(),
@@ -2947,7 +2938,6 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     this.isSynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   TransactionsPCompanion.insert({
     this.voucherNo = const Value.absent(),
@@ -2978,10 +2968,9 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     this.isSynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.isDeleted = const Value.absent(),
-    this.rowid = const Value.absent(),
   });
   static Insertable<TransactionsPData> custom({
-    Expression<double>? voucherNo,
+    Expression<int>? voucherNo,
     Expression<String>? tDate,
     Expression<int>? accId,
     Expression<int>? accTypeId,
@@ -3009,7 +2998,6 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     Expression<int>? isSynced,
     Expression<String>? updatedAt,
     Expression<int>? isDeleted,
-    Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (voucherNo != null) 'VoucherNo': voucherNo,
@@ -3040,12 +3028,11 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
       if (isSynced != null) 'IsSynced': isSynced,
       if (updatedAt != null) 'UpdatedAt': updatedAt,
       if (isDeleted != null) 'IsDeleted': isDeleted,
-      if (rowid != null) 'rowid': rowid,
     });
   }
 
   TransactionsPCompanion copyWith({
-    Value<double?>? voucherNo,
+    Value<int>? voucherNo,
     Value<String?>? tDate,
     Value<int?>? accId,
     Value<int?>? accTypeId,
@@ -3073,7 +3060,6 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     Value<int?>? isSynced,
     Value<String?>? updatedAt,
     Value<int?>? isDeleted,
-    Value<int>? rowid,
   }) {
     return TransactionsPCompanion(
       voucherNo: voucherNo ?? this.voucherNo,
@@ -3104,7 +3090,6 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
       isSynced: isSynced ?? this.isSynced,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,
-      rowid: rowid ?? this.rowid,
     );
   }
 
@@ -3112,7 +3097,7 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     if (voucherNo.present) {
-      map['VoucherNo'] = Variable<double>(voucherNo.value);
+      map['VoucherNo'] = Variable<int>(voucherNo.value);
     }
     if (tDate.present) {
       map['TDate'] = Variable<String>(tDate.value);
@@ -3195,9 +3180,6 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     if (isDeleted.present) {
       map['IsDeleted'] = Variable<int>(isDeleted.value);
     }
-    if (rowid.present) {
-      map['rowid'] = Variable<int>(rowid.value);
-    }
     return map;
   }
 
@@ -3231,8 +3213,7 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
           ..write('others: $others, ')
           ..write('isSynced: $isSynced, ')
           ..write('updatedAt: $updatedAt, ')
-          ..write('isDeleted: $isDeleted, ')
-          ..write('rowid: $rowid')
+          ..write('isDeleted: $isDeleted')
           ..write(')'))
         .toString();
   }
@@ -4166,7 +4147,7 @@ typedef $$DbInfoTableTableProcessedTableManager =
     >;
 typedef $$TransactionsPTableCreateCompanionBuilder =
     TransactionsPCompanion Function({
-      Value<double?> voucherNo,
+      Value<int> voucherNo,
       Value<String?> tDate,
       Value<int?> accId,
       Value<int?> accTypeId,
@@ -4194,11 +4175,10 @@ typedef $$TransactionsPTableCreateCompanionBuilder =
       Value<int?> isSynced,
       Value<String?> updatedAt,
       Value<int?> isDeleted,
-      Value<int> rowid,
     });
 typedef $$TransactionsPTableUpdateCompanionBuilder =
     TransactionsPCompanion Function({
-      Value<double?> voucherNo,
+      Value<int> voucherNo,
       Value<String?> tDate,
       Value<int?> accId,
       Value<int?> accTypeId,
@@ -4226,7 +4206,6 @@ typedef $$TransactionsPTableUpdateCompanionBuilder =
       Value<int?> isSynced,
       Value<String?> updatedAt,
       Value<int?> isDeleted,
-      Value<int> rowid,
     });
 
 class $$TransactionsPTableFilterComposer
@@ -4238,7 +4217,7 @@ class $$TransactionsPTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnFilters<double> get voucherNo => $composableBuilder(
+  ColumnFilters<int> get voucherNo => $composableBuilder(
     column: $table.voucherNo,
     builder: (column) => ColumnFilters(column),
   );
@@ -4388,7 +4367,7 @@ class $$TransactionsPTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  ColumnOrderings<double> get voucherNo => $composableBuilder(
+  ColumnOrderings<int> get voucherNo => $composableBuilder(
     column: $table.voucherNo,
     builder: (column) => ColumnOrderings(column),
   );
@@ -4538,7 +4517,7 @@ class $$TransactionsPTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
-  GeneratedColumn<double> get voucherNo =>
+  GeneratedColumn<int> get voucherNo =>
       $composableBuilder(column: $table.voucherNo, builder: (column) => column);
 
   GeneratedColumn<String> get tDate =>
@@ -4668,7 +4647,7 @@ class $$TransactionsPTableTableManager
               $$TransactionsPTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
-                Value<double?> voucherNo = const Value.absent(),
+                Value<int> voucherNo = const Value.absent(),
                 Value<String?> tDate = const Value.absent(),
                 Value<int?> accId = const Value.absent(),
                 Value<int?> accTypeId = const Value.absent(),
@@ -4696,7 +4675,6 @@ class $$TransactionsPTableTableManager
                 Value<int?> isSynced = const Value.absent(),
                 Value<String?> updatedAt = const Value.absent(),
                 Value<int?> isDeleted = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => TransactionsPCompanion(
                 voucherNo: voucherNo,
                 tDate: tDate,
@@ -4726,11 +4704,10 @@ class $$TransactionsPTableTableManager
                 isSynced: isSynced,
                 updatedAt: updatedAt,
                 isDeleted: isDeleted,
-                rowid: rowid,
               ),
           createCompanionCallback:
               ({
-                Value<double?> voucherNo = const Value.absent(),
+                Value<int> voucherNo = const Value.absent(),
                 Value<String?> tDate = const Value.absent(),
                 Value<int?> accId = const Value.absent(),
                 Value<int?> accTypeId = const Value.absent(),
@@ -4758,7 +4735,6 @@ class $$TransactionsPTableTableManager
                 Value<int?> isSynced = const Value.absent(),
                 Value<String?> updatedAt = const Value.absent(),
                 Value<int?> isDeleted = const Value.absent(),
-                Value<int> rowid = const Value.absent(),
               }) => TransactionsPCompanion.insert(
                 voucherNo: voucherNo,
                 tDate: tDate,
@@ -4788,7 +4764,6 @@ class $$TransactionsPTableTableManager
                 isSynced: isSynced,
                 updatedAt: updatedAt,
                 isDeleted: isDeleted,
-                rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

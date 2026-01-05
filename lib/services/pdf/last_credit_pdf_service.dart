@@ -19,7 +19,8 @@ class LastCreditPdfService extends BasePdfService {
     final (latin, latinBold) = createFonts();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
 
-    final nf = NumberFormat('#,##0'); // comma, no decimals
+    // ✅ Decimal-safe formatter for money
+    final nf = NumberFormat('#,##0.00');
 
     pdf.addPage(
       pw.MultiPage(
@@ -27,7 +28,9 @@ class LastCreditPdfService extends BasePdfService {
         margin: const pw.EdgeInsets.all(24),
         build: (context) {
           return [
-            // Header
+            // --------------------------------------------------
+            // HEADER
+            // --------------------------------------------------
             pw.Text(
               'Last Credit Summary',
               style: pw.TextStyle(
@@ -46,9 +49,14 @@ class LastCreditPdfService extends BasePdfService {
             ),
             pw.SizedBox(height: 16),
 
-            // Table
+            // --------------------------------------------------
+            // TABLE
+            // --------------------------------------------------
             pw.Table(
-              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.4),
+              border: pw.TableBorder.all(
+                color: PdfColors.grey300,
+                width: 0.4,
+              ),
               columnWidths: const {
                 0: pw.FlexColumnWidth(3), // Customer
                 1: pw.FlexColumnWidth(2), // Balance
@@ -57,9 +65,10 @@ class LastCreditPdfService extends BasePdfService {
                 4: pw.FlexColumnWidth(2), // جمع Cr
               },
               children: [
-                // Header row
+                // ---------------- HEADER ROW ----------------
                 pw.TableRow(
-                  decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                  decoration:
+                  const pw.BoxDecoration(color: PdfColors.grey300),
                   children: [
                     _headerCell('Customer'),
                     _headerCell('Balance', align: pw.TextAlign.center),
@@ -69,25 +78,32 @@ class LastCreditPdfService extends BasePdfService {
                   ],
                 ),
 
-                // Data rows
+                // ---------------- DATA ROWS ----------------
                 ...rows.map((row) {
-                  // Balance (no /100, just like your Kotlin)
-                  final balanceFormatted = nf.format(row.netBalance);
+                  // ---------------- SAFE DOUBLE NORMALIZATION ----------------
+                  final double balance =
+                  (row.netBalance as num).toDouble();
+                  final double lastCr =
+                  (row.lastCreditAmount as num).toDouble();
 
-                  // Last credit amount
-                  final crFormatted = nf.format(row.lastCreditAmount);
+                  final balanceFormatted =
+                  nf.format(balance.abs() < 0.005 ? 0.0 : balance);
+                  final crFormatted =
+                  nf.format(lastCr.abs() < 0.005 ? 0.0 : lastCr);
 
-                  // Date: yyyy-MM-dd -> 10 chars max
+                  // ---------------- DATE ----------------
                   String cleanDate;
                   try {
-                    cleanDate = row.lastTransactionDate?.substring(0, 10) ?? '-';
+                    cleanDate =
+                        row.lastTransactionDate?.substring(0, 10) ?? '-';
                   } catch (_) {
                     cleanDate = row.lastTransactionDate ?? '-';
                   }
 
-                  // Days + color logic (months = days/30.0)
-                  final days = row.daysSinceLastCredit;
-                  final months = days / 30.0;
+                  // ---------------- DAYS (INT ONLY) ----------------
+                  final int days =
+                  (row.daysSinceLastCredit as num).round();
+                  final double months = days / 30.0;
 
                   PdfColor bg;
                   PdfColor fg;
@@ -103,29 +119,37 @@ class LastCreditPdfService extends BasePdfService {
                     fg = PdfColors.black;
                   }
 
-                  final daysFormatted = nf.format(days);
-
                   return pw.TableRow(
                     children: [
                       // Customer
-                      _bodyCell(row.customer, align: pw.TextAlign.left),
-                      // Balance (red)
+                      _bodyCell(
+                        row.customer,
+                        align: pw.TextAlign.left,
+                      ),
+
+                      // Balance (RED)
                       _bodyCell(
                         balanceFormatted,
                         align: pw.TextAlign.center,
                         color: PdfColors.red,
                       ),
+
                       // Date
-                      _bodyCell(cleanDate, align: pw.TextAlign.center),
-                      // No Days with background color
+                      _bodyCell(
+                        cleanDate,
+                        align: pw.TextAlign.center,
+                      ),
+
+                      // No Days (colored cell)
                       pw.Container(
                         color: bg,
-                        padding:
-                        const pw.EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                        padding: const pw.EdgeInsets.symmetric(
+                          vertical: 4,
+                          horizontal: 4,
+                        ),
                         alignment: pw.Alignment.center,
                         child: pw.Text(
-                          daysFormatted,
-                          textAlign: pw.TextAlign.center,
+                          days.toString(), // ✅ NO formatter
                           style: pw.TextStyle(
                             font: latin,
                             fontSize: 9,
@@ -133,8 +157,12 @@ class LastCreditPdfService extends BasePdfService {
                           ),
                         ),
                       ),
+
                       // جمع Cr
-                      _bodyCell(crFormatted, align: pw.TextAlign.center),
+                      _bodyCell(
+                        crFormatted,
+                        align: pw.TextAlign.center,
+                      ),
                     ],
                   );
                 }),
@@ -142,6 +170,10 @@ class LastCreditPdfService extends BasePdfService {
             ),
 
             pw.SizedBox(height: 12),
+
+            // --------------------------------------------------
+            // FOOTER
+            // --------------------------------------------------
             pw.Align(
               alignment: pw.Alignment.centerRight,
               child: pw.Text(
@@ -161,7 +193,13 @@ class LastCreditPdfService extends BasePdfService {
     return savePdf(pdf, 'last_credit_summary');
   }
 
-  pw.Widget _headerCell(String text, {pw.TextAlign align = pw.TextAlign.left}) {
+  // ==========================================================
+  // HEADER CELL
+  // ==========================================================
+  pw.Widget _headerCell(
+      String text, {
+        pw.TextAlign align = pw.TextAlign.left,
+      }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
@@ -175,6 +213,9 @@ class LastCreditPdfService extends BasePdfService {
     );
   }
 
+  // ==========================================================
+  // BODY CELL
+  // ==========================================================
   pw.Widget _bodyCell(
       String text, {
         pw.TextAlign align = pw.TextAlign.left,

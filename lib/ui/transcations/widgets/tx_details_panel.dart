@@ -1,12 +1,12 @@
 // lib/ui/transactions/widgets/tx_details_panel.dart
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 
 import '../../../model/tx_item_ui.dart';
 import '../../../services/pdf/transaction_voucher_pdf_service.dart';
-// or use your existing PendingPdfService if preferred.
 
 class TxDetailsPanel extends StatelessWidget {
   final TxItemUi row;
@@ -18,10 +18,20 @@ class TxDetailsPanel extends StatelessWidget {
     required this.onClose,
   });
 
+  // ------------------------------------------------------------
+  // Decimal formatter (REAL money)
+  // ------------------------------------------------------------
+  static final NumberFormat _fmt = NumberFormat('#,##0.00');
+
+  String _fmtDouble(double v) {
+    final safe = v.abs() < 0.005 ? 0.0 : v; // kill -0.00
+    return _fmt.format(safe);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bool isCredit = (row.crCents ?? 0) > 0;
-    final int amount = isCredit ? (row.crCents ?? 0) : (row.drCents ?? 0);
+    final bool isCredit = row.cr > 0;
+    final double amount = row.amount;
 
     final Color amountColor =
     isCredit ? AppColors.success : AppColors.error;
@@ -30,7 +40,7 @@ class TxDetailsPanel extends StatelessWidget {
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOutCubic,
       padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom, // 👈 avoids overflow
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
@@ -55,7 +65,7 @@ class TxDetailsPanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ------------------------------------------------------------
-              // HEADER ROW (Voucher + PDF + Close button)
+              // HEADER
               // ------------------------------------------------------------
               Row(
                 children: [
@@ -89,7 +99,7 @@ class TxDetailsPanel extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
 
-                  // CLOSE BUTTON
+                  // CLOSE
                   InkWell(
                     borderRadius: BorderRadius.circular(20),
                     onTap: onClose,
@@ -113,24 +123,24 @@ class TxDetailsPanel extends StatelessWidget {
               Divider(color: AppColors.divider),
 
               // ------------------------------------------------------------
-              // INFO GRID
+              // INFO
               // ------------------------------------------------------------
               const SizedBox(height: 16),
-              _info("Name", row.name ?? "-"),
-              _info("Date", row.date ?? "-"),
-              _info("Currency", row.currency ?? "-"),
+              _info("Name", row.name),
+              _info("Date", row.date),
+              _info("Currency", row.currency),
 
               if ((row.description ?? "").isNotEmpty)
-                _info("Description", row.description ?? "-"),
+                _info("Description", row.description!),
 
               const SizedBox(height: 22),
 
               // ------------------------------------------------------------
-              // AMOUNT — Stunning and centered
+              // AMOUNT
               // ------------------------------------------------------------
               Center(
                 child: Text(
-                  "${isCredit ? '+' : '-'}${_format(amount)}",
+                  "${isCredit ? '+' : '-'}${_fmtDouble(amount)}",
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 34,
@@ -150,7 +160,7 @@ class TxDetailsPanel extends StatelessWidget {
   }
 
   // ------------------------------------------------------------
-  // Elegant info row
+  // Info row
   // ------------------------------------------------------------
   Widget _info(String title, String value) {
     return Padding(
@@ -196,22 +206,5 @@ class TxDetailsPanel extends StatelessWidget {
         ),
       );
     }
-  }
-
-  // ------------------------------------------------------------
-  // Thousands formatting
-  // ------------------------------------------------------------
-  String _format(int n) {
-    final s = n.toString();
-    final buffer = StringBuffer();
-
-    for (int i = 0; i < s.length; i++) {
-      buffer.write(s[s.length - 1 - i]);
-      if ((i + 1) % 3 == 0 && i + 1 != s.length) {
-        buffer.write(',');
-      }
-    }
-
-    return buffer.toString().split('').reversed.join('');
   }
 }

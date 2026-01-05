@@ -2,9 +2,12 @@ class PendingGroupRow {
   final int voucherNo;
   final String beginDate;
   final String? msgNo;
-  final int notPaidAmount;
-  final int paidAmount;
-  final int balance;
+
+  // 💰 MONEY (always double)
+  final double notPaidAmount;
+  final double paidAmount;
+  final double balance;
+
   final String? sender;
   final String? receiver;
   final int accTypeId;
@@ -13,7 +16,7 @@ class PendingGroupRow {
   final String? accTypeName;
   final String? pd;
 
-  PendingGroupRow({
+  const PendingGroupRow({
     required this.voucherNo,
     required this.beginDate,
     required this.msgNo,
@@ -29,22 +32,36 @@ class PendingGroupRow {
     required this.pd,
   });
 
-  // Factory constructor for Drift row reading
+  /// ------------------------------------------------------------
+  /// Factory: SAFE parsing from SQLite / Drift customSelect
+  /// ------------------------------------------------------------
   factory PendingGroupRow.fromRow(Map<String, dynamic> row) {
+    double _toDouble(dynamic v) =>
+        (v is num) ? v.toDouble() : 0.0;
+
+    int _toInt(dynamic v) =>
+        (v is num) ? v.toInt() : 0;
+
+    String _toStr(dynamic v) =>
+        v?.toString() ?? "";
+
     return PendingGroupRow(
-      voucherNo: row['voucherNo'] ?? 0,
-      beginDate: row['beginDate'] ?? "",
-      msgNo: row['msgno'],
-      notPaidAmount: row['notPaidAmount'] ?? 0,
-      paidAmount: row['paidAmount'] ?? 0,
-      balance: row['balance'] ?? 0,
-      sender: row['sender'],
-      receiver: row['receiver'],
-      accTypeId: row['accTypeId'] ?? 0,
-      accId: row['accId'] ?? 0,
-      name: row['name'],
-      accTypeName: row['accTypeName'],
-      pd: row['pd'],
+      voucherNo: _toInt(row['voucherNo']),
+      beginDate: _toStr(row['beginDate']),
+      msgNo: row['msgno']?.toString(),
+
+      // ✅ MONEY — SAFE & CORRECT
+      notPaidAmount: _toDouble(row['notPaidAmount']),
+      paidAmount: _toDouble(row['paidAmount']),
+      balance: _toDouble(row['balance']),
+
+      sender: row['sender']?.toString(),
+      receiver: row['receiver']?.toString(),
+      accTypeId: _toInt(row['accTypeId']),
+      accId: _toInt(row['accId']),
+      name: row['name']?.toString(),
+      accTypeName: row['accTypeName']?.toString(),
+      pd: row['pd']?.toString(),
     );
   }
 }

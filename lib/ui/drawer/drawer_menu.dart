@@ -36,29 +36,69 @@ class DrawerMenu extends StatelessWidget {
   }) {
     final bool selected = currentPageIndex == index;
 
-    return Container(
-      decoration: selected
-          ? BoxDecoration(
-        color: AppColors.darkgreen.withOpacity(0.20),
-        borderRadius: BorderRadius.circular(12),
-      )
-          : null,
-      child: ListTile(
-        leading: Icon(icon, color: Colors.white),
-        title: Text(
-          title,
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: selected
+            ? Colors.white.withOpacity(0.12)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: selected
+            ? [
+          BoxShadow(
+            color: Colors.white.withOpacity(0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-        ),
-        onTap: () {
-          _logAction(title);
-          onItemClick(index);
-          drawerKey.currentState?.closeSlider();
-        },      ),
+        ]
+            : [],
+      ),
+      child: Row(
+        children: [
+          // ⭐ LEFT INDICATOR BAR
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: 4,
+            height: 48,
+            decoration: BoxDecoration(
+              color: selected ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: ListTile(
+              contentPadding:
+              const EdgeInsets.symmetric(horizontal: 4),
+              leading: Icon(
+                icon,
+                color: selected ? Colors.white : Colors.white70,
+              ),
+              title: Text(
+                title,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight:
+                  selected ? FontWeight.w700 : FontWeight.w500,
+                  letterSpacing: 0.3,
+                ),
+              ),
+              onTap: () {
+                _logAction(title);
+                onItemClick(index);
+                drawerKey.currentState?.closeSlider();
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -85,7 +125,7 @@ class DrawerMenu extends StatelessWidget {
                 const SizedBox(height: 8),
 
                 const Text(
-                  "Mahfooz Account",
+                  "Mahfooz Accounts",
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 15,

@@ -1,3 +1,4 @@
+// lib/ui/home/widgets/cash_in_hand_card.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
@@ -25,7 +26,8 @@ class CashInHandCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = vm.cashInHandSummary;
+    final rows =
+    vm.cashInHandSummary.where((r) => r.amount != 0).toList();
     final hasData = rows.isNotEmpty;
 
     return AnimatedContainer(
@@ -44,18 +46,15 @@ class CashInHandCard extends StatelessWidget {
       children: [
         _titleRow(context),
         const SizedBox(height: 4),
-
         Text(
           "Summary by currency",
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: AppColors.textMuted,
-          ),
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: AppColors.textMuted),
         ),
-
         const SizedBox(height: 10),
-
         Divider(height: 16, color: AppColors.divider),
-
         AnimatedSize(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
@@ -71,13 +70,10 @@ class CashInHandCard extends StatelessWidget {
     );
   }
 
-  // ----------------------------------------------------------
-  // Title Row
-  // ----------------------------------------------------------
   Row _titleRow(BuildContext context) {
     return Row(
       children: [
-        Icon(Icons.savings_outlined, color: AppColors.primary, size: 22),
+        Icon(Icons.money, color: AppColors.primary, size: 22),
         const SizedBox(width: 8),
         Text(
           "JB Amount",
@@ -97,11 +93,9 @@ class CashInHandCard extends StatelessWidget {
     );
   }
 
-  // ----------------------------------------------------------
-  // Build rows — NOW USING PRIMARY COLOR
-  // ----------------------------------------------------------
   List<Widget> _buildRows(List<dynamic> rows) {
-    final visible = isExpanded ? rows.length : rows.length.clamp(0, maxVisible);
+    final visible =
+    isExpanded ? rows.length : rows.length.clamp(0, maxVisible);
 
     return List.generate(visible, (i) {
       final row = rows[i];
@@ -112,14 +106,13 @@ class CashInHandCard extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(row.currency, style: const TextStyle(fontWeight: FontWeight.w600)),
-
-            Text(
-              fmt.format(row.amount),
-              style: TextStyle(
-                color: isPositive ? AppColors.primary : AppColors.error, // ← FIXED
-                fontWeight: FontWeight.bold,
-              ),
+            Text(row.currency,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
+            _AnimatedMoneyText(
+              value: row.amount.toDouble(),
+              fmt: fmt,
+              color:
+              isPositive ? AppColors.primary : AppColors.error,
             ),
           ],
         ),
@@ -127,9 +120,6 @@ class CashInHandCard extends StatelessWidget {
     });
   }
 
-  // ----------------------------------------------------------
-  // Expand / collapse toggle
-  // ----------------------------------------------------------
   Widget _buildExpandToggle(int hiddenCount) {
     return InkWell(
       onTap: onToggle,
@@ -139,7 +129,9 @@ class CashInHandCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+              isExpanded
+                  ? Icons.keyboard_arrow_up
+                  : Icons.keyboard_arrow_down,
               size: 18,
               color: AppColors.primary,
             ),
@@ -158,27 +150,15 @@ class CashInHandCard extends StatelessWidget {
     );
   }
 
-  // ----------------------------------------------------------
-  // Empty State — PROFESSIONAL LIGHT BACKGROUND
-  // ----------------------------------------------------------
   Widget _emptyState() {
     return FadeSlide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primary.withOpacity(0.08),
-              ),
-              child: Icon(Icons.wallet_outlined,
-                  size: 40, color: AppColors.primary.withOpacity(0.35)),
-            ),
-
-            const SizedBox(height: 16),
-
+            Icon(Icons.wallet_outlined,
+                size: 40, color: AppColors.primary.withOpacity(0.35)),
+            const SizedBox(height: 12),
             Text(
               "No Summary Yet",
               style: TextStyle(
@@ -187,53 +167,12 @@ class CashInHandCard extends StatelessWidget {
                 color: AppColors.textDark,
               ),
             ),
-
-            const SizedBox(height: 8),
-
-            Text(
-              "JB Amount summary will appear\nonce transaction data is available.",
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                height: 1.4,
-                color: AppColors.textMuted,
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: AppColors.emptyBackground,     // ← FIXED
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline,
-                      size: 16, color: AppColors.primary.withOpacity(0.45)),
-                  const SizedBox(width: 6),
-                  Text(
-                    "Import database to load summary",
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.primary.withOpacity(0.45),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  // ----------------------------------------------------------
-  // Card decoration
-  // ----------------------------------------------------------
   BoxDecoration get _cardDecoration => BoxDecoration(
     color: AppColors.cardBackground,
     borderRadius: BorderRadius.circular(20),
@@ -248,9 +187,58 @@ class CashInHandCard extends StatelessWidget {
   );
 }
 
-// ----------------------------------------------------------
-// PDF export
-// ----------------------------------------------------------
+class _AnimatedMoneyText extends StatefulWidget {
+  final double value;
+  final NumberFormat fmt;
+  final Color color;
+
+  const _AnimatedMoneyText({
+    super.key,
+    required this.value,
+    required this.fmt,
+    required this.color,
+  });
+
+  @override
+  State<_AnimatedMoneyText> createState() => _AnimatedMoneyTextState();
+}
+
+class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
+  late double _oldValue;
+
+  @override
+  void initState() {
+    super.initState();
+    _oldValue = widget.value;
+  }
+
+  @override
+  void didUpdateWidget(covariant _AnimatedMoneyText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value) {
+      _oldValue = oldWidget.value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: _oldValue, end: widget.value),
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeOutCubic,
+      builder: (_, v, __) {
+        return Text(
+          widget.fmt.format(v),
+          style: TextStyle(
+            color: widget.color,
+            fontWeight: FontWeight.bold,
+          ),
+        );
+      },
+    );
+  }
+}
+
 void _exportCombinedPdf(BuildContext context, HomeViewModel vm) async {
   final companyName = vm.selectedCompanyName ?? "Mahfooz Accounts";
 

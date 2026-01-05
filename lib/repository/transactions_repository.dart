@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/cupertino.dart';
 import '../data/local/app_database.dart';
 import '../model/balance_currency_ui.dart';
 import '../model/balance_matrix_result.dart';
@@ -23,54 +24,62 @@ class TransactionsRepository {
     required bool showAll,
   }) async {
     const query = r"""
-    WITH RankedTransactions AS (
-        SELECT 
-            tp.VoucherNo,
-            substr(tp.TDate,1,10) AS TDate,
-            tp.msgno,
-            tp.hwls1,
-            tp.advancemess,
-            tp.AccTypeID,
-            tp.AccID,
-            ap.Name,
-            at.AccTypeName,
-            tp.PD,
-            tp.currencystatus,
-            CAST(tp.Cr AS INTEGER) AS Cr,
-            CAST(tp.Dr AS INTEGER) AS Dr
-        FROM Transactions_P tp
-        INNER JOIN Acc_Personal ap ON tp.AccID = ap.AccID
-        INNER JOIN AccType at      ON tp.AccTypeID = at.AccTypeID
-        WHERE tp.AccID = ?1
-          AND tp.CompanyID = ?2
-    )
+WITH RankedTransactions AS (
     SELECT 
-        MIN(VoucherNo) AS voucherNo,
-        MIN(TDate)     AS beginDate,
-        msgno          AS msgno,
-        SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS notPaidAmount,
-        SUM(CASE WHEN currencystatus LIKE '%P%'  THEN Dr ELSE 0 END) AS paidAmount,
-        SUM(CASE WHEN currencystatus LIKE '%p%'  THEN Dr ELSE 0 END)
-          - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS balance,
-        MAX(hwls1)        AS sender,
-        MAX(advancemess)  AS receiver,
-        AccTypeID         AS accTypeId,
-        AccID             AS accId,
-        MAX(Name)         AS name,
-        MAX(AccTypeName)  AS accTypeName,
-        MAX(PD)           AS pd
-    FROM RankedTransactions
-    GROUP BY msgno, AccTypeID, AccID
-    HAVING 
-        CASE 
-            WHEN ?3 = 1 THEN 1 
-            ELSE (
-                SUM(CASE WHEN currencystatus LIKE '%p%' THEN Dr ELSE 0 END)
-                - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END)
-            ) < 0
-        END
-    ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
-    """;
+        tp.VoucherNo,
+        substr(tp.TDate,1,10) AS TDate,
+        tp.msgno,
+        tp.hwls1,
+        tp.advancemess,
+        tp.AccTypeID,
+        tp.AccID,
+        ap.Name,
+        at.AccTypeName,
+        tp.PD,
+        tp.currencystatus,
+        CAST(IFNULL(tp.Cr, 0) AS REAL) AS Cr,
+        CAST(IFNULL(tp.Dr, 0) AS REAL) AS Dr
+    FROM Transactions_P tp
+    INNER JOIN Acc_Personal ap ON tp.AccID = ap.AccID
+    INNER JOIN AccType at      ON tp.AccTypeID = at.AccTypeID
+    WHERE tp.AccID = ?1
+      AND tp.CompanyID = ?2
+)
+SELECT 
+    MIN(VoucherNo) AS voucherNo,
+    MIN(TDate)     AS beginDate,
+    msgno          AS msgno,
+    SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS notPaidAmount,
+    SUM(CASE WHEN currencystatus LIKE '%P%'  THEN Dr ELSE 0 END) AS paidAmount,
+    SUM(CASE WHEN currencystatus LIKE '%p%'  THEN Dr ELSE 0 END)
+      - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS balance,
+    MAX(hwls1)        AS sender,
+    MAX(advancemess)  AS receiver,
+    AccTypeID         AS accTypeId,
+    AccID             AS accId,
+    MAX(Name)         AS name,
+    MAX(AccTypeName)  AS accTypeName,
+    MAX(PD)           AS pd
+FROM RankedTransactions
+GROUP BY msgno, AccTypeID, AccID
+HAVING 
+    CASE 
+        WHEN ?3 = 1 THEN 1 
+        ELSE (
+            (SUM(CASE WHEN currencystatus LIKE '%p%' THEN Dr ELSE 0 END)
+             - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END)) < 0
+        )
+    END
+ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
+""";
+
+    // --------------------------------------------------
+    // 🔍 LOG INPUTS
+    // --------------------------------------------------
+    debugPrint("📌 getPendingGroups()");
+    debugPrint("   accId     = $accId");
+    debugPrint("   companyId = $companyId");
+    debugPrint("   showAll   = $showAll");
 
     final result = await db.customSelect(
       query,
@@ -82,8 +91,40 @@ class TransactionsRepository {
       readsFrom: {db.transactionsP, db.accPersonal, db.accType},
     ).get();
 
-    return result.map((row) => PendingGroupRow.fromRow(row.data)).toList();
+    // --------------------------------------------------
+    // 🔍 LOG RESULT COUNT
+    // --------------------------------------------------
+    debugPrint("✅ PendingGroup query returned ${result.length} rows");
+
+    // --------------------------------------------------
+    // 🔍 LOG FIRST FEW ROWS (VERY IMPORTANT)
+    // --------------------------------------------------
+    for (int i = 0; i < result.length && i < 5; i++) {
+      debugPrint("🔎 Row[$i]: ${result[i].data}");
+    }
+
+    // --------------------------------------------------
+    // 🔁 MAP + LOG MODEL CONVERSION
+    // --------------------------------------------------
+    final rows = <PendingGroupRow>[];
+
+    for (final row in result) {
+      try {
+        final mapped = PendingGroupRow.fromRow(row.data);
+        rows.add(mapped);
+      } catch (e, s) {
+        debugPrint("❌ Mapping error for row: ${row.data}");
+        debugPrint("❌ Error: $e");
+        debugPrintStack(stackTrace: s);
+      }
+    }
+
+    debugPrint("📦 PendingGroupRow mapped count: ${rows.length}");
+
+    return rows;
   }
+
+
 
   // =========================================================
   // TRANSACTIONS LIST ✅ companyId already added (keep same)
@@ -180,32 +221,32 @@ class TransactionsRepository {
   }) {
     final sql = (companyId == null)
         ? r'''
-          SELECT 
-            at.AccTypeName AS currency,
-            IFNULL(SUM(CAST(t.Cr AS INTEGER)), 0) AS crCents,
-            IFNULL(SUM(CAST(t.Dr AS INTEGER)), 0) AS drCents
-          FROM Transactions_P t
-          INNER JOIN AccType at ON at.AccTypeID = t.AccTypeID
-          WHERE t.AccID = ?1
-            AND (?2 IS NULL OR substr(t.TDate,1,10) >= ?2)
-            AND (?3 IS NULL OR substr(t.TDate,1,10) <= ?3)
-          GROUP BY at.AccTypeName
-          ORDER BY at.AccTypeName COLLATE NOCASE ASC
-        '''
+        SELECT 
+          at.AccTypeName AS currency,
+          IFNULL(SUM(CAST(t.Cr AS REAL)), 0.0) AS cr,
+          IFNULL(SUM(CAST(t.Dr AS REAL)), 0.0) AS dr
+        FROM Transactions_P t
+        INNER JOIN AccType at ON at.AccTypeID = t.AccTypeID
+        WHERE t.AccID = ?1
+          AND (?2 IS NULL OR substr(t.TDate,1,10) >= ?2)
+          AND (?3 IS NULL OR substr(t.TDate,1,10) <= ?3)
+        GROUP BY at.AccTypeName
+        ORDER BY at.AccTypeName COLLATE NOCASE ASC
+      '''
         : r'''
-          SELECT 
-            at.AccTypeName AS currency,
-            IFNULL(SUM(CAST(t.Cr AS INTEGER)), 0) AS crCents,
-            IFNULL(SUM(CAST(t.Dr AS INTEGER)), 0) AS drCents
-          FROM Transactions_P t
-          INNER JOIN AccType at ON at.AccTypeID = t.AccTypeID
-          WHERE t.CompanyID = ?1
-            AND t.AccID = ?2
-            AND (?3 IS NULL OR substr(t.TDate,1,10) >= ?3)
-            AND (?4 IS NULL OR substr(t.TDate,1,10) <= ?4)
-          GROUP BY at.AccTypeName
-          ORDER BY at.AccTypeName COLLATE NOCASE ASC
-        ''';
+        SELECT 
+          at.AccTypeName AS currency,
+          IFNULL(SUM(CAST(t.Cr AS REAL)), 0.0) AS cr,
+          IFNULL(SUM(CAST(t.Dr AS REAL)), 0.0) AS dr
+        FROM Transactions_P t
+        INNER JOIN AccType at ON at.AccTypeID = t.AccTypeID
+        WHERE t.CompanyID = ?1
+          AND t.AccID = ?2
+          AND (?3 IS NULL OR substr(t.TDate,1,10) >= ?3)
+          AND (?4 IS NULL OR substr(t.TDate,1,10) <= ?4)
+        GROUP BY at.AccTypeName
+        ORDER BY at.AccTypeName COLLATE NOCASE ASC
+      ''';
 
     final vars = (companyId == null)
         ? [
@@ -220,20 +261,26 @@ class TransactionsRepository {
       endDate == null ? const Variable(null) : Variable.withString(endDate),
     ];
 
+    double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
+
     return db.customSelect(
       sql,
       variables: vars,
       readsFrom: {db.transactionsP, db.accType},
     ).watch().map((rows) {
-      return rows
-          .map((row) => BalanceCurrencyUi(
-        currency: (row.data['currency'] as String?) ?? '',
-        creditCents: (row.data['crCents'] as int?) ?? 0,
-        debitCents: (row.data['drCents'] as int?) ?? 0,
-      ))
-          .toList();
+      return rows.map((row) {
+        final cr = (row.data['cr'] as num?)?.toDouble() ?? 0.0;
+        final dr = (row.data['dr'] as num?)?.toDouble() ?? 0.0;
+
+        return BalanceCurrencyUi(
+          currency: (row.data['currency'] as String?) ?? '',
+          credit: _fixZero(cr),
+          debit: _fixZero(dr),
+        );
+      }).toList();
     });
   }
+
 
   // =========================================================
   // ✅ RESOLVE AccTypeID BY NAME — add OPTIONAL companyId
@@ -267,16 +314,18 @@ class TransactionsRepository {
   // BALANCE MATRIX ✅ add OPTIONAL companyId (recommended)
   // =========================================================
   Future<BalanceMatrixResult> getBalanceMatrix({int? companyId}) async {
-    print('🧪 getBalanceMatrix START → companyId=$companyId');
-
+    // ===============================
+    // STEP 1: LOAD CURRENCIES
+    // ===============================
     final curSql = (companyId == null)
         ? r'''
         SELECT at.AccTypeName AS cur
         FROM AccType at
         JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
         GROUP BY at.AccTypeName
-        HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
-             - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) <> 0
+        HAVING 
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) 
+        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
         ORDER BY at.AccTypeName COLLATE NOCASE
       '''
         : r'''
@@ -285,8 +334,9 @@ class TransactionsRepository {
         JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
         WHERE tp.CompanyID = ?1
         GROUP BY at.AccTypeName
-        HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
-             - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) <> 0
+        HAVING 
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) 
+        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
         ORDER BY at.AccTypeName COLLATE NOCASE
       ''';
 
@@ -295,30 +345,25 @@ class TransactionsRepository {
       variables: companyId == null ? const [] : [Variable.withInt(companyId)],
     ).get();
 
-    print('🧪 Currency rows count = ${curRows.length}');
-    for (final r in curRows) {
-      print('🧪 CUR ROW = ${r.data}');
-    }
-
-    final currencies = curRows
-        .map((r) => (r.data['cur'] as String).trim())
+    List<String> currencies = curRows
+        .map((r) => (r.data['cur'] as String?)?.trim() ?? '')
         .where((s) => s.isNotEmpty)
         .toList();
 
-    print('🧪 currencies = $currencies');
-
     if (currencies.isEmpty) {
-      print('❌ currencies EMPTY → returning empty result');
       return BalanceMatrixResult(currencies: [], rows: []);
     }
 
+    // ===============================
+    // STEP 2: LOAD RAW NET DATA
+    // ===============================
     final rawSql = (companyId == null)
         ? r'''
         SELECT 
           ap.Name AS name,
           at.AccTypeName AS cur,
-          IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
-          - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS netCents
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0)
+        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) AS net
         FROM Acc_Personal ap
         LEFT JOIN Transactions_P tp ON ap.AccID = tp.AccID
         LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
@@ -329,8 +374,8 @@ class TransactionsRepository {
         SELECT 
           ap.Name AS name,
           at.AccTypeName AS cur,
-          IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0)
-          - IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS netCents
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0)
+        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) AS net
         FROM Acc_Personal ap
         LEFT JOIN Transactions_P tp 
           ON ap.AccID = tp.AccID
@@ -345,39 +390,54 @@ class TransactionsRepository {
       variables: companyId == null ? const [] : [Variable.withInt(companyId)],
     ).get();
 
-    print('🧪 rawRows count = ${rawRows.length}');
-    for (final r in rawRows.take(5)) {
-      print('🧪 RAW SAMPLE = ${r.data}');
-    }
+    double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
-    final Map<String, Map<String, int>> pivot = {};
+    // ===============================
+    // STEP 3: PIVOT DATA (KEEP + & −)
+    // ===============================
+    final Map<String, Map<String, double>> pivot = {};
 
     for (final row in rawRows) {
-      final name = (row.data['name'] as String?)?.trim() ?? "Unknown";
-      final cur = row.data['cur'] as String?;
-      final net = row.data['netCents'] as int?;
+      final name = (row.data['name'] as String?)?.trim();
+      final cur = (row.data['cur'] as String?)?.trim();
+      final net = _fixZero((row.data['net'] as num?)?.toDouble() ?? 0.0);
 
-      if (cur == null || net == null || net == 0) continue;
+      if (name == null || name.isEmpty) continue;
+      if (cur == null || cur.isEmpty) continue;
+      if (net == 0.0) continue; // ✅ ONLY skip pure zero
 
       pivot.putIfAbsent(name, () => {});
-      pivot[name]![cur] = net;
+      pivot[name]![cur] = net; // ✅ keep + and −
     }
 
-    print('🧪 pivot size = ${pivot.length}');
-
+    // ===============================
+    // STEP 4: BUILD ROWS
+    // ===============================
     final rows = pivot.entries
         .map((e) => BalanceRow(
       name: e.key,
-      byCurrency: Map<String, int>.from(e.value),
+      byCurrency: Map<String, double>.from(e.value),
     ))
-        .toList();
+        .toList()
+      ..sort((a, b) =>
+          a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-    print('🧪 final rows = ${rows.length}');
-    if (rows.isNotEmpty) {
-      print('🧪 FIRST ROW = ${rows.first.name} → ${rows.first.byCurrency}');
+    // ===============================
+    // STEP 5: CLEAN UNUSED CURRENCIES
+    // ===============================
+    final usedCurrencies = <String>{};
+    for (final r in rows) {
+      r.byCurrency.forEach((k, v) {
+        if (v != 0.0) usedCurrencies.add(k);
+      });
     }
 
-    return BalanceMatrixResult(currencies: currencies, rows: rows);
+    currencies = currencies.where(usedCurrencies.contains).toList();
+
+    return BalanceMatrixResult(
+      currencies: currencies,
+      rows: rows,
+    );
   }
   // =========================================================
   // CREDIT MATRIX ✅ add OPTIONAL companyId
@@ -385,26 +445,26 @@ class TransactionsRepository {
   Future<BalanceMatrixResult> getCreditMatrix({int? companyId}) async {
     final curSql = (companyId == null)
         ? r'''
-          SELECT at.AccTypeName AS cur
-          FROM AccType at
-          JOIN Transactions_P tp 
-            ON at.AccTypeID = tp.AccTypeID
-           AND tp.AccID != 1
-          GROUP BY at.AccTypeName
-          HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0) <> 0
-          ORDER BY at.AccTypeName COLLATE NOCASE
-        '''
+        SELECT at.AccTypeName AS cur
+        FROM AccType at
+        JOIN Transactions_P tp 
+          ON at.AccTypeID = tp.AccTypeID
+         AND tp.AccID != 1
+        GROUP BY at.AccTypeName
+        HAVING IFNULL(SUM(CAST(tp.Cr AS REAL)), 0.0) > 0
+        ORDER BY at.AccTypeName COLLATE NOCASE
+      '''
         : r'''
-          SELECT at.AccTypeName AS cur
-          FROM AccType at
-          JOIN Transactions_P tp 
-            ON at.AccTypeID = tp.AccTypeID
-           AND tp.AccID != 1
-          WHERE tp.CompanyID = ?1
-          GROUP BY at.AccTypeName
-          HAVING IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0) <> 0
-          ORDER BY at.AccTypeName COLLATE NOCASE
-        ''';
+        SELECT at.AccTypeName AS cur
+        FROM AccType at
+        JOIN Transactions_P tp 
+          ON at.AccTypeID = tp.AccTypeID
+         AND tp.AccID != 1
+        WHERE tp.CompanyID = ?1
+        GROUP BY at.AccTypeName
+        HAVING IFNULL(SUM(CAST(tp.Cr AS REAL)), 0.0) > 0
+        ORDER BY at.AccTypeName COLLATE NOCASE
+      ''';
 
     final curRows = await db.customSelect(
       curSql,
@@ -412,7 +472,7 @@ class TransactionsRepository {
     ).get();
 
     var currencies = curRows
-        .map((r) => (r.data['cur'] as String).trim())
+        .map((r) => (r.data['cur'] as String?)?.trim() ?? '')
         .where((s) => s.isNotEmpty)
         .toList();
 
@@ -422,57 +482,62 @@ class TransactionsRepository {
 
     final rawSql = (companyId == null)
         ? r'''
-          SELECT 
-            ap.Name AS name,
-            at.AccTypeName AS cur,
-            IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0) AS sumCr,
-            IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS sumDr
-          FROM Acc_Personal ap
-          LEFT JOIN Transactions_P tp 
-            ON ap.AccID = tp.AccID
-           AND tp.AccID != 1
-          LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
-          GROUP BY ap.Name, at.AccTypeName
-          ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
-        '''
+        SELECT 
+          ap.Name AS name,
+          at.AccTypeName AS cur,
+          IFNULL(SUM(CAST(tp.Cr AS REAL)), 0.0) AS sumCr,
+          IFNULL(SUM(CAST(tp.Dr AS REAL)), 0.0) AS sumDr
+        FROM Acc_Personal ap
+        LEFT JOIN Transactions_P tp 
+          ON ap.AccID = tp.AccID
+         AND tp.AccID != 1
+        LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
+        GROUP BY ap.Name, at.AccTypeName
+        ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
+      '''
         : r'''
-          SELECT 
-            ap.Name AS name,
-            at.AccTypeName AS cur,
-            IFNULL(SUM(CAST(tp.Cr AS INTEGER)),0) AS sumCr,
-            IFNULL(SUM(CAST(tp.Dr AS INTEGER)),0) AS sumDr
-          FROM Acc_Personal ap
-          LEFT JOIN Transactions_P tp 
-            ON ap.AccID = tp.AccID
-           AND tp.AccID != 1
-           AND tp.CompanyID = ?1
-          LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
-          GROUP BY ap.Name, at.AccTypeName
-          ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
-        ''';
+        SELECT 
+          ap.Name AS name,
+          at.AccTypeName AS cur,
+          IFNULL(SUM(CAST(tp.Cr AS REAL)), 0.0) AS sumCr,
+          IFNULL(SUM(CAST(tp.Dr AS REAL)), 0.0) AS sumDr
+        FROM Acc_Personal ap
+        LEFT JOIN Transactions_P tp 
+          ON ap.AccID = tp.AccID
+         AND tp.AccID != 1
+         AND tp.CompanyID = ?1
+        LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
+        GROUP BY ap.Name, at.AccTypeName
+        ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
+      ''';
 
     final rawRows = await db.customSelect(
       rawSql,
       variables: companyId == null ? const [] : [Variable.withInt(companyId)],
     ).get();
 
-    final Map<String, Map<String, int>> pivot = {};
+    double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
+
+    final Map<String, Map<String, double>> pivot = {};
 
     for (final row in rawRows) {
       final name = (row.data['name'] as String?)?.trim() ?? 'Unknown';
-      final cur = row.data['cur'] as String?;
-      final cr = row.data['sumCr'] as int? ?? 0;
-      final dr = row.data['sumDr'] as int? ?? 0;
+      final cur = (row.data['cur'] as String?)?.trim();
+      final cr = (row.data['sumCr'] as num?)?.toDouble() ?? 0.0;
+      final dr = (row.data['sumDr'] as num?)?.toDouble() ?? 0.0;
 
-      final net = cr - dr;
-      if (cur == null || net <= 0) continue;
+      final net = _fixZero(cr - dr);
+      if (cur == null || cur.isEmpty || net <= 0) continue;
 
       pivot.putIfAbsent(name, () => {});
       pivot[name]![cur] = net;
     }
 
     var rows = pivot.entries
-        .map((e) => BalanceRow(name: e.key, byCurrency: Map<String, int>.from(e.value)))
+        .map((e) => BalanceRow(
+      name: e.key,
+      byCurrency: Map<String, double>.from(e.value),
+    ))
         .where((r) => r.byCurrency.values.any((v) => v > 0))
         .toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -483,11 +548,10 @@ class TransactionsRepository {
         if (v > 0) usedCurrencies.add(cur);
       });
     }
-    currencies = currencies.where((c) => usedCurrencies.contains(c)).toList();
+    currencies = currencies.where(usedCurrencies.contains).toList();
 
     return BalanceMatrixResult(currencies: currencies, rows: rows);
   }
-
   // =========================================================
   // LEDGER (keep your existing methods)
   // ✅ add OPTIONAL companyId safely
@@ -539,7 +603,7 @@ class TransactionsRepository {
     return rows.first.data['id'] as int?;
   }
 
-  Future<int> ledgerOpeningBalance({
+  Future<double> ledgerOpeningBalance({
     int? companyId,
     required int accId,
     required int accTypeId,
@@ -547,20 +611,20 @@ class TransactionsRepository {
   }) async {
     final sql = (companyId == null)
         ? r'''
-          SELECT IFNULL(SUM(Cr),0) - IFNULL(SUM(Dr),0) AS opening
-          FROM Transactions_P
-          WHERE AccID = ?1
-            AND AccTypeID = ?2
-            AND substr(TDate,1,10) < ?3
-        '''
+        SELECT IFNULL(SUM(Cr),0.0) - IFNULL(SUM(Dr),0.0) AS opening
+        FROM Transactions_P
+        WHERE AccID = ?1
+          AND AccTypeID = ?2
+          AND substr(TDate,1,10) < ?3
+      '''
         : r'''
-          SELECT IFNULL(SUM(Cr),0) - IFNULL(SUM(Dr),0) AS opening
-          FROM Transactions_P
-          WHERE CompanyID = ?1
-            AND AccID = ?2
-            AND AccTypeID = ?3
-            AND substr(TDate,1,10) < ?4
-        ''';
+        SELECT IFNULL(SUM(Cr),0.0) - IFNULL(SUM(Dr),0.0) AS opening
+        FROM Transactions_P
+        WHERE CompanyID = ?1
+          AND AccID = ?2
+          AND AccTypeID = ?3
+          AND substr(TDate,1,10) < ?4
+      ''';
 
     final vars = (companyId == null)
         ? [
@@ -577,9 +641,14 @@ class TransactionsRepository {
 
     final rows = await db.customSelect(sql, variables: vars).get();
 
-    if (rows.isEmpty) return 0;
-    return rows.first.data['opening'] as int? ?? 0;
+    if (rows.isEmpty) return 0.0;
+
+    final raw = (rows.first.data['opening'] as num?)?.toDouble() ?? 0.0;
+
+    // 🔒 kill -0.00 noise
+    return raw.abs() < 0.005 ? 0.0 : raw;
   }
+
 
   Future<List<Map<String, dynamic>>> fetchLedgerRowsRaw({
     int? companyId,

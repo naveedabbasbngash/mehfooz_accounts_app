@@ -1,6 +1,7 @@
 // lib/ui/transactions/transaction_screen.dart
 
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 
 import '../../model/tx_filter.dart';
@@ -126,12 +127,26 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 260),
                   child: isBalanceMode
-                      ? BalanceList(
-                    key: const ValueKey("BALANCE"),
+                      ?
+                  BalanceList(
                     name: vm.search,
                     rows: vm.balanceByCurrency,
-                  )
-                      : TxList(
+
+                    onExportPdf: () async {
+                      debugPrint("📄 PDF export requested");
+
+                      final file = await vm.generateBalancePdfFromUi();
+
+                      if (file == null) {
+                        debugPrint("⚠️ PDF not generated (empty data)");
+                        return;
+                      }
+
+                      debugPrint("✅ PDF generated at: ${file.path}");
+
+                      await OpenFilex.open(file.path);
+                    },
+                  )                      : TxList(
                     key: const ValueKey("LIST"),
                     items: vm.items,
                     onRowTap: (row) async {

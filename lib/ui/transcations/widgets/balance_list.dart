@@ -1,37 +1,70 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../../model/balance_currency_ui.dart';
 
-class BalanceList extends StatelessWidget {
-  final String name; // text from search – for header
+class BalanceList extends StatefulWidget {
+  final String name;
   final List<BalanceCurrencyUi> rows;
+
+  /// PDF export callback (handled by parent / ViewModel)
+  final Future<void> Function()? onExportPdf;
 
   const BalanceList({
     super.key,
     required this.name,
     required this.rows,
+    this.onExportPdf,
   });
 
-  String _fmtInt(int n) {
-    final s = n.toString();
-    if (s.isEmpty) return '0';
-    final buf = StringBuffer();
-    for (int i = 0; i < s.length; i++) {
-      buf.write(s[s.length - 1 - i]);
-      if ((i + 1) % 3 == 0 && i + 1 != s.length) {
-        buf.write(',');
+  @override
+  State<BalanceList> createState() => _BalanceListState();
+}
+
+class _BalanceListState extends State<BalanceList> {
+  bool _exporting = false;
+
+  static final NumberFormat _fmt = NumberFormat('#,##0.00');
+
+  String _fmtDouble(double v) {
+    final safe = v.abs() < 0.005 ? 0.0 : v;
+    return _fmt.format(safe);
+  }
+
+  bool _isZero(double v) => v.abs() < 0.005;
+
+  // ------------------------------------------------------------
+  // ✅ SAFE PDF HANDLER (GOOGLE STYLE)
+  // ------------------------------------------------------------
+  Future<void> _handleExportPdf() async {
+    if (widget.onExportPdf == null || _exporting) return;
+
+    setState(() => _exporting = true);
+
+    try {
+      await widget.onExportPdf!();
+    } catch (e) {
+      debugPrint("❌ PDF export failed: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _exporting = false);
       }
     }
-    return buf.toString().split('').reversed.join();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty) {
+    final visibleRows = widget.rows.where((r) {
+      return !_isZero(r.credit) ||
+          !_isZero(r.debit) ||
+          !_isZero(r.balance);
+    }).toList();
+
+    if (visibleRows.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            name.trim().isEmpty
+            widget.name.trim().isEmpty
                 ? "Type a name to view balance"
                 : "No balance data for this person",
             style: const TextStyle(
@@ -44,38 +77,67 @@ class BalanceList extends StatelessWidget {
       );
     }
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final balanceWidth = screenWidth * 0.28;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (name.trim().isNotEmpty)
+        // ================= HEADER WITH PDF BUTTON =================
+        if (widget.name.trim().isNotEmpty)
           Padding(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Text(
-              "Balance • $name",
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF0B1E3A),
-              ),
+            padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    "Balance • ${widget.name}",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0B1E3A),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+
+                // ---------------- PDF BUTTON ----------------
+                _exporting
+                    ? const SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Padding(
+                    padding: EdgeInsets.all(6),
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+                    : IconButton(
+                  tooltip: "Export PDF",
+                  icon: const Icon(
+                    Icons.picture_as_pdf,
+                    color: Color(0xFFC62828),
+                  ),
+                  onPressed: _handleExportPdf,
+                ),
+              ],
             ),
           ),
 
         const Divider(height: 1, color: Color(0x14000000)),
 
+        // ================= LIST =================
         Expanded(
           child: ListView.separated(
-            padding:
-            const EdgeInsets.only(left: 12, right: 12, bottom: 16, top: 8),
-            itemCount: rows.length,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            itemCount: visibleRows.length,
             separatorBuilder: (_, __) =>
             const Divider(height: 1, color: Color(0x14000000)),
             itemBuilder: (_, i) {
-              final row = rows[i];
-              final bal = row.balanceCents;
-              final isPositive = bal >= 0;
-              final balColor =
-              isPositive ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+              final row = visibleRows[i];
+              final bal = row.balance;
+
+              final Color balColor =
+              bal >= 0 ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
 
               return Padding(
                 padding:
@@ -83,7 +145,7 @@ class BalanceList extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Left: Currency label circle
+                    // LEFT
                     Container(
                       width: 40,
                       height: 40,
@@ -102,9 +164,10 @@ class BalanceList extends StatelessWidget {
                         ),
                       ),
                     ),
+
                     const SizedBox(width: 10),
 
-                    // Middle: currency name + credit/debit
+                    // MIDDLE
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,39 +183,32 @@ class BalanceList extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Row(
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 4,
                             children: [
-                              const Text(
-                                "Cr ",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                              Text(
-                                _fmtInt(row.creditCents),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF2E7D32),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              const Text(
-                                "Dr ",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                              Text(
-                                _fmtInt(row.debitCents),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFFC62828),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                              if (!_isZero(row.credit)) ...[
+                                const Text("Cr",
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF6B7280))),
+                                Text(_fmtDouble(row.credit),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFF2E7D32),
+                                        fontWeight: FontWeight.w600)),
+                              ],
+                              if (!_isZero(row.debit)) ...[
+                                const Text("Dr",
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF6B7280))),
+                                Text(_fmtDouble(row.debit),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: Color(0xFFC62828),
+                                        fontWeight: FontWeight.w600)),
+                              ],
                             ],
                           ),
                         ],
@@ -161,27 +217,33 @@ class BalanceList extends StatelessWidget {
 
                     const SizedBox(width: 8),
 
-                    // Right: Balance
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text(
-                          "Balance",
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFF6B7280),
+                    // RIGHT
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: balanceWidth,
+                        minWidth: 80,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          const Text("Balance",
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF6B7280))),
+                          const SizedBox(height: 2),
+                          Text(
+                            _fmtDouble(bal),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.right,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: balColor,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _fmtInt(bal),
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: balColor,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),

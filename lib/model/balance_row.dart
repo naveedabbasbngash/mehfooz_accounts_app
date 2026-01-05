@@ -1,6 +1,6 @@
 class BalanceRow {
   final String name;
-  final Map<String, int> byCurrency; // currency -> value in minor units
+  final Map<String, double> byCurrency;
 
   BalanceRow({
     required this.name,

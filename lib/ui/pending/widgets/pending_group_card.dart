@@ -1,5 +1,3 @@
-// lib/ui/pending/widgets/pending_group_card.dart
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:country_flags/country_flags.dart';
@@ -35,7 +33,7 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   final NumberFormat fmt = NumberFormat('#,##0.##');
 
   // --------------------------------------------------------
-  // Currency → Country Code Mapper (same as home list)
+  // Currency → Country Code Mapper
   // --------------------------------------------------------
   String _currencyToCountry(String currency) {
     switch (currency.toUpperCase().trim()) {
@@ -68,29 +66,9 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
     }
   }
 
-  // ============================================================
-  // Highlight text
-  // ============================================================
-  TextSpan _hl(String text, String q, TextStyle normal, TextStyle bold) {
-    if (q.isEmpty) return TextSpan(text: text, style: normal);
-
-    final lower = text.toLowerCase();
-    final search = q.toLowerCase();
-    final index = lower.indexOf(search);
-
-    if (index == -1) return TextSpan(text: text, style: normal);
-
-    return TextSpan(children: [
-      TextSpan(text: text.substring(0, index), style: normal),
-      TextSpan(text: text.substring(index, index + search.length), style: bold),
-      TextSpan(text: text.substring(index + search.length), style: normal),
-    ]);
-  }
-
   @override
   Widget build(BuildContext context) {
     final r = widget.row;
-    final hl = widget.highlight.trim();
     final isNeg = r.balance < 0;
 
     return GestureDetector(
@@ -119,8 +97,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
           border: Border.all(color: AppColors.divider),
         ),
         child: expanded
-            ? _expandedView(r, isNeg, hl)
-            : _collapsedView(r, isNeg, hl),
+            ? _expandedView(r, isNeg)
+            : _collapsedView(r, isNeg),
       ),
     );
   }
@@ -128,65 +106,52 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   // ============================================================
   // COLLAPSED VIEW
   // ============================================================
-  Widget _collapsedView(PendingGroupRow r, bool isNeg, String hl) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _collapsedView(PendingGroupRow r, bool isNeg) {
+    return Row(
       children: [
-        Row(
-          children: [
-            // DATE (dark + bold)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  r.beginDate,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
+        Text(
+          r.beginDate,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: Colors.black,
+          ),
+        ),
+
+        const Spacer(),
+
+        if (r.accTypeName != null)
+          Row(
+            children: [
+              CountryFlag.fromCountryCode(
+                _currencyToCountry(r.accTypeName!),
+                theme: const ImageTheme(
+                  width: 14,
+                  height: 14,
+                  shape: Circle(),
                 ),
-              ],
-            ),
-
-            const Spacer(),
-
-            // FLAG + CURRENCY (bold)
-            if (r.accTypeName != null)
-              Row(
-                children: [
-                  CountryFlag.fromCountryCode(
-                    _currencyToCountry(r.accTypeName!),
-                    theme: const ImageTheme(
-                      width: 14,
-                      height: 14,
-                      shape: Circle(),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    r.accTypeName!,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ],
               ),
-
-            const SizedBox(width: 12),
-
-            // BALANCE (red)
-            Text(
-              fmt.format(r.balance),
-              style: const TextStyle(
-                color: Colors.red,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
+              const SizedBox(width: 6),
+              Text(
+                r.accTypeName!,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
+
+        const SizedBox(width: 12),
+
+        Text(
+          fmt.format(r.balance),
+          style: const TextStyle(
+            color: Colors.red,
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -195,14 +160,13 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   // ============================================================
   // EXPANDED VIEW
   // ============================================================
-  Widget _expandedView(PendingGroupRow r, bool isNeg, String hl) {
+  Widget _expandedView(PendingGroupRow r, bool isNeg) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ================= TOP HEADER =================
+        // ================= HEADER =================
         Row(
           children: [
-            // DATE
             Text(
               r.beginDate,
               style: const TextStyle(
@@ -211,10 +175,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
                 color: Colors.black,
               ),
             ),
-
             const Spacer(),
 
-            // FLAG + CURRENCY
             if (r.accTypeName != null)
               Row(
                 children: [
@@ -240,7 +202,6 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
             const SizedBox(width: 12),
 
-            // 🔴 TOP-RIGHT BALANCE (RESTORED)
             Text(
               fmt.format(r.balance),
               style: const TextStyle(
@@ -254,13 +215,20 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
         const SizedBox(height: 16),
 
+        // ================= SENDER / RECEIVER =================
         _infoLine("Sender", r.sender ?? "—"),
         const SizedBox(height: 8),
         _infoLine("Receiver", r.receiver ?? "—"),
 
+        // ================= MSG NO (NEW) =================
+        if (r.msgNo != null && r.msgNo!.trim().isNotEmpty) ...[
+          const SizedBox(height: 6),
+          _infoLine("Msg No", r.msgNo!),
+        ],
+
         const SizedBox(height: 18),
 
-        // ================= AMOUNT SUMMARY ====================
+        // ================= AMOUNT SUMMARY =================
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -272,8 +240,6 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
             children: [
               _amtPill("P.Amount", fmt.format(r.notPaidAmount)),
               _amtPill("Paid", fmt.format(r.paidAmount)),
-
-              // 🔴 BOTTOM BALANCE (RIGHT ALIGNED)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -303,8 +269,9 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
       ],
     );
   }
+
   // ============================================================
-  // INFO TEXT
+  // INFO LINE
   // ============================================================
   Widget _infoLine(String label, String value) {
     return Row(
@@ -348,7 +315,7 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
           Text(
             value,
             style: const TextStyle(
-              color: Colors.black87, // lite black
+              color: Colors.black87,
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),

@@ -1,13 +1,13 @@
 class BalanceCurrencyUi {
   final String currency;
-  final int creditCents;
-  final int debitCents;
+  final double credit;
+  final double debit;
 
   const BalanceCurrencyUi({
     required this.currency,
-    required this.creditCents,
-    required this.debitCents,
+    required this.credit,
+    required this.debit,
   });
 
-  int get balanceCents => creditCents - debitCents;
+  double get balance => credit - debit;
 }

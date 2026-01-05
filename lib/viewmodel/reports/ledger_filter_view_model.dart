@@ -23,7 +23,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
   int get _companyId => GlobalState.instance.companyId;
 
   // =========================================================
-  // LOAD CURRENCIES — COMPANY SCOPED ✅
+  // LOAD CURRENCIES — COMPANY SCOPED
   // =========================================================
   Future<void> loadCurrencies() async {
     final rows = await DatabaseManager.instance.db.customSelect(
@@ -35,9 +35,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
       WHERE tp.CompanyID = ?1
       ORDER BY at.AccTypeName COLLATE NOCASE;
       ''',
-      variables: [
-        Variable.withInt(_companyId),
-      ],
+      variables: [Variable.withInt(_companyId)],
       readsFrom: {
         DatabaseManager.instance.db.accType,
         DatabaseManager.instance.db.transactionsP,
@@ -53,7 +51,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
   }
 
   // =========================================================
-  // SEARCH ACCOUNTS — COMPANY SCOPED ✅
+  // SEARCH ACCOUNTS — COMPANY SCOPED
   // =========================================================
   Future<void> searchAccounts(String q) async {
     if (q.trim().isEmpty) {
@@ -77,9 +75,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
         Variable.withInt(_companyId),
         Variable.withString(like),
       ],
-      readsFrom: {
-        DatabaseManager.instance.db.accPersonal,
-      },
+      readsFrom: {DatabaseManager.instance.db.accPersonal},
     ).get();
 
     accountSuggestions =
@@ -89,9 +85,9 @@ class LedgerFilterViewModel extends ChangeNotifier {
   }
 
   // =========================================================
-  // RESOLVE ACCOUNT ID — COMPANY SAFE ✅ FIXED
+  // RESOLVE ACCOUNT ID — COMPANY SAFE
   // =========================================================
-  Future<int?> resolveAccId(String name) async {
+  Future<int?> resolveAccId(String name) {
     return _repo.findAccIdByExactNameLoose(
       companyId: _companyId,
       name: name,
@@ -99,9 +95,9 @@ class LedgerFilterViewModel extends ChangeNotifier {
   }
 
   // =========================================================
-  // RESOLVE CURRENCY TYPE ID — COMPANY SAFE ✅ FIXED
+  // RESOLVE CURRENCY TYPE ID — COMPANY SAFE
   // =========================================================
-  Future<int?> resolveAccTypeId(String currency) async {
+  Future<int?> resolveAccTypeId(String currency) {
     return _repo.resolveAccTypeIdByName(
       companyId: _companyId,
       currencyName: currency,
@@ -109,7 +105,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
   }
 
   // =========================================================
-  // LOAD LEDGER (OPENING + ROWS) — COMPANY SCOPED ✅
+  // LOAD LEDGER (OPENING + ROWS) — REAL / DECIMAL SAFE ✅
   // =========================================================
   Future<LedgerResult?> loadLedger({
     required String accountName,
@@ -130,18 +126,20 @@ class LedgerFilterViewModel extends ChangeNotifier {
     }
 
     // -------------------------
-    // OPENING BALANCE
+    // OPENING BALANCE (REAL)
     // -------------------------
-    final opening = await _repo.ledgerOpeningBalance(
+    final double opening = await _repo.ledgerOpeningBalance(
+      companyId: _companyId,
       accId: accId,
       accTypeId: accTypeId,
       fromDate: fromDate,
     );
 
     // -------------------------
-    // LEDGER ROWS
+    // LEDGER ROWS (REAL)
     // -------------------------
     final rowsRaw = await _repo.fetchLedgerRowsRaw(
+      companyId: _companyId,
       accId: accId,
       accTypeId: accTypeId,
       fromDate: fromDate,
@@ -152,12 +150,16 @@ class LedgerFilterViewModel extends ChangeNotifier {
 
     final rows = rowsRaw.map((e) {
       final d = e['tDate'] as String;
+
+      final dr = (e['dr'] as num?)?.toDouble() ?? 0.0;
+      final cr = (e['cr'] as num?)?.toDouble() ?? 0.0;
+
       return LedgerTxn(
         voucherNo: "${e['voucherNo']}",
         tDate: dateParser.parse(d),
         description: e['description'] ?? '',
-        dr: (e['dr'] as int?) ?? 0,
-        cr: (e['cr'] as int?) ?? 0,
+        dr: dr.abs() < 0.005 ? 0.0 : dr,
+        cr: cr.abs() < 0.005 ? 0.0 : cr,
       );
     }).toList();
 
@@ -165,7 +167,7 @@ class LedgerFilterViewModel extends ChangeNotifier {
     notifyListeners();
 
     return LedgerResult(
-      openingBalanceCents: opening,
+      openingBalance: opening.abs() < 0.005 ? 0.0 : opening,
       rows: rows,
     );
   }

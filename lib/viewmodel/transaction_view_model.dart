@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 
+import '../model/balance_row.dart';
 import '../model/tx_filter.dart';
 import '../model/tx_item_ui.dart';
 import '../model/balance_currency_ui.dart';
 import '../repository/transactions_repository.dart';
+import '../services/pdf/balance_pdf_service.dart';
 
 class TransactionsViewModel extends ChangeNotifier {
   final TransactionsRepository repo;
@@ -196,6 +199,30 @@ class TransactionsViewModel extends ChangeNotifier {
     _reloadBalance();
   }
 
+
+
+
+
+
+  Future<File?> generateBalancePdfFromUi() async {
+    // Google-style guard clauses
+    if (_search.isEmpty) return null;
+    if (_balanceByCurrency.isEmpty) return null;
+
+    // Convert UI rows → PDF rows
+    final balanceRow = BalanceRow(
+      name: _search,
+      byCurrency: {
+        for (final r in _balanceByCurrency)
+          r.currency: r.balance,
+      },
+    );
+
+    return BalancePdfService.instance.render(
+      currencies: balanceRow.byCurrency.keys.toList(),
+      rows: [balanceRow],
+    );
+  }
   @override
   void dispose() {
     _itemsSub?.cancel();

@@ -85,7 +85,8 @@ class TransactionsP extends Table {
   @override
   String get tableName => 'Transactions_P';
 
-  RealColumn get voucherNo => real().named('VoucherNo').nullable()();
+  IntColumn get voucherNo => integer().named('VoucherNo')();
+
   TextColumn get tDate => text().named('TDate').nullable()();
   IntColumn get accId => integer().named('AccID').nullable()();
   IntColumn get accTypeId => integer().named('AccTypeID').nullable()();
@@ -94,7 +95,6 @@ class TransactionsP extends Table {
   RealColumn get dr => real().named('Dr').nullable()();
   RealColumn get cr => real().named('Cr').nullable()();
 
-  /// These are TEXT in SQLite — must remain TEXT!
   TextColumn get status => text().named('Status').nullable()();
   TextColumn get st => text().named('st').nullable()();
   TextColumn get updateStatus => text().named('updatestatus').nullable()();
@@ -110,7 +110,6 @@ class TransactionsP extends Table {
   TextColumn get hwls => text().named('hwls').nullable()();
   TextColumn get advanceMess => text().named('advancemess').nullable()();
 
-  /// These are INTEGER in SQLite
   IntColumn get cbal => integer().named('cbal').nullable()();
   IntColumn get cbal1 => integer().named('cbal1').nullable()();
 
@@ -122,4 +121,7 @@ class TransactionsP extends Table {
   IntColumn get isSynced => integer().named('IsSynced').nullable()();
   TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
   IntColumn get isDeleted => integer().named('IsDeleted').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {voucherNo};
 }
