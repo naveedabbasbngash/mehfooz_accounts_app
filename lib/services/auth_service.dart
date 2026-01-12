@@ -16,6 +16,9 @@ class AuthService {
   static const String iosClientId =
       '800232142357-2u8et6b02e4s4jkl6s9du6o4i0bpmtc9.apps.googleusercontent.com';
 
+
+  static const String appleReviewEmail =
+      'applereviewmehfooz@gmail.com';
   // ============================================================
   // LOGIN WITH GOOGLE
   // ============================================================

@@ -5,9 +5,9 @@ import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 
+import '../../main.dart';
 import '../../model/user_model.dart';
 import '../../viewmodel/auth/auth_view_model.dart';
-import '../../main.dart';
 import 'login_failure_screen.dart';
 
 class AuthScreen extends StatelessWidget {

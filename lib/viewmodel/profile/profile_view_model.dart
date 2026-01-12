@@ -21,6 +21,10 @@ class ProfileViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────
   bool isLoading = true;
 
+  // 🍎 Apple App Review account
+  static const String _appleReviewEmail =
+      'applereviewmehfooz@gmail.com';
+
   late UserModel loggedInUser;
   /// 🔑 Admin permission from backend
   bool get isAdminSyncAllowed =>
@@ -170,7 +174,11 @@ class ProfileViewModel extends ChangeNotifier {
               loggedInUser.email.trim().toLowerCase();
 
       // 5️⃣ Restriction engine
-      if (!emailMatch) {
+      // 5️⃣ Restriction engine
+      if (isAppleReviewUser) {
+        debugPrint("🍎 [RESTRICTION] Apple Review user → unrestricted");
+        isRestricted = false;
+      } else if (!emailMatch) {
         debugPrint("🔴 [RESTRICTION:init] Email mismatch → restricted");
         isRestricted = true;
       } else if (isSubscriptionExpired) {
@@ -180,6 +188,7 @@ class ProfileViewModel extends ChangeNotifier {
         debugPrint("🟢 [RESTRICTION:init] Allowed (FREE or active paid plan)");
         isRestricted = false;
       }
+
     } catch (e, st) {
       debugPrint("❌ Error in ProfileViewModel._init: $e");
       debugPrintStack(stackTrace: st);
@@ -272,19 +281,19 @@ class ProfileViewModel extends ChangeNotifier {
       debugPrint("🟢 [IMPORT] isSubscriptionExpired = $isSubscriptionExpired");
 
       // FINAL DECISION
-      if (!databaseFound) {
-        debugPrint("🔴 [IMPORT] No database → restricted");
+      if (isAppleReviewUser) {
+        debugPrint("🍎 [IMPORT] Apple Review user → unrestricted");
+        isRestricted = false;
+      } else if (!databaseFound) {
         isRestricted = true;
       } else if (!emailMatch) {
-        debugPrint("🔴 [IMPORT] Email mismatch → restricted");
         isRestricted = true;
       } else if (isSubscriptionExpired) {
-        debugPrint("🔴 [IMPORT] Paid plan expired → restricted");
         isRestricted = true;
       } else {
-        debugPrint("🟢 [IMPORT] FREE or active plan → restriction removed");
         isRestricted = false;
       }
+
 
       debugPrint("🔴 [IMPORT] FINAL isRestricted = $isRestricted");
     } catch (e, st) {
@@ -306,4 +315,10 @@ class ProfileViewModel extends ChangeNotifier {
 
   /// 💰 Paid plan = not free
   bool get isPaidPlan => !isFreePlan;
+
+
+  // 🍎 Detect Apple Review user
+  bool get isAppleReviewUser =>
+      loggedInUser.email.trim().toLowerCase() ==
+          _appleReviewEmail;
 }

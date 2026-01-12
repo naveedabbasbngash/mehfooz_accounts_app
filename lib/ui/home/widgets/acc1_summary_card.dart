@@ -209,7 +209,7 @@ class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: _oldValue, end: widget.value),
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 1600),
       curve: Curves.easeOutCubic,
       builder: (_, v, __) {
         return Text(

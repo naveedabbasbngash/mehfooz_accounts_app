@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:logger/logger.dart';
+import 'package:mehfooz_accounts_app/services/logging/logger_service.dart';
 import 'package:provider/provider.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 
@@ -32,8 +34,14 @@ class HomeHeader extends StatelessWidget {
               children: [
                 Expanded(child: _buildLeft(context, companyName)),
                 const SizedBox(width: 8),
-                _buildSyncButton(context),
-              ],
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    LoggerService.debug(
+                      "Header constraints → maxWidth=${constraints.maxWidth}",
+                    );
+                    return _buildSyncButton(context);
+                  },
+                ),              ],
             ),
 
             const SizedBox(height: 6),
@@ -99,6 +107,11 @@ class HomeHeader extends StatelessWidget {
         final isError = svm.lastMessage.startsWith("❌");
         final expanded = syncing || isError;
 
+        LoggerService.debug(
+          "SyncButton → syncing=$syncing | error=$isError | expanded=$expanded | "
+              "message='${svm.lastMessage}'",
+        );
+
         String label = "Synced";
         Color labelColor = Colors.green;
 
@@ -110,8 +123,15 @@ class HomeHeader extends StatelessWidget {
           labelColor = Colors.red;
         }
 
+        LoggerService.debug(
+            "SyncButton label='$label' (len=${label.length})");
+
         return GestureDetector(
-          onTap: syncing ? null : () => svm.syncNow(),
+          onTap: syncing ? null : () {
+            LoggerService.debug(
+                "SyncButton tapped");
+            svm.syncNow();
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
@@ -121,43 +141,43 @@ class HomeHeader extends StatelessWidget {
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: Colors.grey.shade300),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 10,
-                  color: Colors.black.withOpacity(0.05),
-                  offset: const Offset(0, 3),
-                )
-              ],
             ),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              child: expanded
-                  ? Row(
-                key: const ValueKey("expanded"),
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  GoogleStyleSyncIcon(
+            child: ClipRect(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: expanded
+                    ? Row(
+                  key: const ValueKey("expanded"),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GoogleStyleSyncIcon(
+                      syncing: syncing,
+                      success: !syncing && !isError,
+                      error: isError,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: labelColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+                    : Center(
+                  key: const ValueKey("compact"),
+                  child: GoogleStyleSyncIcon(
                     syncing: syncing,
                     success: !syncing && !isError,
                     error: isError,
                   ),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: labelColor,
-                    ),
-                  ),
-                ],
-              )
-                  : Center(
-                key: const ValueKey("compact"),
-                child: GoogleStyleSyncIcon(
-                  syncing: syncing,
-                  success: !syncing && !isError,
-                  error: isError,
                 ),
               ),
             ),
@@ -166,7 +186,6 @@ class HomeHeader extends StatelessWidget {
       },
     );
   }
-
   // ─────────────────────────────────────────────────────────────
   // LAST SYNC / STATUS LINE
   // ─────────────────────────────────────────────────────────────

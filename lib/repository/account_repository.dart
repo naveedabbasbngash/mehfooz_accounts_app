@@ -118,52 +118,56 @@ class AccountRepository {
       int selectedCompanyId,
       ) {
     const query = """
-    SELECT 
+  SELECT 
+    tp.AccID,
+    ap.Name AS Name,
+    tp.AccTypeID,
+    at.AccTypeName AS currency,
+    SUM(tp.Cr) AS totalCr,
+    SUM(tp.Dr) AS totalDr,
+    (SUM(tp.Cr) - SUM(tp.Dr)) AS pendingUnits
+  FROM Transactions_P tp
+  INNER JOIN AccType at 
+      ON tp.AccTypeID = at.AccTypeID
+  LEFT JOIN Acc_Personal ap 
+      ON ap.AccID = tp.AccID
+  WHERE 
+      tp.CompanyID = ? 
+      AND tp.AccID = ?
+  GROUP BY 
       tp.AccID,
-      ap.Name AS Name,
+      ap.Name,
       tp.AccTypeID,
-      at.AccTypeName AS currency,
-      SUM(tp.Cr) AS totalCr,
-      SUM(tp.Dr) AS totalDr,
-      (SUM(tp.Cr) - SUM(tp.Dr)) AS pendingUnits
-    FROM Transactions_P tp
-    INNER JOIN AccType at 
-        ON tp.AccTypeID = at.AccTypeID
-    LEFT JOIN Acc_Personal ap 
-        ON ap.AccID = tp.AccID
-    WHERE 
-        tp.CompanyID = ? 
-        AND tp.AccID = ?
-    GROUP BY 
-        tp.AccID,
-        ap.Name,
-        tp.AccTypeID,
-        at.AccTypeName
-    HAVING 
-        (SUM(tp.Cr) - SUM(tp.Dr)) <> 0
-    ORDER BY 
-        pendingUnits DESC;
+      at.AccTypeName
+  HAVING 
+      (SUM(tp.Cr) - SUM(tp.Dr)) <> 0
+  ORDER BY 
+      pendingUnits DESC;
   """;
 
-    return db
-        .customSelect(
+    return db.customSelect(
       query,
       variables: [
         Variable.withInt(selectedCompanyId),
         Variable.withInt(3),
       ],
-    )
-        .watch()
-        .map((rows) => rows.map((row) {
-      return PendingAmountRow(
-        currency: row.read<String?>('currency') ?? '',
-        totalCr: row.read<double?>('totalCr') ?? 0.0,
-        totalDr: row.read<double?>('totalDr') ?? 0.0,
-        balance: row.read<double?>('pendingUnits') ?? 0.0,
-      );
-    }).toList());
+      // 🔴 THIS IS THE FIX
+      readsFrom: {
+        db.transactionsP,
+        db.accType,
+        db.accPersonal,
+      },
+    ).watch().map((rows) {
+      return rows.map((row) {
+        return PendingAmountRow(
+          currency: row.read<String?>('currency') ?? '',
+          totalCr: row.read<double?>('totalCr') ?? 0.0,
+          totalDr: row.read<double?>('totalDr') ?? 0.0,
+          balance: row.read<double?>('pendingUnits') ?? 0.0,
+        );
+      }).toList();
+    });
   }
-
   /// ============================================================
   /// CASH IN HAND SUMMARY (SNAPSHOT)
   /// ============================================================
@@ -209,40 +213,44 @@ class AccountRepository {
   /// ============================================================
   Stream<List<CashInHandRow>> watchCashInHandSummary(int companyId) {
     const query = """
-    SELECT 
+  SELECT 
+      T.AccTypeID,
+      AT.AccTypeName AS Currency,
+      SUM(T.Cr) - SUM(T.Dr) AS CashInHand,
+      T.CompanyID
+  FROM Transactions_P T
+  INNER JOIN AccType AT 
+          ON T.AccTypeID = AT.AccTypeID
+  INNER JOIN Acc_Personal AP 
+          ON T.AccID = AP.AccID
+  WHERE
+        T.AccID NOT IN (1, 1003, 1004)
+        AND AP.statusg <> 'SOLAR TRANS'
+        AND T.CompanyID = ?
+  GROUP BY 
         T.AccTypeID,
-        AT.AccTypeName AS Currency,
-        SUM(T.Cr) - SUM(T.Dr) AS CashInHand,
-        T.CompanyID
-    FROM Transactions_P T
-    INNER JOIN AccType AT 
-            ON T.AccTypeID = AT.AccTypeID
-    INNER JOIN Acc_Personal AP 
-            ON T.AccID = AP.AccID
-    WHERE
-          T.AccID NOT IN (1, 1003, 1004)
-          AND AP.statusg <> 'SOLAR TRANS'
-          AND T.CompanyID = ?
-    GROUP BY 
-          T.AccTypeID,
-          AT.AccTypeName,
-          T.CompanyID;
+        AT.AccTypeName,
+        T.CompanyID;
   """;
 
-    return db
-        .customSelect(
+    return db.customSelect(
       query,
       variables: [Variable.withInt(companyId)],
-    )
-        .watch()
-        .map((rows) => rows.map((row) {
-      return CashInHandRow(
-        currency: row.read<String>('Currency'),
-        amount: row.read<double?>('CashInHand') ?? 0.0,
-      );
-    }).toList());
+      // 🔴 THIS IS THE FIX
+      readsFrom: {
+        db.transactionsP,
+        db.accType,
+        db.accPersonal,
+      },
+    ).watch().map((rows) {
+      return rows.map((row) {
+        return CashInHandRow(
+          currency: row.read<String>('Currency'),
+          amount: row.read<double?>('CashInHand') ?? 0.0,
+        );
+      }).toList();
+    });
   }
-
   /// ============================================================
   /// ACCID = 1 CASH SUMMARY (SNAPSHOT)
   /// ============================================================
@@ -283,34 +291,38 @@ class AccountRepository {
   /// ============================================================
   Stream<List<CashSummaryRow>> watchAcc1CashSummary(int companyId) {
     const query = """
-    SELECT 
+  SELECT 
+    T.AccTypeID,
+    AT.AccTypeName AS Currency,
+    SUM(T.Cr) - SUM(T.Dr) AS CashInHand,
+    T.CompanyID
+  FROM Transactions_P T
+  INNER JOIN AccType AT ON T.AccTypeID = AT.AccTypeID
+  INNER JOIN Acc_Personal AP ON T.AccID = AP.AccID
+  WHERE
+      T.AccID = 1
+      AND T.CompanyID = ?
+  GROUP BY 
       T.AccTypeID,
-      AT.AccTypeName AS Currency,
-      SUM(T.Cr) - SUM(T.Dr) AS CashInHand,
-      T.CompanyID
-    FROM Transactions_P T
-    INNER JOIN AccType AT ON T.AccTypeID = AT.AccTypeID
-    INNER JOIN Acc_Personal AP ON T.AccID = AP.AccID
-    WHERE
-        T.AccID = 1
-        AND T.CompanyID = ?
-    GROUP BY 
-        T.AccTypeID,
-        AT.AccTypeName,
-        T.CompanyID;
+      AT.AccTypeName,
+      T.CompanyID;
   """;
 
-    return db
-        .customSelect(
+    return db.customSelect(
       query,
       variables: [Variable.withInt(companyId)],
-    )
-        .watch()
-        .map((rows) => rows.map((row) {
-      return CashSummaryRow(
-        currency: row.read<String>('Currency'),
-        amount: row.read<double>('CashInHand'),
-      );
-    }).toList());
-  }
-}
+      // 🔴 THIS IS THE FIX
+      readsFrom: {
+        db.transactionsP,
+        db.accType,
+        db.accPersonal,
+      },
+    ).watch().map((rows) {
+      return rows.map((row) {
+        return CashSummaryRow(
+          currency: row.read<String>('Currency'),
+          amount: row.read<double>('CashInHand'),
+        );
+      }).toList();
+    });
+  }}

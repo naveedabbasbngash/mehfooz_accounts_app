@@ -1,3 +1,4 @@
+// lib/viewmodel/sync/sync_viewmodel.dart
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart';
@@ -8,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../repository/sync/sync_repository.dart';
 import '../../services/sync/sync_service.dart';
 import '../../data/local/app_database.dart';
+import '../../model/SyncResult.dart';
 
 enum AutoSyncInterval { off, sec30, min2, min5, min20 }
 
@@ -44,17 +46,19 @@ class SyncViewModel extends ChangeNotifier {
   String lastMessage = '';
   DateTime? lastSyncedTime;
 
+  // 🔴 NEW: last sync result
+  SyncResult? lastSyncResult;
+
   CancelableOperation<void>? _activeSync;
   Timer? _autoSyncTimer;
 
-  // ─────────────────────────────────────────────
-  // 🔐 PERMISSIONS (SOURCE OF TRUTH)
-  // ─────────────────────────────────────────────
+  // ✅ NEW: failsafe unlock timer (prevents stuck state forever)
+  Timer? _failsafeTimer;
 
-  /// 🔑 SERVER DECIDES THIS (canSync from API)
+  // ─────────────────────────────────────────────
+  // 🔐 PERMISSIONS
+  // ─────────────────────────────────────────────
   bool _adminCanSync = false;
-
-  /// 📦 Local DB imported at least once
   bool _hasLocalImport = false;
 
   // ─────────────────────────────────────────────
@@ -70,8 +74,11 @@ class SyncViewModel extends ChangeNotifier {
   static const int _maxRetries = 3;
   static const Duration _timeout = Duration(seconds: 30);
 
+  // ✅ NEW: extra safety (timeout can throw, but this prevents UI stuck)
+  static const Duration _failsafeUnlock = Duration(seconds: 45);
+
   // ─────────────────────────────────────────────
-  // CONFIGURE USER (CALLED ON LOGIN ONLY)
+  // CONFIGURE USER
   // ─────────────────────────────────────────────
   Future<void> configureForUser({
     required String email,
@@ -83,7 +90,6 @@ class SyncViewModel extends ChangeNotifier {
     _log.i("🔐 Admin sync permission = $_adminCanSync");
 
     final prefs = await SharedPreferences.getInstance();
-
     _hasLocalImport =
         prefs.getBool("$_kLocalImportPrefix$_userEmail") ?? false;
 
@@ -96,7 +102,7 @@ class SyncViewModel extends ChangeNotifier {
   // DB ATTACH
   // ─────────────────────────────────────────────
   void attachDatabase(AppDatabase db) {
-    syncRepo = SyncRepository(db); // ✅ always replace
+    syncRepo = SyncRepository(db);
     _log.i("🔗 SyncRepository attached/replaced");
     _restartAutoSync();
     notifyListeners();
@@ -105,7 +111,7 @@ class SyncViewModel extends ChangeNotifier {
   bool get isReady => syncRepo != null;
 
   // ─────────────────────────────────────────────
-  // 🔒 FINAL SYNC GATE (ONLY PLACE)
+  // SYNC GATE
   // ─────────────────────────────────────────────
   bool get canSync {
     if (!_adminCanSync) return false;
@@ -141,7 +147,6 @@ class SyncViewModel extends ChangeNotifier {
 
   Future<void> _loadAutoSyncSetting() async {
     if (_userEmail == null) return;
-
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getInt("$_kAutoSyncKeyPrefix$_userEmail");
     if (raw != null) {
@@ -151,20 +156,18 @@ class SyncViewModel extends ChangeNotifier {
 
   void _restartAutoSync() {
     _autoSyncTimer?.cancel();
-
     final d = autoSyncDuration;
     if (d == null || !canSync) {
       _log.w("⛔ Auto-sync blocked → $syncBlockReason");
       return;
     }
-
     _autoSyncTimer = Timer.periodic(d, (_) {
       if (!isSyncing) syncNow(silent: true);
     });
   }
 
   // ─────────────────────────────────────────────
-  // MANUAL SYNC
+  // MANUAL SYNC  ✅ FIXED (NO MORE STUCK)
   // ─────────────────────────────────────────────
   Future<void> syncNow({bool silent = false}) async {
     if (!canSync) {
@@ -174,16 +177,47 @@ class SyncViewModel extends ChangeNotifier {
     }
 
     if (isSyncing) return;
-    if (!await _hasNetwork()) return;
+
+    // ✅ IMPORTANT: Don’t silently return on user tap
+    final hasNet = await _hasNetwork();
+    if (!hasNet) {
+      _setState(syncing: false, progress: 0, message: "❌ No internet connection");
+      return;
+    }
 
     isBackgroundSync = silent;
+
+    // ✅ Start syncing state immediately (button disables correctly)
+    _setState(syncing: true, progress: 0.05, message: silent ? null : "Starting sync…");
+
+    // ✅ Failsafe unlock if something hangs (prevents "stuck forever")
+    _startFailsafeUnlock();
 
     _activeSync = CancelableOperation.fromFuture(
       _runWithRetry(_userEmail!),
     );
 
-    await _activeSync!.value;
-    isBackgroundSync = false;
+    try {
+      await _activeSync!.value;
+
+      // If flow finished successfully, _runSyncFlow already set success message.
+      // Nothing needed here.
+    } catch (e, st) {
+      // ✅ THIS is where your old code broke: exception skipped reset.
+      _log.e("❌ Sync failed", error: e, stackTrace: st);
+
+      // Ensure state resets + UI shows error (unless silent background)
+      _setState(syncing: false, progress: 0, message: "❌ Sync failed");
+    } finally {
+      // ✅ Always cleanup
+      _stopFailsafeUnlock();
+      isBackgroundSync = false;
+
+      // If somehow still marked syncing, force release.
+      if (isSyncing) {
+        _setState(syncing: false, progress: 0, message: null);
+      }
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -194,7 +228,7 @@ class SyncViewModel extends ChangeNotifier {
       try {
         await _runSyncFlow(email).timeout(_timeout);
         return;
-      } catch (_) {
+      } catch (e) {
         if (i == _maxRetries - 1) rethrow;
         await Future.delayed(Duration(seconds: 2 << i));
       }
@@ -208,14 +242,15 @@ class SyncViewModel extends ChangeNotifier {
 
     if (batch == null) {
       lastSyncedTime = DateTime.now();
+      lastSyncResult = null;
       _setState(syncing: false, progress: 1, message: "Nothing to update");
       return;
     }
 
     _setState(syncing: true, progress: 0.6, message: "Applying updates…");
 
-    final ok = await syncRepo!.applyBatch(batch);
-    if (!ok) throw Exception("Apply failed");
+    final result = await syncRepo!.applyBatch(batch);
+    lastSyncResult = result;
 
     await syncService.ackBatch(
       email: email,
@@ -225,10 +260,13 @@ class SyncViewModel extends ChangeNotifier {
 
     lastSyncedTime = DateTime.now();
     _setState(syncing: false, progress: 1, message: "✔ Sync complete");
+
+    // 🔔 notify Home/Profile
+    onActivationChanged?.call();
   }
 
   // ─────────────────────────────────────────────
-  // IMPORT FLAG (IMPORT ≠ SYNC PERMISSION)
+  // IMPORT FLAG
   // ─────────────────────────────────────────────
   Future<void> markLocalImportDone() async {
     if (_userEmail == null) return;
@@ -257,6 +295,14 @@ class SyncViewModel extends ChangeNotifier {
       case AutoSyncInterval.min20:
         return "Every 20 minutes";
     }
+  }
+
+  String get lastSyncLabel {
+    if (lastSyncedTime == null) return "Never synced";
+    if (lastSyncResult == null || !lastSyncResult!.hasChanges) {
+      return "Last sync: just now";
+    }
+    return "Last sync: just now • ${lastSyncResult!.label}";
   }
 
   Future<void> setAutoSyncInterval(AutoSyncInterval interval) async {
@@ -304,10 +350,28 @@ class SyncViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ✅ NEW: failsafe unlock
+  void _startFailsafeUnlock() {
+    _failsafeTimer?.cancel();
+    _failsafeTimer = Timer(_failsafeUnlock, () {
+      if (isSyncing) {
+        _log.e("⛔ Sync stuck → forcing unlock (failsafe)");
+        _setState(syncing: false, progress: 0, message: "❌ Sync timeout");
+        isBackgroundSync = false;
+      }
+    });
+  }
+
+  void _stopFailsafeUnlock() {
+    _failsafeTimer?.cancel();
+    _failsafeTimer = null;
+  }
+
   void cancelSync() {
     if (_activeSync != null && !_activeSync!.isCompleted) {
       _activeSync!.cancel();
       _activeSync = null;
+      _stopFailsafeUnlock();
       _setState(syncing: false, progress: 0, message: "❌ Sync cancelled");
     }
   }
@@ -315,6 +379,7 @@ class SyncViewModel extends ChangeNotifier {
   @override
   void dispose() {
     _autoSyncTimer?.cancel();
+    _failsafeTimer?.cancel();
     super.dispose();
   }
 }

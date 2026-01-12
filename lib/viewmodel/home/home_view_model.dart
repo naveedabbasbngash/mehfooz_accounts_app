@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // 🍎 REQUIRED
 import 'package:logger/logger.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,6 +31,10 @@ class HomeViewModel extends ChangeNotifier {
     required this.drawerKey,
   });
 
+  // 🍎 APPLE REVIEW ACCOUNT
+  static const String _appleReviewEmail =
+      'applereviewmehfooz@gmail.com';
+
   // ─────────────────────────────────────────────
   // STATE
   // ─────────────────────────────────────────────
@@ -48,7 +53,7 @@ class HomeViewModel extends ChangeNotifier {
   List<PendingAmountRow> pendingAmounts = [];
 
   // ─────────────────────────────────────────────
-  // 🔴 NEW: STREAM SUBSCRIPTIONS (ONLY ADDITION)
+  // STREAM SUBSCRIPTIONS
   // ─────────────────────────────────────────────
   StreamSubscription<List<CashInHandRow>>? _cashInHandSub;
   StreamSubscription<List<CashSummaryRow>>? _acc1CashSub;
@@ -92,12 +97,30 @@ class HomeViewModel extends ChangeNotifier {
     final restored =
     await DatabaseManager.instance.restoreDatabaseForUser(user.email);
 
+    // 🍎 APPLE REVIEW AUTO DEMO DB
+    if (!restored && user.email == _appleReviewEmail) {
+      final demoPath = await _loadAppleReviewDemoDb(user.email);
+      if (demoPath != null) {
+        verifiedDbPath = demoPath;
+
+        await _restoreCompanySelection();
+        _startDashboardStreams();
+
+        if (syncVM != null) {
+          syncVM!.attachDatabase(DatabaseManager.instance.db);
+          await syncVM!.markLocalImportDone();
+        }
+
+        _hasRestored = true;
+        notifyListeners();
+        return;
+      }
+    }
+
     if (restored) {
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
 
       await _restoreCompanySelection();
-
-      // 🔴 UPDATED: start reactive streams instead of one-time load
       _startDashboardStreams();
 
       if (syncVM != null) {
@@ -113,7 +136,33 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   // ─────────────────────────────────────────────
-  // IMPORT DATABASE
+  // 🍎 APPLE REVIEW DEMO DB LOADER
+  // ─────────────────────────────────────────────
+  Future<String?> _loadAppleReviewDemoDb(String email) async {
+    try {
+      _log.w("🍎 Apple Review detected — loading demo DB");
+
+      final byteData =
+      await rootBundle.load('assets/demo/demo.sqlite');
+
+      final tempPath =
+      await SqliteImportService.writeBytesToTemp(byteData);
+
+      await SqliteValidationService().validateDatabase(tempPath);
+
+      await DatabaseManager.instance.useImportedDbForUser(
+        tempPath,
+        email,
+      );
+
+      return DatabaseManager.instance.activeDbPath;
+    } catch (e) {
+      _log.e("❌ Apple Review demo DB failed: $e");
+      return null;
+    }
+  }
+  // ─────────────────────────────────────────────
+  // IMPORT DATABASE (UNCHANGED)
   // ─────────────────────────────────────────────
   Future<void> importDatabase(String inputPath, UserModel user) async {
     _isImporting = true;
@@ -136,13 +185,10 @@ class HomeViewModel extends ChangeNotifier {
       );
 
       verifiedDbPath = DatabaseManager.instance.activeDbPath;
-
-      // 🔴 UPDATED: restart streams on new DB
       _startDashboardStreams();
 
       if (syncVM != null) {
         syncVM!.attachDatabase(DatabaseManager.instance.db);
-        _log.i("📦 DB attached to SyncVM after import");
       }
     } finally {
       _isImporting = false;
@@ -151,7 +197,7 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   // ─────────────────────────────────────────────
-  // COMPANY SELECTION
+  // COMPANY SELECTION (UNCHANGED)
   // ─────────────────────────────────────────────
   Future<void> _restoreCompanySelection() async {
     final prefs = await SharedPreferences.getInstance();
@@ -190,13 +236,12 @@ class HomeViewModel extends ChangeNotifier {
       name: selectedCompanyName!,
     );
 
-    // 🔴 UPDATED: restart streams on company change
     _startDashboardStreams();
     notifyListeners();
   }
 
   // ─────────────────────────────────────────────
-  // 🔴 DASHBOARD STREAMS (CORE FIX)
+  // DASHBOARD STREAMS (UNCHANGED)
   // ─────────────────────────────────────────────
   void _startDashboardStreams() {
     if (selectedCompanyId == null) return;
@@ -227,11 +272,9 @@ class HomeViewModel extends ChangeNotifier {
   }
 
   // ─────────────────────────────────────────────
-  // LOGOUT CLEANUP
+  // LOGOUT CLEANUP (UNCHANGED)
   // ─────────────────────────────────────────────
   Future<void> clearOnLogout(UserModel user) async {
-    _log.w("🚪 Clearing HomeViewModel state");
-
     _cashInHandSub?.cancel();
     _acc1CashSub?.cancel();
     _pendingSub?.cancel();
@@ -327,7 +370,8 @@ class HomeViewModel extends ChangeNotifier {
           content: Text(e.toString()),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(),
+              onPressed: () =>
+                  Navigator.of(ctx, rootNavigator: true).pop(),
               child: const Text("OK"),
             ),
           ],

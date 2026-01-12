@@ -187,7 +187,7 @@ class DrawerMenu extends StatelessWidget {
             onTap: () async {
               _logAction("Logout");
               await AuthService.logout();
-              context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
+              // context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
             },
           ),
         ],

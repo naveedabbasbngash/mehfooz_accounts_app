@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:logger/logger.dart';
@@ -74,5 +75,19 @@ class SqliteImportService {
       _log.e("❌ Failed to read table list: $e", error: e, stackTrace: st);
       return [];
     }
+  }
+
+
+  static Future<String> writeBytesToTemp(ByteData data) async {
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/apple_review_demo.sqlite');
+
+    final buffer = data.buffer;
+    await file.writeAsBytes(
+      buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      flush: true,
+    );
+
+    return file.path;
   }
 }
