@@ -329,4 +329,20 @@ class DatabaseManager {
     final path = await _getUserDbPath(email);
     return File(path).existsSync();
   }
+
+
+  // =====================================================================
+// CLEAR ALL USER DATA (Apple Delete Account support)
+// =====================================================================
+  Future<void> clearAllForUser(String email) async {
+    _log.w("🧹 clearAllForUser() called for $email");
+
+    // 1️⃣ Delete user DB file
+    await clearUserDb(email);
+
+    // 2️⃣ Reset Drift + in-memory state
+    await reset();
+
+    _log.i("✅ All local data cleared for $email");
+  }
 }

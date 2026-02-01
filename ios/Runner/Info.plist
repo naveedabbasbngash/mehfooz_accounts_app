@@ -63,5 +63,38 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+
+    <key>UIFileSharingEnabled</key>
+    <true/>
+
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>SQLite Database</string>
+
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>public.database</string>
+                <string>public.data</string>
+                <string>com.apple.sqlite3</string>
+            </array>
+
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>sqlite</string>
+                <string>db</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

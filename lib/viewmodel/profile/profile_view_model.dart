@@ -2,6 +2,7 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mehfooz_accounts_app/ui/auth/auth_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,6 +11,8 @@ import '../../data/local/database_manager.dart';
 import '../../model/user_model.dart';
 import '../../services/global_state.dart';
 import '../home/home_view_model.dart';
+import 'package:http/http.dart' as http;
+
 
 class ProfileViewModel extends ChangeNotifier {
   ProfileViewModel({required this.loggedInUser}) {
@@ -26,6 +29,7 @@ class ProfileViewModel extends ChangeNotifier {
       'applereviewmehfooz@gmail.com';
 
   late UserModel loggedInUser;
+
   /// 🔑 Admin permission from backend
   bool get isAdminSyncAllowed =>
       loggedInUser.planStatus?.canSync ?? false;
@@ -92,6 +96,7 @@ class ProfileViewModel extends ChangeNotifier {
           databaseFound &&
           emailMatch &&
           !isSubscriptionExpired;
+
   /// Import allowed? (blocked only when subscription expired)
   bool get canImport => !isSubscriptionExpired;
 
@@ -188,7 +193,6 @@ class ProfileViewModel extends ChangeNotifier {
         debugPrint("🟢 [RESTRICTION:init] Allowed (FREE or active paid plan)");
         isRestricted = false;
       }
-
     } catch (e, st) {
       debugPrint("❌ Error in ProfileViewModel._init: $e");
       debugPrintStack(stackTrace: st);
@@ -208,7 +212,6 @@ class ProfileViewModel extends ChangeNotifier {
   // COMPANY SELECTOR
   // ─────────────────────────────────────────────────────────────
   Future<void> selectCompany(int id, {required BuildContext context}) async {
-
     try {
       selectedCompany = companies.firstWhere((c) => c.companyId == id);
 
@@ -321,4 +324,78 @@ class ProfileViewModel extends ChangeNotifier {
   bool get isAppleReviewUser =>
       loggedInUser.email.trim().toLowerCase() ==
           _appleReviewEmail;
+
+  Future<void> deleteAccount(BuildContext context) async {
+    final email = loggedInUser.email;
+
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      debugPrint("🧨 [DELETE] Starting delete account flow");
+      debugPrint("🧨 [DELETE] Email = $email");
+      debugPrint(
+          "🧨 [DELETE] API = https://kheloaurjeeto.net/mahfooz_accounts/api/deleteAccount");
+
+      final uri = Uri.parse(
+        "https://kheloaurjeeto.net/mahfooz_accounts/api/deleteAccount",
+      );
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: {
+          "email": email,
+        },
+      );
+
+      // 🔍 LOG EVERYTHING
+      debugPrint("🧨 [DELETE] Status code = ${response.statusCode}");
+      debugPrint("🧨 [DELETE] Response headers = ${response.headers}");
+      debugPrint("🧨 [DELETE] Raw response body = ${response.body}");
+
+      if (response.statusCode == 200) {
+        debugPrint("✅ [DELETE] Server accepted delete request");
+
+        // Optional: parse body if JSON
+        if (response.body.isNotEmpty) {
+          debugPrint("📦 [DELETE] Server message = ${response.body}");
+        }
+
+        // 🧹 Clear local data
+        await DatabaseManager.instance.clearAllForUser(email);
+        debugPrint("🧹 [DELETE] Local DB cleared");
+
+        if (context.mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthScreen()),
+                (_) => false,
+          );
+        }
+      } else {
+        // ❌ Server responded but not OK
+        throw Exception(
+          "Delete API failed | "
+              "status=${response.statusCode} | "
+              "body=${response.body}",
+        );
+      }
+    } catch (e, st) {
+      debugPrint("❌ [DELETE] ERROR: $e");
+      debugPrintStack(stackTrace: st);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Account deletion failed. Please try again."),
+        ),
+      );
+    } finally {
+      isLoading = false;
+      notifyListeners();
+      debugPrint("🏁 [DELETE] Flow finished");
+    }
+  }
 }
