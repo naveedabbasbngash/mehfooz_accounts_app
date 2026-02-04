@@ -1,6 +1,7 @@
 // lib/services/pdf/base_pdf_service.dart
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
@@ -30,11 +31,21 @@ abstract class BasePdfService {
     ..minimumFractionDigits = 0
     ..maximumFractionDigits = 0;
 
-  // Fonts helper
-  (pw.Font regular, pw.Font bold) createFonts() {
-    final regular = pw.Font.helvetica();
-    final bold = pw.Font.helveticaBold();
-    return (regular, bold);
+  static pw.Font? _unicodeRegular;
+  static pw.Font? _unicodeBold;
+
+  // Unicode-safe fonts for Urdu/Arabic/Pashto + Latin.
+  Future<(pw.Font regular, pw.Font bold)> createFonts() async {
+    _unicodeRegular ??= pw.Font.ttf(
+      (await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'))
+          .buffer
+          .asByteData(),
+    );
+
+    // Keep bold same unicode font to avoid missing glyphs in bold text.
+    _unicodeBold ??= _unicodeRegular;
+
+    return (_unicodeRegular!, _unicodeBold!);
   }
 
   // Shared header (same as your _buildHeader)

@@ -16,7 +16,7 @@ class LastCreditPdfService extends BasePdfService {
   }) async {
     final pdf = pw.Document();
 
-    final (latin, latinBold) = createFonts();
+    final (latin, latinBold) = await createFonts();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
 
     // ✅ Decimal-safe formatter for money
@@ -70,11 +70,30 @@ class LastCreditPdfService extends BasePdfService {
                   decoration:
                   const pw.BoxDecoration(color: PdfColors.grey300),
                   children: [
-                    _headerCell('Customer'),
-                    _headerCell('Balance', align: pw.TextAlign.center),
-                    _headerCell('Date', align: pw.TextAlign.center),
-                    _headerCell('No Days', align: pw.TextAlign.center),
-                    _headerCell('جمع Cr', align: pw.TextAlign.center),
+                    _headerCell(
+                      'Customer',
+                      font: latinBold,
+                    ),
+                    _headerCell(
+                      'Balance',
+                      font: latinBold,
+                      align: pw.TextAlign.center,
+                    ),
+                    _headerCell(
+                      'Date',
+                      font: latinBold,
+                      align: pw.TextAlign.center,
+                    ),
+                    _headerCell(
+                      'No Days',
+                      font: latinBold,
+                      align: pw.TextAlign.center,
+                    ),
+                    _headerCell(
+                      'جمع Cr',
+                      font: latinBold,
+                      align: pw.TextAlign.center,
+                    ),
                   ],
                 ),
 
@@ -124,12 +143,14 @@ class LastCreditPdfService extends BasePdfService {
                       // Customer
                       _bodyCell(
                         row.customer,
+                        font: latin,
                         align: pw.TextAlign.left,
                       ),
 
                       // Balance (RED)
                       _bodyCell(
                         balanceFormatted,
+                        font: latin,
                         align: pw.TextAlign.center,
                         color: PdfColors.red,
                       ),
@@ -137,6 +158,7 @@ class LastCreditPdfService extends BasePdfService {
                       // Date
                       _bodyCell(
                         cleanDate,
+                        font: latin,
                         align: pw.TextAlign.center,
                       ),
 
@@ -161,6 +183,7 @@ class LastCreditPdfService extends BasePdfService {
                       // جمع Cr
                       _bodyCell(
                         crFormatted,
+                        font: latin,
                         align: pw.TextAlign.center,
                       ),
                     ],
@@ -198,6 +221,7 @@ class LastCreditPdfService extends BasePdfService {
   // ==========================================================
   pw.Widget _headerCell(
       String text, {
+        required pw.Font font,
         pw.TextAlign align = pw.TextAlign.left,
       }) {
     return pw.Padding(
@@ -206,6 +230,7 @@ class LastCreditPdfService extends BasePdfService {
         text,
         textAlign: align,
         style: pw.TextStyle(
+          font: font,
           fontSize: 9,
           fontWeight: pw.FontWeight.bold,
         ),
@@ -218,6 +243,7 @@ class LastCreditPdfService extends BasePdfService {
   // ==========================================================
   pw.Widget _bodyCell(
       String text, {
+        required pw.Font font,
         pw.TextAlign align = pw.TextAlign.left,
         PdfColor color = PdfColors.black,
       }) {
@@ -227,6 +253,7 @@ class LastCreditPdfService extends BasePdfService {
         text,
         textAlign: align,
         style: pw.TextStyle(
+          font: font,
           fontSize: 9,
           color: color,
         ),

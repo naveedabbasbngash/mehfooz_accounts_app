@@ -1,0 +1,64 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 3223 >>
+stream
+BT /F1 14 Tf 1 0 0 1 48 738.00 Tm (Mehfooz Accounts App - One Page Repo Summary) Tj ET
+BT /F1 12 Tf 1 0 0 1 48 723.00 Tm () Tj ET
+BT /F1 12 Tf 1 0 0 1 48 708.00 Tm (WHAT IT IS) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 693.00 Tm (Mehfooz Accounts App is a Flutter app for account/ledger operations across company datasets.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 678.00 Tm (It combines local SQLite workflows, optional remote sync, and in-app PDF reporting.) Tj ET
+BT /F1 12 Tf 1 0 0 1 48 663.00 Tm () Tj ET
+BT /F1 12 Tf 1 0 0 1 48 648.00 Tm (WHO IT IS FOR) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 633.00 Tm (Primary persona in docs: Not found in repo.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 618.00 Tm (Inferred from screens and queries: accounting staff managing pending balances and cash books.) Tj ET
+BT /F1 12 Tf 1 0 0 1 48 603.00 Tm () Tj ET
+BT /F1 12 Tf 1 0 0 1 48 588.00 Tm (WHAT IT DOES) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 573.00 Tm (- Multi-step auth: email check, password login/set password, forgot password, saved account chooser.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 558.00 Tm (- Imports .sqlite/.db files \(share intent, picker, iOS Open-In/iCloud\) into app-managed storage.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 543.00 Tm (- Maintains per-user local databases and restores the active user DB on launch.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 528.00 Tm (- Home dashboard shows cash-in-hand, AccID=1 summary, and pending amounts by currency/company.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 513.00 Tm (- Transactions screen supports search, debit/credit/date filters, balance mode, and detail panels.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 498.00 Tm (- Generates report PDFs: balance, credit, debit, pending, ledger, and last-credit summary.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 483.00 Tm (- Optional sync pulls server batches, applies local upserts/deletes, then sends ack; supports auto-sync.) Tj ET
+BT /F1 12 Tf 1 0 0 1 48 468.00 Tm () Tj ET
+BT /F1 12 Tf 1 0 0 1 48 453.00 Tm (HOW IT WORKS \(REPO EVIDENCE\)) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 438.00 Tm (- UI: Flutter screens in lib/ui; state managed with Provider + ChangeNotifier viewmodels.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 423.00 Tm (- Data layer: repositories run Drift SQL over Acc_Personal, Transactions_P, AccType, Company, Db_Info.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 408.00 Tm (- Local persistence: DatabaseManager activates per-user SQLite files under app documents.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 393.00 Tm (- Integrations: AuthService and SyncService call HTTPS endpoints at kheloaurjeeto.net.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 378.00 Tm (- Flow: login/restore DB -> viewmodels watch repository streams -> UI updates; import/sync mutate DB.) Tj ET
+BT /F1 12 Tf 1 0 0 1 48 363.00 Tm () Tj ET
+BT /F1 12 Tf 1 0 0 1 48 348.00 Tm (HOW TO RUN \(MINIMAL\)) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 333.00 Tm (1\) Install Flutter SDK \(repo pubspec requires Dart SDK ^3.10.0\) and platform toolchains.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 318.00 Tm (2\) From repo root: flutter pub get) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 303.00 Tm (3\) Start app: flutter run) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 288.00 Tm (4\) Environment variable setup instructions: Not found in repo.) Tj ET
+BT /F1 11 Tf 1 0 0 1 48 273.00 Tm (5\) Full backend/local server setup guide: Not found in repo.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000015 00000 n 
+0000000064 00000 n 
+0000000121 00000 n 
+0000000247 00000 n 
+0000000317 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+3592
+%%EOF

@@ -49,8 +49,7 @@ class SqliteImportService {
 
       final ext = p.extension(resolvedPath).toLowerCase();
       if (ext != ".sqlite" && ext != ".db") {
-        _log.e("❌ Unsupported file extension: $ext");
-        return null;
+        _log.w("⚠ Non-standard extension ($ext), validating as SQLite anyway");
       }
 
       final appDir = await getApplicationDocumentsDirectory();

@@ -82,6 +82,10 @@ class _HomeWrapperState extends State<HomeWrapper> {
         await _handleImportPath(rawPath);
       }
     });
+
+    // Android share flow (stream + cold-start payload)
+    _listenToSharedFiles();
+    _handleInitialSharedFile();
   }
 
 
@@ -163,6 +167,26 @@ class _HomeWrapperState extends State<HomeWrapper> {
         routeLog("getMediaStream() ERROR: $e");
       },
     );
+  }
+
+  Future<void> _handleInitialSharedFile() async {
+    try {
+      final initialFiles = await ReceiveSharingIntent.instance.getInitialMedia();
+      routeLog("getInitialMedia() files=${initialFiles.length}");
+
+      if (initialFiles.isNotEmpty) {
+        final path = initialFiles.first.path;
+        routeLog("Initial shared file path=$path");
+
+        if (path.isNotEmpty) {
+          await _handleImportPath(path);
+        }
+      }
+
+      await ReceiveSharingIntent.instance.reset();
+    } catch (e) {
+      routeLog("getInitialMedia() ERROR: $e");
+    }
   }
   // ============================================================
   // IMPORT HANDLER

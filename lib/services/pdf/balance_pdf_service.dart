@@ -1,6 +1,5 @@
 // lib/services/pdf/balance_pdf_service.dart
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -27,12 +26,11 @@ class BalancePdfService extends BasePdfService {
 
   Future<void> _loadUrduFont() async {
     final regularData =
-    await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
-    final boldData =
-    await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
+    await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
 
     urduFont = pw.Font.ttf(regularData.buffer.asByteData());
-    urduFontBold = pw.Font.ttf(boldData.buffer.asByteData());
+    // Keep bold same unicode font to avoid broken Arabic shaping in faux bold.
+    urduFontBold = urduFont;
   }
 
   bool _isRtl(String? s) {

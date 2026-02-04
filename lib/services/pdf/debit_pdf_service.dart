@@ -12,6 +12,16 @@ class DebitPdfService extends BasePdfService {
 
   static final NumberFormat _money = NumberFormat('#,##0.00');
 
+  bool _isRtl(String? s) {
+    if (s == null || s.trim().isEmpty) return false;
+    return RegExp(
+      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
+    ).hasMatch(s);
+  }
+
+  pw.TextDirection _dir(String text) =>
+      _isRtl(text) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
+
   double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
   String _fmtMoney(double v) => _money.format(_fixZero(v));
@@ -27,7 +37,7 @@ class DebitPdfService extends BasePdfService {
 
     final pageFormat = PdfPageFormat(pageWidth, pageHeight, marginAll: 12);
 
-    final (font, fontBold) = createFonts();
+    final (font, fontBold) = await createFonts();
 
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final negativeRed = PdfColor.fromInt(0xFFC62828);
@@ -87,6 +97,7 @@ class DebitPdfService extends BasePdfService {
             : pw.Alignment.center,
         child: pw.Text(
           text,
+          textDirection: _dir(text),
           textAlign: align,
           style: pw.TextStyle(
             font: fontBold,
@@ -114,6 +125,7 @@ class DebitPdfService extends BasePdfService {
         ),
         child: pw.Text(
           name,
+          textDirection: _dir(name),
           style: pw.TextStyle(
             font: fontBold,
             fontSize: BasePdfService.bodySize,

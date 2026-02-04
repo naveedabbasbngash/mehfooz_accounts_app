@@ -47,7 +47,7 @@ class PendingPdfService extends BasePdfService {
 
     final pdf = pw.Document();
 
-    final (latin, latinBold) = createFonts();
+    final (latin, latinBold) = await createFonts();
 
     // ---------------- FIX: Always top-aligned PDF ----------------
     final double pageWidth = PdfPageFormat.cm * 29.7;   // A4 width
