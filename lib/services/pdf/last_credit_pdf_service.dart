@@ -10,6 +10,16 @@ class LastCreditPdfService extends BasePdfService {
   LastCreditPdfService._();
   static final LastCreditPdfService instance = LastCreditPdfService._();
 
+  bool _isRtl(String? s) {
+    if (s == null || s.trim().isEmpty) return false;
+    return RegExp(
+      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
+    ).hasMatch(s);
+  }
+
+  pw.TextDirection _dir(String text) =>
+      _isRtl(text) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
+
   Future<File> render({
     required String currencyName,
     required List<LastCreditRow> rows,
@@ -40,12 +50,27 @@ class LastCreditPdfService extends BasePdfService {
               ),
             ),
             pw.SizedBox(height: 4),
-            pw.Text(
-              'Currency: $currencyName',
-              style: pw.TextStyle(
-                font: latin,
-                fontSize: 11,
-              ),
+            pw.Row(
+              children: [
+                pw.Text(
+                  'Currency:',
+                  style: pw.TextStyle(
+                    font: latin,
+                    fontSize: 11,
+                  ),
+                ),
+                pw.SizedBox(width: 6),
+                pw.Expanded(
+                  child: pw.Text(
+                    currencyName,
+                    textDirection: _dir(currencyName),
+                    style: pw.TextStyle(
+                      font: latin,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ],
             ),
             pw.SizedBox(height: 16),
 
@@ -229,11 +254,12 @@ class LastCreditPdfService extends BasePdfService {
       child: pw.Text(
         text,
         textAlign: align,
-        style: pw.TextStyle(
-          font: font,
-          fontSize: 9,
-          fontWeight: pw.FontWeight.bold,
+          style: pw.TextStyle(
+            font: font,
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
         ),
+        textDirection: _dir(text),
       ),
     );
   }
@@ -257,6 +283,7 @@ class LastCreditPdfService extends BasePdfService {
           fontSize: 9,
           color: color,
         ),
+        textDirection: _dir(text),
       ),
     );
   }
