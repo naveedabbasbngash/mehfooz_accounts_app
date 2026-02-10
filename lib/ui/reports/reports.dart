@@ -134,6 +134,11 @@ class _ReportsScreenBody extends StatelessWidget {
             color: AppColors.primary,
             disabled: ui.loading,
             onTap: () async {
+              final companyId = GlobalState.instance.companyId;
+              if (companyId == null) {
+                _toast(context, "Please select a company first");
+                return;
+              }
               final file = await vm.generateBalanceReport();
               if (file == null) {
                 _toast(context, "No data available");

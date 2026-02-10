@@ -324,8 +324,8 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
         GROUP BY at.AccTypeName
         HAVING 
-          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) 
-        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) <> 0
+          OR IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
         ORDER BY at.AccTypeName COLLATE NOCASE
       '''
         : r'''
@@ -335,8 +335,8 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         WHERE tp.CompanyID = ?1
         GROUP BY at.AccTypeName
         HAVING 
-          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) 
-        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) <> 0
+          OR IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
         ORDER BY at.AccTypeName COLLATE NOCASE
       ''';
 
@@ -421,18 +421,6 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         .toList()
       ..sort((a, b) =>
           a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-
-    // ===============================
-    // STEP 5: CLEAN UNUSED CURRENCIES
-    // ===============================
-    final usedCurrencies = <String>{};
-    for (final r in rows) {
-      r.byCurrency.forEach((k, v) {
-        if (v != 0.0) usedCurrencies.add(k);
-      });
-    }
-
-    currencies = currencies.where(usedCurrencies.contains).toList();
 
     return BalanceMatrixResult(
       currencies: currencies,
