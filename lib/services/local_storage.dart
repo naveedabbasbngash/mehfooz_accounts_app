@@ -1,81 +1,121 @@
-// Place this file in: lib/services/local_storage.dart
+// lib/services/local_storage.dart
+// ✅ FIXED & HARDENED VERSION (DO NOT SKIP ANYTHING)
 
 import 'dart:convert';
 
-import 'package:shared_preferences/shared_preferences.dart' show SharedPreferences;
+import 'package:shared_preferences/shared_preferences.dart'
+    show SharedPreferences;
 
 import '../model/user_model.dart';
 import 'logging/logger_service.dart';
 
 class LocalStorageService {
   static const String _userListKey = "logged_in_users";
+  static const String _lastUsedUserKey = "last_used_user_email";
 
-  /// ✅ Save or update a user in local storage
+  // ============================================================
+  // 🔐 SAVE USER (SAFE — NEVER SAVE EMPTY EMAIL)
+  // ============================================================
   static Future<void> saveUser(UserModel user) async {
+    if (user.email.isEmpty) {
+      LoggerService.warn("⛔ Skipped saving user with EMPTY email");
+      return;
+    }
+
     final prefs = await SharedPreferences.getInstance();
     final existingList = prefs.getStringList(_userListKey) ?? [];
 
-    // 🔄 Remove any previous instance of the user by email
     existingList.removeWhere((entry) {
-      final decoded = jsonDecode(entry);
-      return decoded["email"] == user.email;
+      try {
+        final decoded = jsonDecode(entry);
+        return decoded["email"] == user.email;
+      } catch (_) {
+        return false;
+      }
     });
 
-    // ➕ Add the new/updated user
     existingList.add(jsonEncode(user.toJson()));
-
-    // 💾 Persist list
     await prefs.setStringList(_userListKey, existingList);
+
     LoggerService.info("💾 Saved user locally: ${user.email}");
   }
 
-  /// 📦 Load all saved users from storage
+  // ============================================================
+  // ✅ SAVE + MARK AS LAST USED (SAFE)
+  // ============================================================
+  static Future<void> saveOrUpdateUser(UserModel user) async {
+    if (user.email.isEmpty) return;
+    await saveUser(user);
+    await setLastUsedUser(user.email);
+  }
+
+  // ============================================================
+  // 📥 LOAD ALL USERS (FILTER INVALID)
+  // ============================================================
   static Future<List<UserModel>> loadAllUsers() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonList = prefs.getStringList(_userListKey) ?? [];
 
-    final users = jsonList.map((jsonStr) {
+    final users = jsonList
+        .map((jsonStr) {
       try {
         final map = jsonDecode(jsonStr);
-        return UserModel.fromJson(map);
-      } catch (e, s) {
+        final user = UserModel.fromJson(map);
+        return user.email.isNotEmpty ? user : null;
+      } catch (_) {
         return null;
       }
-    }).whereType<UserModel>().toList();
+    })
+        .whereType<UserModel>()
+        .toList();
 
     LoggerService.info("📥 Loaded users: ${users.length}");
     return users;
   }
 
-  /// 👤 Load the most recent logged-in user (last saved)
-  static Future<UserModel?> loadLatestUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = prefs.getStringList(_userListKey);
+  // ============================================================
+  // 🕒 SET LAST USED USER (SAFE)
+  // ============================================================
+  static Future<void> setLastUsedUser(String email) async {
+    if (email.isEmpty) {
+      LoggerService.warn("⛔ Refused to set EMPTY last used user");
+      return;
+    }
 
-    if (jsonList == null || jsonList.isEmpty) {
-      LoggerService.warn("⚠ No users found in local storage.");
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastUsedUserKey, email);
+    LoggerService.info("🕒 Set last used user: $email");
+  }
+
+  // ============================================================
+  // 🔁 LOAD LAST USED USER (GUARANTEED VALID)
+  // ============================================================
+  static Future<UserModel?> loadLastUsedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString(_lastUsedUserKey);
+
+    if (email == null || email.isEmpty) {
+      LoggerService.warn("⚠ No last used user stored");
       return null;
     }
+
+    final users = await loadAllUsers();
 
     try {
-      final latestJson = jsonDecode(jsonList.last);
-      final latestUser = UserModel.fromJson(latestJson);
-      LoggerService.info("✅ Loaded latest user: ${latestUser.email}");
-      return latestUser;
-    } catch (e, s) {
+      final user = users.firstWhere((u) => u.email == email);
+      LoggerService.info("✅ Loaded last used user: ${user.email}");
+      return user;
+    } catch (_) {
+      LoggerService.warn("⛔ Last used user not found → clearing");
+      await clearLastUsedUser();
       return null;
     }
   }
 
-  /// 🧹 Clear all stored users
-  static Future<void> clearAllUsers() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_userListKey);
-    LoggerService.info("🧹 All local users cleared.");
-  }
-
-  /// ❌ Remove a specific user by email
-  static Future<void> removeUserByEmail(String email) async {
+  // ============================================================
+  // 🗑 REMOVE ONE USER
+  // ============================================================
+  static Future<void> removeUser(String email) async {
     final prefs = await SharedPreferences.getInstance();
     final existingList = prefs.getStringList(_userListKey) ?? [];
 
@@ -89,6 +129,41 @@ class LocalStorageService {
     });
 
     await prefs.setStringList(_userListKey, existingList);
+
+    final lastUsed = prefs.getString(_lastUsedUserKey);
+    if (lastUsed == email) {
+      await prefs.remove(_lastUsedUserKey);
+      LoggerService.info("🧹 Removed last used user reference");
+    }
+
     LoggerService.info("🗑 Removed user: $email");
+  }
+
+  // ============================================================
+  // 🚪 CLEAR LOGIN STATE ONLY (KEEP ACCOUNTS)
+  // ============================================================
+  static Future<void> clearLoginStateOnly() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastUsedUserKey);
+    LoggerService.info("🚪 Cleared login state only");
+  }
+
+  // ============================================================
+  // 🧹 CLEAR LAST USED USER ONLY
+  // ============================================================
+  static Future<void> clearLastUsedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_lastUsedUserKey);
+    LoggerService.info("🧹 Cleared last used user");
+  }
+
+  // ============================================================
+  // ❌ FULL RESET (DEBUG / LOGOUT ALL)
+  // ============================================================
+  static Future<void> clearAllUsers() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_userListKey);
+    await prefs.remove(_lastUsedUserKey);
+    LoggerService.info("🧹 All local users cleared");
   }
 }

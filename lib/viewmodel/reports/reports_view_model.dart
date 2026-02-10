@@ -84,7 +84,10 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   Future<void> loadBalanceMatrix() async {
     final companyId = GlobalState.instance.companyId;
-    if (companyId == null) return;
+    if (companyId == null) {
+      _ui = _ui.copyWith(error: "Please select a company first");
+      return;
+    }
 
     final BalanceMatrixResult result =
     await repo.getBalanceMatrix(companyId: companyId);

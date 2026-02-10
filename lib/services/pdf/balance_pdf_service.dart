@@ -1,6 +1,5 @@
 // lib/services/pdf/balance_pdf_service.dart
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -27,12 +26,11 @@ class BalancePdfService extends BasePdfService {
 
   Future<void> _loadUrduFont() async {
     final regularData =
-    await rootBundle.load('assets/fonts/NotoSans-Regular.ttf');
-    final boldData =
-    await rootBundle.load('assets/fonts/NotoSans-Bold.ttf');
+    await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
 
     urduFont = pw.Font.ttf(regularData.buffer.asByteData());
-    urduFontBold = pw.Font.ttf(boldData.buffer.asByteData());
+    // Keep bold same unicode font to avoid broken Arabic shaping in faux bold.
+    urduFontBold = urduFont;
   }
 
   bool _isRtl(String? s) {
@@ -147,6 +145,29 @@ class BalancePdfService extends BasePdfService {
       );
     }
 
+    // Totals row (Balance)
+    final totals = <String, double>{};
+    for (final c in currencies) {
+      totals[c] = 0.0;
+    }
+    for (final row in rows) {
+      row.byCurrency.forEach((cur, value) {
+        totals[cur] = (totals[cur] ?? 0.0) + value;
+      });
+    }
+
+    tableRows.add(
+      pw.TableRow(
+        children: [
+          _totalLabelCell('Balance', latinBold),
+          ...currencies.map((c) {
+            final value = totals[c] ?? 0.0;
+            return _totalValueCell(value, latinBold);
+          }),
+        ],
+      ),
+    );
+
     return pw.Table(
       border: pw.TableBorder.all(width: 0.3),
       columnWidths: {
@@ -207,6 +228,30 @@ class BalancePdfService extends BasePdfService {
           font: latin,
           color: PdfColors.white,
           fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _totalLabelCell(String text, pw.Font bold) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(4),
+      child: pw.Text(
+        text,
+        style: pw.TextStyle(font: bold, color: PdfColors.black),
+      ),
+    );
+  }
+
+  pw.Widget _totalValueCell(double value, pw.Font bold) {
+    return pw.Container(
+      alignment: pw.Alignment.center,
+      padding: const pw.EdgeInsets.all(4),
+      child: pw.Text(
+        _fmtMoney(value),
+        style: pw.TextStyle(
+          font: bold,
+          color: PdfColors.black,
         ),
       ),
     );

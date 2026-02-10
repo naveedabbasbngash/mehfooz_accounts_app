@@ -65,7 +65,7 @@ class LedgerPdfService extends BasePdfService {
     await _loadUrduFont();
 
     final pdf = pw.Document();
-    final (latin, latinBold) = createFonts();
+    final (latin, latinBold) = await createFonts();
 
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final greyLine = PdfColor.fromInt(0xFF969696);

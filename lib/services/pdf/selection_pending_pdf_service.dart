@@ -18,7 +18,7 @@ class PendingPdfService extends BasePdfService {
   Future<File> exportMany(List<PendingGroupRow> rows) async {
     final pdf = pw.Document();
 
-    final (font, fontBold) = createFonts();
+    final (font, fontBold) = await createFonts();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final white = PdfColors.white;
     final black = PdfColors.black;

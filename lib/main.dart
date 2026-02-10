@@ -3,8 +3,10 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
+import 'package:mehfooz_accounts_app/services/sync/pending_share.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
@@ -144,7 +146,7 @@ class MahfoozAppState extends State<MahfoozApp> {
           final homeVM = context.read<HomeViewModel>();
           final syncVM = context.read<SyncViewModel>();
 
-          // 🔗 CONNECT HOME ↔ SYNC (PASS USER!)
+          // 🔗 CONNECT HOME ↔ SYNC
           if (_user != null) {
             homeVM.registerSyncVM(syncVM, _user!);
           }
@@ -153,20 +155,34 @@ class MahfoozAppState extends State<MahfoozApp> {
             debugShowCheckedModeBanner: false,
             navigatorKey: _navigatorKey,
 
-            // 🌍 Localization
             locale: context.locale,
             supportedLocales: context.supportedLocales,
             localizationsDelegates: context.localizationDelegates,
 
-            home: isLoggedIn
-                ? HomeWrapper(
-              user: _user!,
-              sliderDrawerKey: _drawerKey,
-              initialTabIndex: _userDbExists ? 0 : 3,
-            )
-                : AuthScreen(sliderDrawerKey: _drawerKey),
+            onGenerateRoute: (settings) {
+              final name = settings.name;
+
+              // 🔥 iOS Open-In handler
+              if (name != null &&
+                  name.startsWith("file://") &&
+                  PendingShare.path == null) {
+
+                PendingShare.path = name.replaceFirst("file://", "");
+                debugPrint("📥 iOS Open-In route captured: ${PendingShare.path}");
+              }
+
+              return MaterialPageRoute(
+                builder: (_) => isLoggedIn
+                    ? HomeWrapper(
+                  user: _user!,
+                  sliderDrawerKey: _drawerKey,
+                  initialTabIndex: _userDbExists ? 0 : 3,
+                )
+                    : AuthScreen(),
+              );
+            },
           );
-        },
+          },
       ),
     );
   }
@@ -190,4 +206,24 @@ class MahfoozAppState extends State<MahfoozApp> {
     _user = null;
     _userDbExists = false;
   }
+
+
+  // ─────────────────────────────────────────────
+// CALLED AFTER SUCCESSFUL LOGIN
+// ─────────────────────────────────────────────
+  Future<void> onLoginSuccess() async {
+    setState(() => _loading = true);
+
+    _user = await AuthService.loadSavedUser();
+
+    if (_user != null && _user!.isLogin == 1) {
+      _userDbExists =
+      await DatabaseManager.instance.restoreDatabaseForUser(_user!.email);
+    } else {
+      _userDbExists = false;
+    }
+
+    setState(() => _loading = false);
+  }
 }
+

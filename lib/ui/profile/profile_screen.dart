@@ -54,6 +54,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 20),
 
                   _planCards(user),
+
+                  _accountActions(context, vm),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -396,6 +399,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+
+  // ───────────────────────── ACCOUNT ACTIONS ─────────────────────────
+
+  Widget _accountActions(BuildContext context, ProfileViewModel vm) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.delete_forever, color: Colors.red),
+            title: const Text(
+              "Delete Account",
+              style: TextStyle(color: Colors.red),
+            ),
+            subtitle: const Text(
+              "Permanently delete your account and data",
+            ),
+            onTap: () => _confirmDeleteAccount(context, vm),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteAccount(BuildContext context, ProfileViewModel vm) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete Account"),
+        content: const Text(
+          "This action will permanently delete your account and all associated data. This cannot be undone.",
+        ),
+        actions: [
+          TextButton(
+            child: const Text("Cancel"),
+            onPressed: () => Navigator.pop(context),
+          ),
+          TextButton(
+            child: const Text(
+              "Delete",
+              style: TextStyle(color: Colors.red),
+            ),
+            onPressed: () async {
+              Navigator.pop(context);
+              await vm.deleteAccount(context);
+            },
+          ),
+        ],
       ),
     );
   }
