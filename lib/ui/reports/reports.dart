@@ -150,6 +150,24 @@ class _ReportsScreenBody extends StatelessWidget {
 
           const SizedBox(height: 12),
 
+          // ---------------- SUB GROUP ----------------
+          _reportButton(
+            label: "Sub group",
+            icon: Icons.account_tree_outlined,
+            color: AppColors.primary,
+            disabled: ui.loading,
+            onTap: () async {
+              final file = await vm.generateSubgroupReport();
+              if (file == null) {
+                _toast(context, "No data available");
+                return;
+              }
+              OpenFileService.openPdf(context, file);
+            },
+          ),
+
+          const SizedBox(height: 12),
+
           // ---------------- CREDIT ----------------
           _reportButton(
             label: "Jama / Credit Report",

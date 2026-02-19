@@ -76,7 +76,7 @@ class BalancePdfService extends BasePdfService {
       pw.MultiPage(
         pageFormat: pageFormat,
         build: (_) => [
-          buildHeader(
+          _buildCenteredHeader(
             title: 'Account Summary (All Currencies)',
             font: latin,
             fontBold: latinBold,
@@ -99,6 +99,45 @@ class BalancePdfService extends BasePdfService {
     return savePdf(pdf, 'balance_report');
   }
 
+  pw.Widget _buildCenteredHeader({
+    required String title,
+    required pw.Font font,
+    required pw.Font fontBold,
+    required PdfColor titleColor,
+  }) {
+    final today = DateTime.now();
+    final printed =
+        "${today.day}/${today.month}/${today.year}";
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Center(
+          child: pw.Text(
+            title,
+            textAlign: pw.TextAlign.center,
+            style: pw.TextStyle(
+              font: fontBold,
+              fontSize: BasePdfService.titleSize,
+              color: titleColor,
+            ),
+          ),
+        ),
+        pw.SizedBox(height: 4),
+        pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            "Printed $printed",
+            style: pw.TextStyle(
+              font: font,
+              fontSize: 10,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   pw.Widget _buildTable({
     required List<String> currencies,
     required List<BalanceRow> rows,
@@ -114,7 +153,13 @@ class BalancePdfService extends BasePdfService {
     tableRows.add(
       pw.TableRow(
         children: [
-          _header('NAME', latinBold, deepBlue),
+          _header(
+            'NAME',
+            latinBold,
+            deepBlue,
+            align: pw.Alignment.center,
+            textAlign: pw.TextAlign.center,
+          ),
           ...currencies.map((c) => _header(c, latinBold, deepBlue)),
         ],
       ),
@@ -179,13 +224,21 @@ class BalancePdfService extends BasePdfService {
     );
   }
 
-  pw.Widget _header(String text, pw.Font bold, PdfColor bg) {
+  pw.Widget _header(
+    String text,
+    pw.Font bold,
+    PdfColor bg, {
+    pw.Alignment align = pw.Alignment.center,
+    pw.TextAlign textAlign = pw.TextAlign.center,
+  }) {
     return pw.Container(
       color: bg,
       padding: const pw.EdgeInsets.all(4),
+      alignment: align,
       child: pw.Text(
         text,
         textDirection: _dir(text),
+        textAlign: textAlign,
         style: pw.TextStyle(font: bold, color: PdfColors.white),
       ),
     );
@@ -197,10 +250,12 @@ class BalancePdfService extends BasePdfService {
       pw.Font latinBold,
       PdfColor color,
       ) {
-    return pw.Padding(
+    return pw.Container(
       padding: const pw.EdgeInsets.all(4),
+      alignment: pw.Alignment.center,
       child: pw.Text(
         name,
+        textAlign: pw.TextAlign.center,
         textDirection: _dir(name),
         style: pw.TextStyle(
           font: _pickFont(name, latin, latinBold, true),
@@ -234,10 +289,12 @@ class BalancePdfService extends BasePdfService {
   }
 
   pw.Widget _totalLabelCell(String text, pw.Font bold) {
-    return pw.Padding(
+    return pw.Container(
       padding: const pw.EdgeInsets.all(4),
+      alignment: pw.Alignment.center,
       child: pw.Text(
         text,
+        textAlign: pw.TextAlign.center,
         style: pw.TextStyle(font: bold, color: PdfColors.black),
       ),
     );

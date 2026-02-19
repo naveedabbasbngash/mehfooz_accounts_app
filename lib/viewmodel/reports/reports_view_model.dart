@@ -13,6 +13,7 @@ import '../../services/pdf/balance_pdf_service.dart';
 import '../../services/pdf/credit_pdf_service.dart';
 import '../../services/pdf/debit_pdf_service.dart';
 import '../../services/pdf/pending_pdf_service.dart';
+import '../../services/pdf/subgroup_pdf_service.dart';
 
 /// =====================================================
 /// UI STATE
@@ -232,4 +233,30 @@ class ReportsViewModel extends ChangeNotifier {
   // LAST CREDIT SUMMARY (future)
   // =====================================================
   Future<File?> generateLastCreditSummary() async => null;
+
+  // =====================================================
+  // SUBGROUP REPORT
+  // =====================================================
+  Future<File?> generateSubgroupReport() async {
+    try {
+      _startLoading();
+
+      final companyId = GlobalState.instance.companyId;
+      if (companyId == null) {
+        return null;
+      }
+
+      final rows = await repo.getSubgroupBalances(companyId: companyId);
+      if (rows.isEmpty) return null;
+
+      return await SubgroupPdfService.instance.render(rows: rows);
+    } catch (e, s) {
+      debugPrint("❌ Subgroup report error: $e");
+      debugPrintStack(stackTrace: s);
+      _ui = _ui.copyWith(error: e.toString());
+      return null;
+    } finally {
+      _stopLoading();
+    }
+  }
 }
