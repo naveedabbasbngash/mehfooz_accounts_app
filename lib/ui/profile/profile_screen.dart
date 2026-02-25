@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../model/user_model.dart';
@@ -39,7 +40,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _userHeaderCard(user),
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: _deviceIdBadge(context, vm.deviceId),
+                  ),
+                  const SizedBox(height: 10),
+                  _userHeaderCard(context, user),
                   const SizedBox(height: 18),
 
                   if (!vm.isRestricted && vm.companies.isNotEmpty) ...[
@@ -68,7 +74,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ───────────────────────── USER HEADER ─────────────────────────
 
-  Widget _userHeaderCard(UserModel user) {
+  Widget _userHeaderCard(BuildContext context, UserModel user) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
@@ -77,18 +83,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             CircleAvatar(
               radius: 34,
-              backgroundImage:
-              user.imageUrl.isNotEmpty ? NetworkImage(user.imageUrl) : null,
+              backgroundImage: user.imageUrl.isNotEmpty
+                  ? NetworkImage(user.imageUrl)
+                  : null,
             ),
             const SizedBox(width: 14),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(user.fullName,
-                    style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(user.email,
-                    style: TextStyle(color: Colors.grey.shade600)),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    user.fullName,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    user.email,
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -96,9 +109,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _deviceIdBadge(BuildContext context, String deviceId) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            "Reference ID: $deviceId",
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.copy, size: 16),
+          tooltip: 'Copy reference ID',
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints(),
+          padding: const EdgeInsets.only(left: 6),
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: deviceId));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Reference ID copied"),
+                duration: Duration(seconds: 1),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   // ───────────────────────── SYNC CARD ─────────────────────────
 
-  Widget _syncCard(BuildContext context, SyncViewModel svm, ProfileViewModel vm) {
+  Widget _syncCard(
+    BuildContext context,
+    SyncViewModel svm,
+    ProfileViewModel vm,
+  ) {
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: Padding(
@@ -111,8 +166,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const Expanded(
                   child: Text(
                     "Sync",
-                    style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
                 _syncCapsule(svm),
@@ -142,8 +196,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
               ),
             ],
-
-
 
             // const SizedBox(height: 8),
             // _autoSyncSelector(context, svm),
@@ -197,7 +249,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
   // ───────────────────────── LOCAL SYNC TOGGLE ─────────────────────────
 
-
   // ───────────────────────── AUTO SYNC ─────────────────────────
 
   Widget _autoSyncSelector(BuildContext context, SyncViewModel svm) {
@@ -207,13 +258,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Auto sync",
-                  style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text(
+                "Auto sync",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               Text(
                 svm.labelForInterval,
                 style: TextStyle(
-                  color:
-                  svm.canSync ? Colors.grey.shade600 : Colors.grey.shade400,
+                  color: svm.canSync
+                      ? Colors.grey.shade600
+                      : Colors.grey.shade400,
                 ),
               ),
             ],
@@ -259,27 +313,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Local Data",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text(
+              "Local Data",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 12),
             OutlinedButton.icon(
               icon: const Icon(Icons.file_open),
               label: const Text("Import Local Database"),
               onPressed: vm.canImport
                   ? () async {
-                final path =
-                await FilePickerService.pickSqliteFile();
-                if (path == null) return;
+                      final path = await FilePickerService.pickSqliteFile();
+                      if (path == null) return;
 
-                await context
-                    .read<HomeViewModel>()
-                    .confirmAndImportDatabase(
-                  context: context,
-                  inputPath: path,
-                  user: vm.loggedInUser,
-                );
-
-              }
+                      await context
+                          .read<HomeViewModel>()
+                          .confirmAndImportDatabase(
+                            context: context,
+                            inputPath: path,
+                            user: vm.loggedInUser,
+                          );
+                    }
                   : null,
             ),
           ],
@@ -329,17 +383,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _companySelectorAnimated(
-      BuildContext context,
-      ProfileViewModel vm,
-      HomeViewModel homeVM,
-      ) {
+    BuildContext context,
+    ProfileViewModel vm,
+    HomeViewModel homeVM,
+  ) {
     final selectedId = homeVM.selectedCompanyId;
     final selected = selectedId == null
         ? null
         : vm.companies.firstWhere(
-          (c) => c.companyId == selectedId,
-      orElse: () => vm.companies.first,
-    );
+            (c) => c.companyId == selectedId,
+            orElse: () => vm.companies.first,
+          );
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -356,7 +410,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             InkWell(
               onTap: () => setState(() => expandCompanies = !expandCompanies),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: AppColors.darkgreen),
                   borderRadius: BorderRadius.circular(12),
@@ -384,17 +441,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               duration: const Duration(milliseconds: 250),
               child: expandCompanies
                   ? Column(
-                children: vm.companies.map((c) {
-                  return ListTile(
-                    dense: true,
-                    title: Text(c.companyName ?? "Unnamed"),
-                    onTap: () async {
-                      await homeVM.setCompany(c.companyId!);
-                      setState(() => expandCompanies = false);
-                    },
-                  );
-                }).toList(),
-              )
+                      children: vm.companies.map((c) {
+                        return ListTile(
+                          dense: true,
+                          title: Text(c.companyName ?? "Unnamed"),
+                          onTap: () async {
+                            await homeVM.setCompany(c.companyId!);
+                            setState(() => expandCompanies = false);
+                          },
+                        );
+                      }).toList(),
+                    )
                   : const SizedBox.shrink(),
             ),
           ],
@@ -402,7 +459,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
 
   // ───────────────────────── ACCOUNT ACTIONS ─────────────────────────
 
@@ -417,9 +473,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               "Delete Account",
               style: TextStyle(color: Colors.red),
             ),
-            subtitle: const Text(
-              "Permanently delete your account and data",
-            ),
+            subtitle: const Text("Permanently delete your account and data"),
             onTap: () => _confirmDeleteAccount(context, vm),
           ),
         ],
@@ -441,10 +495,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () => Navigator.pop(context),
           ),
           TextButton(
-            child: const Text(
-              "Delete",
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
             onPressed: () async {
               Navigator.pop(context);
               await vm.deleteAccount(context);

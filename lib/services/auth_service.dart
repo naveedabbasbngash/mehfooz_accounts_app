@@ -15,43 +15,34 @@ import 'logging/logger_service.dart';
 // ─────────────────────────────────────────────
 // SUPPORT TYPES
 // ─────────────────────────────────────────────
-enum AuthStepType {
-  setPassword,
-  error,
-  backToEmail,
-}
+enum AuthStepType { setPassword, error, backToEmail }
 
 class AuthStepException implements Exception {
   final AuthStepType step;
   final String message;
 
-  AuthStepException({
-    required this.step,
-    required this.message,
-  });
+  AuthStepException({required this.step, required this.message});
 
   @override
   String toString() => 'AuthStepException(step=$step, message=$message)';
 }
 
 class AuthService {
-  static const String _base =
-      'https://kheloaurjeeto.net/mahfooz_accounts/api';
+  static const String _base = 'https://admin.mahfoozaccounts.com/api';
 
   // ============================================================
   // STEP 1: CHECK EMAIL
   // ============================================================
   static Future<AuthCheckResult> checkEmail(String email) async {
-    LoggerService.info('📧 [CHECK_EMAIL] email=$email');
+    final checkEmailUri = Uri.parse('$_base/loginWithPassword');
+    final checkEmailParams = <String, String>{'email': email};
 
-    final res = await http.post(
-      Uri.parse('$_base/loginWithPassword'),
-      body: {'email': email},
-    );
+    LoggerService.info('📧 [CHECK_EMAIL] URL=$checkEmailUri');
+    LoggerService.info('📧 [CHECK_EMAIL] PARAMS=$checkEmailParams');
 
-    LoggerService.info(
-      '📡 [CHECK_EMAIL] ${res.statusCode} | ${res.body}',
-    );
+    final res = await http.post(checkEmailUri, body: {'email': email});
+
+    LoggerService.info('📡 [CHECK_EMAIL] ${res.statusCode} | ${res.body}');
 
     final json = jsonDecode(res.body);
     return AuthCheckResult.fromJson(json);
@@ -65,16 +56,19 @@ class AuthService {
     required String password,
     bool rememberMe = true,
   }) async {
-    LoggerService.info(
-      '🔐 [LOGIN] email=$email | remember=$rememberMe',
-    );
+    final loginUri = Uri.parse('$_base/loginWithPassword');
+    final loginParams = <String, String>{
+      'email': email,
+      // Keep password masked in logs for safety while still showing payload shape.
+      'password': '*' * password.length,
+    };
+
+    LoggerService.info('🔐 [LOGIN] URL=$loginUri');
+    LoggerService.info('🔐 [LOGIN] PARAMS=$loginParams | remember=$rememberMe');
 
     final res = await http.post(
-      Uri.parse('$_base/loginWithPassword'),
-      body: {
-        'email': email,
-        'password': password,
-      },
+      loginUri,
+      body: {'email': email, 'password': password},
     );
 
     LoggerService.info('📡 [LOGIN] ${res.statusCode} | ${res.body}');
@@ -84,12 +78,9 @@ class AuthService {
     // ❌ Backend rejection
     if (json['status'] != true || json['data'] == null) {
       final String step = (json['step'] ?? '').toString();
-      final String message =
-      (json['message'] ?? 'Login failed').toString();
+      final String message = (json['message'] ?? 'Login failed').toString();
 
-      LoggerService.warn(
-        '❌ [LOGIN] Rejected | step=$step | msg=$message',
-      );
+      LoggerService.warn('❌ [LOGIN] Rejected | step=$step | msg=$message');
 
       if (step == 'password') {
         throw AuthStepException(
@@ -100,10 +91,7 @@ class AuthService {
 
       // ❗ IMPORTANT:
       // ❌ DO NOT remove local accounts here
-      throw AuthStepException(
-        step: AuthStepType.backToEmail,
-        message: message,
-      );
+      throw AuthStepException(step: AuthStepType.backToEmail, message: message);
     }
 
     final user = UserModel.fromApiResponse(json);
@@ -145,9 +133,7 @@ class AuthService {
       },
     );
 
-    LoggerService.info(
-      '📡 [SET_PASSWORD] ${res.statusCode} | ${res.body}',
-    );
+    LoggerService.info('📡 [SET_PASSWORD] ${res.statusCode} | ${res.body}');
 
     final json = jsonDecode(res.body);
     return json['status'] == true;
@@ -172,18 +158,14 @@ class AuthService {
   // QUICK LOGIN (CHOOSER TAP)
   // ============================================================
   static Future<UserModel?> quickLogin(UserModel account) async {
-    LoggerService.info(
-      '⚡ [QUICK_LOGIN] email=${account.email}',
-    );
+    LoggerService.info('⚡ [QUICK_LOGIN] email=${account.email}');
 
     final res = await http.post(
       Uri.parse('$_base/loginWithPassword'),
       body: {'email': account.email},
     );
 
-    LoggerService.info(
-      '📡 [QUICK_LOGIN] ${res.statusCode} | ${res.body}',
-    );
+    LoggerService.info('📡 [QUICK_LOGIN] ${res.statusCode} | ${res.body}');
 
     final Map<String, dynamic> json = jsonDecode(res.body);
 
@@ -193,8 +175,7 @@ class AuthService {
         json['data'] == null) {
       throw AuthStepException(
         step: AuthStepType.setPassword,
-        message:
-        (json['message'] ?? 'Please enter password').toString(),
+        message: (json['message'] ?? 'Please enter password').toString(),
       );
     }
 
@@ -210,9 +191,7 @@ class AuthService {
     await LocalStorageService.saveOrUpdateUser(freshUser);
     await LocalStorageService.setLastUsedUser(freshUser.email);
 
-    LoggerService.info(
-      '✅ [QUICK_LOGIN] Success | ${freshUser.email}',
-    );
+    LoggerService.info('✅ [QUICK_LOGIN] Success | ${freshUser.email}');
 
     return freshUser;
   }
@@ -241,16 +220,12 @@ class AuthCheckResult {
   final String step;
   final String message;
 
-  AuthCheckResult({
-    required this.step,
-    required this.message,
-  });
+  AuthCheckResult({required this.step, required this.message});
 
   bool get emailExists => step != 'contact';
 
   bool get hasPassword =>
-      step == 'password' &&
-          !message.toLowerCase().contains('not set');
+      step == 'password' && !message.toLowerCase().contains('not set');
 
   factory AuthCheckResult.fromJson(Map<String, dynamic> json) {
     return AuthCheckResult(

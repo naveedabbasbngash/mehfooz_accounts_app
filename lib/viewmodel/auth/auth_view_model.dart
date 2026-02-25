@@ -10,14 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/local_storage.dart';
 import '../../services/logging/logger_service.dart';
 
-enum AuthStep {
-  chooser,
-  email,
-  password,
-  setPassword,
-  forgotPassword,
-  contact,
-}
+enum AuthStep { chooser, email, password, setPassword, forgotPassword, contact }
 
 class AuthViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
@@ -53,9 +46,7 @@ class AuthViewModel extends ChangeNotifier {
       savedAccounts = await AuthService.loadAllSavedUsers();
       lastUsedAccount = await AuthService.loadLastUsedUser();
 
-      step = savedAccounts.isNotEmpty
-          ? AuthStep.chooser
-          : AuthStep.email;
+      step = savedAccounts.isNotEmpty ? AuthStep.chooser : AuthStep.email;
     } catch (e) {
       LoggerService.warn('Auth init failed: $e');
       step = AuthStep.email;
@@ -103,9 +94,7 @@ class AuthViewModel extends ChangeNotifier {
     }
 
     this.email = '';
-    step = savedAccounts.isNotEmpty
-        ? AuthStep.chooser
-        : AuthStep.email;
+    step = savedAccounts.isNotEmpty ? AuthStep.chooser : AuthStep.email;
 
     notifyListeners();
   }
@@ -276,9 +265,7 @@ class AuthViewModel extends ChangeNotifier {
 
     try {
       final response = await http.post(
-        Uri.parse(
-          'https://kheloaurjeeto.net/mahfooz_accounts/api/forgotPassword',
-        ),
+        Uri.parse('https://admin.mahfoozaccounts.com/api/forgotPassword'),
         body: {'email': email},
       );
 
@@ -308,9 +295,7 @@ class AuthViewModel extends ChangeNotifier {
     forgotPasswordSuccess = false;
     email = '';
 
-    step = savedAccounts.isNotEmpty
-        ? AuthStep.chooser
-        : AuthStep.email;
+    step = savedAccounts.isNotEmpty ? AuthStep.chooser : AuthStep.email;
 
     notifyListeners();
   }

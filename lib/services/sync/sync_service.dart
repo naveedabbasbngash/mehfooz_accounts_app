@@ -1,4 +1,5 @@
 // lib/services/sync_service.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -28,9 +29,9 @@ class SyncBatch {
 
   bool get isEmpty =>
       accPersonal.isEmpty &&
-          accTypes.isEmpty &&
-          assignments.isEmpty &&
-          transactions.isEmpty;
+      accTypes.isEmpty &&
+      assignments.isEmpty &&
+      transactions.isEmpty;
 
   @override
   String toString() {
@@ -46,25 +47,25 @@ class SyncBatch {
 /// Does NOT touch Drift or DatabaseManager.
 /// Repositories/ViewModels will use this.
 class SyncService {
-  /// Example: "https://kheloaurjeeto.net/mahfooz_accounts/"
+  /// Example: "https://admin.mahfoozaccounts.com/"
   final String baseUrl;
 
   final Logger _log;
+  static const Duration _pullRequestTimeout = Duration(seconds: 25);
+  static const Duration _ackRequestTimeout = Duration(seconds: 15);
 
-  SyncService({
-    String? baseUrl,
-    Logger? logger,
-  })  : baseUrl = (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/')
-      .trim()
-      .endsWith('/')
-      ? (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/').trim()
-      : (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/').trim(),
-        _log = logger ?? Logger();
+  SyncService({String? baseUrl, Logger? logger})
+    : baseUrl =
+          (baseUrl ?? 'https://admin.mahfoozaccounts.com/').trim().endsWith('/')
+          ? (baseUrl ?? 'https://admin.mahfoozaccounts.com/').trim()
+          : (baseUrl ?? 'https://admin.mahfoozaccounts.com/').trim(),
+      _log = logger ?? Logger();
 
   Uri _buildUri(String path) {
     // Ensure no double slashes
-    final normalizedBase =
-    baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
     return Uri.parse('$normalizedBase/$normalizedPath');
   }
@@ -72,7 +73,7 @@ class SyncService {
   /// ------------------------------------------------------------
   /// PULL FOR MOBILE
   ///   POST /pull-for-mobile
-  ///   BODY: { "email": "<user email>" }
+  ///   BODY: { "email": "user email", "device_id": "unique device id" }
   ///
   /// Returns:
   ///   - null  → if server says "empty"
@@ -80,26 +81,32 @@ class SyncService {
   /// Throws:
   ///   - Exception on network / protocol errors
   /// ------------------------------------------------------------
-  Future<SyncBatch?> pullForMobile({required String email}) async {
-    _log.i('📡 [SyncService] pullForMobile email=$email');
+  Future<SyncBatch?> pullForMobile({
+    required String email,
+    required String deviceId,
+  }) async {
+    _log.i('📡 [SyncService] pullForMobile email=$email device_id=$deviceId');
 
     final uri = _buildUri('pull-for-mobile');
 
-    final payload = <String, dynamic>{
-      'email': email,
-    };
+    final payload = <String, dynamic>{'email': email, 'device_id': deviceId};
     _logRequest('POST', uri, payload);
 
     http.Response resp;
     try {
-      resp = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      );
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(_pullRequestTimeout);
+    } on TimeoutException catch (e, st) {
+      _log.e('❌ [SyncService] pullForMobile timeout', error: e, stackTrace: st);
+      throw Exception('Timeout while pulling sync batch');
     } catch (e, st) {
       _log.e(
         '❌ [SyncService] pullForMobile network error',
@@ -141,8 +148,11 @@ class SyncService {
     // Example server future:
     // { "status": "denied", "message": "Sync not allowed" }
     if (status != 'ok') {
-      final msg = (body['message'] ?? 'pull-for-mobile returned status=$status').toString();
-      _log.w('⛔ [SyncService] pullForMobile blocked status=$status message=$msg');
+      final msg = (body['message'] ?? 'pull-for-mobile returned status=$status')
+          .toString();
+      _log.w(
+        '⛔ [SyncService] pullForMobile blocked status=$status message=$msg',
+      );
       throw Exception(msg);
     }
 
@@ -155,7 +165,7 @@ class SyncService {
 
     final rows = body['rows'] as Map<String, dynamic>? ?? {};
 
-    List<Map<String, dynamic>> _readList(String key) {
+    List<Map<String, dynamic>> readList(String key) {
       final raw = rows[key];
       if (raw is List) {
         return raw
@@ -166,10 +176,10 @@ class SyncService {
       return const <Map<String, dynamic>>[];
     }
 
-    final accPersonal = _readList('acc_personal');
-    final accTypes = _readList('acc_types');
-    final assignments = _readList('assignments');
-    final transactions = _readList('transactions');
+    final accPersonal = readList('acc_personal');
+    final accTypes = readList('acc_types');
+    final assignments = readList('assignments');
+    final transactions = readList('transactions');
 
     final batch = SyncBatch(
       batchId: batchId,
@@ -194,6 +204,7 @@ class SyncService {
   /// ------------------------------------------------------------
   Future<bool> ackBatch({
     required String email,
+    required String deviceId,
     required String batchId,
     required bool success,
   }) async {
@@ -201,25 +212,31 @@ class SyncService {
     final status = success ? 'OK' : 'FAILED';
 
     _log.i(
-      '📡 [SyncService] ackBatch email=$email batchId=$batchId status=$status',
+      '📡 [SyncService] ackBatch email=$email device_id=$deviceId batchId=$batchId status=$status',
     );
 
     final payload = <String, dynamic>{
       'email': email,
+      'device_id': deviceId,
       'batch_id': batchId,
       'status': status,
     };
 
     http.Response resp;
     try {
-      resp = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      );
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(_ackRequestTimeout);
+    } on TimeoutException catch (e, st) {
+      _log.e('❌ [SyncService] ackBatch timeout', error: e, stackTrace: st);
+      throw Exception('Timeout while sending ack-batch');
     } catch (e, st) {
       _log.e(
         '❌ [SyncService] ackBatch network error',
@@ -246,11 +263,7 @@ class SyncService {
         return false;
       }
     } catch (e, st) {
-      _log.e(
-        '❌ [SyncService] ackBatch invalid JSON',
-        error: e,
-        stackTrace: st,
-      );
+      _log.e('❌ [SyncService] ackBatch invalid JSON', error: e, stackTrace: st);
       return false;
     }
 

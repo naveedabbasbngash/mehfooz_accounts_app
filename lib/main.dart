@@ -28,9 +28,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 🔥 REQUIRED
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   await EasyLocalization.ensureInitialized();
 
@@ -76,8 +74,9 @@ class MahfoozAppState extends State<MahfoozApp> {
     _user = await AuthService.loadSavedUser();
 
     if (_user != null && _user!.isLogin == 1) {
-      _userDbExists =
-      await DatabaseManager.instance.restoreDatabaseForUser(_user!.email);
+      _userDbExists = await DatabaseManager.instance.restoreDatabaseForUser(
+        _user!.email,
+      );
     }
 
     setState(() => _loading = false);
@@ -105,9 +104,7 @@ class MahfoozAppState extends State<MahfoozApp> {
     if (_loading) {
       return const MaterialApp(
         debugShowCheckedModeBanner: false,
-        home: Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        home: Scaffold(body: Center(child: CircularProgressIndicator())),
       );
     }
 
@@ -118,17 +115,15 @@ class MahfoozAppState extends State<MahfoozApp> {
       providers: [
         // ─── Home VM
         ChangeNotifierProvider(
-          create: (_) => HomeViewModel(
-            navigatorKey: _navigatorKey,
-            drawerKey: _drawerKey,
-          ),
+          create: (_) =>
+              HomeViewModel(navigatorKey: _navigatorKey, drawerKey: _drawerKey),
         ),
 
         // ─── Sync VM
         ChangeNotifierProvider(
           create: (_) => SyncViewModel(
             syncService: SyncService(
-              baseUrl: "https://kheloaurjeeto.net/mahfooz_accounts/",
+              baseUrl: "https://admin.mahfoozaccounts.com/",
             ),
           ),
         ),
@@ -136,9 +131,7 @@ class MahfoozAppState extends State<MahfoozApp> {
         // ─── Profile VM (only when logged in)
         if (isLoggedIn)
           ChangeNotifierProvider(
-            create: (_) => ProfileViewModel(
-              loggedInUser: _user!,
-            ),
+            create: (_) => ProfileViewModel(loggedInUser: _user!),
           ),
       ],
       child: Builder(
@@ -166,23 +159,24 @@ class MahfoozAppState extends State<MahfoozApp> {
               if (name != null &&
                   name.startsWith("file://") &&
                   PendingShare.path == null) {
-
                 PendingShare.path = name.replaceFirst("file://", "");
-                debugPrint("📥 iOS Open-In route captured: ${PendingShare.path}");
+                debugPrint(
+                  "📥 iOS Open-In route captured: ${PendingShare.path}",
+                );
               }
 
               return MaterialPageRoute(
                 builder: (_) => isLoggedIn
                     ? HomeWrapper(
-                  user: _user!,
-                  sliderDrawerKey: _drawerKey,
-                  initialTabIndex: _userDbExists ? 0 : 3,
-                )
+                        user: _user!,
+                        sliderDrawerKey: _drawerKey,
+                        initialTabIndex: _userDbExists ? 0 : 3,
+                      )
                     : AuthScreen(),
               );
             },
           );
-          },
+        },
       ),
     );
   }
@@ -207,18 +201,18 @@ class MahfoozAppState extends State<MahfoozApp> {
     _userDbExists = false;
   }
 
-
   // ─────────────────────────────────────────────
-// CALLED AFTER SUCCESSFUL LOGIN
-// ─────────────────────────────────────────────
+  // CALLED AFTER SUCCESSFUL LOGIN
+  // ─────────────────────────────────────────────
   Future<void> onLoginSuccess() async {
     setState(() => _loading = true);
 
     _user = await AuthService.loadSavedUser();
 
     if (_user != null && _user!.isLogin == 1) {
-      _userDbExists =
-      await DatabaseManager.instance.restoreDatabaseForUser(_user!.email);
+      _userDbExists = await DatabaseManager.instance.restoreDatabaseForUser(
+        _user!.email,
+      );
     } else {
       _userDbExists = false;
     }
@@ -226,4 +220,3 @@ class MahfoozAppState extends State<MahfoozApp> {
     setState(() => _loading = false);
   }
 }
-

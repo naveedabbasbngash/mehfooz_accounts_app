@@ -53,12 +53,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
   late int _pageIndex = widget.initialTabIndex;
   bool _initDone = false;
 
-  final List<String> _titles = [
-    "Home",
-    "Transaction",
-    "Reports",
-    "Profile",
-  ];
+  final List<String> _titles = ["Home", "Transaction", "Reports", "Profile"];
 
   final List<Widget> _screens = const [
     HomeScreenContent(),
@@ -87,7 +82,6 @@ class _HomeWrapperState extends State<HomeWrapper> {
     _listenToSharedFiles();
     _handleInitialSharedFile();
   }
-
 
   @override
   void didChangeDependencies() {
@@ -133,7 +127,6 @@ class _HomeWrapperState extends State<HomeWrapper> {
     super.dispose();
   }
 
-
   void routeLog(String msg) {
     debugPrint("🧭 [HOME_WRAPPER] $msg");
   }
@@ -141,14 +134,14 @@ class _HomeWrapperState extends State<HomeWrapper> {
   // ============================================================
   // ANDROID SHARE INTENT
   // ============================================================
-// ============================================================
-// SHARE / OPEN-IN (Android + iOS)
-// ============================================================
+  // ============================================================
+  // SHARE / OPEN-IN (Android + iOS)
+  // ============================================================
   void _listenToSharedFiles() {
     routeLog("_listenToSharedFiles() platform=${Platform.operatingSystem}");
 
     _intentStream = ReceiveSharingIntent.instance.getMediaStream().listen(
-          (files) async {
+      (files) async {
         routeLog("getMediaStream() files=${files.length}");
 
         if (files.isNotEmpty) {
@@ -171,7 +164,8 @@ class _HomeWrapperState extends State<HomeWrapper> {
 
   Future<void> _handleInitialSharedFile() async {
     try {
-      final initialFiles = await ReceiveSharingIntent.instance.getInitialMedia();
+      final initialFiles = await ReceiveSharingIntent.instance
+          .getInitialMedia();
       routeLog("getInitialMedia() files=${initialFiles.length}");
 
       if (initialFiles.isNotEmpty) {
@@ -188,6 +182,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
       routeLog("getInitialMedia() ERROR: $e");
     }
   }
+
   // ============================================================
   // IMPORT HANDLER
   // ============================================================
@@ -239,6 +234,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
       setState(() => _pageIndex = 3);
     }
   }
+
   void _showErrorSafe(String msg) {
     if (!mounted) return;
 
@@ -246,14 +242,15 @@ class _HomeWrapperState extends State<HomeWrapper> {
       if (!mounted) return;
 
       // Safer than dialog during startup:
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
 
       // If you MUST use dialog, do it here (post-frame):
       // showDialog(...);
     });
   }
+
   // ============================================================
   // iOS IMPORT
   // ============================================================
@@ -366,11 +363,10 @@ class _HomeWrapperState extends State<HomeWrapper> {
     }
   }
 
-
   void _restrictedMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("Feature restricted by administrator."),
+        content: Text("Feature restricted. First upload database."),
         backgroundColor: Colors.red,
       ),
     );
@@ -386,7 +382,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text("OK"),
-          )
+          ),
         ],
       ),
     );

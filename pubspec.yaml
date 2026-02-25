@@ -60,6 +60,7 @@ dependencies:
   connectivity_plus: ^7.0.0
   flutter_native_splash: ^2.4.7
   country_flags: ^4.1.0
+  device_info_plus: ^12.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

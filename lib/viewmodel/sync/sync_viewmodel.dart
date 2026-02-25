@@ -7,6 +7,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../repository/sync/sync_repository.dart';
+import '../../services/device_identity_service.dart';
 import '../../services/sync/sync_service.dart';
 import '../../data/local/app_database.dart';
 import '../../model/SyncResult.dart';
@@ -39,6 +40,7 @@ class SyncViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
   SyncRepository? syncRepo;
   String? _userEmail;
+  String? _deviceId;
 
   bool isSyncing = false;
   bool isBackgroundSync = false;
@@ -51,6 +53,7 @@ class SyncViewModel extends ChangeNotifier {
 
   CancelableOperation<void>? _activeSync;
   Timer? _autoSyncTimer;
+  bool _isFinalizingAck = false;
 
   // ✅ NEW: failsafe unlock timer (prevents stuck state forever)
   Timer? _failsafeTimer;
@@ -71,8 +74,8 @@ class SyncViewModel extends ChangeNotifier {
   // AUTO SYNC
   // ─────────────────────────────────────────────
   AutoSyncInterval autoSyncInterval = AutoSyncInterval.off;
-  static const int _maxRetries = 3;
-  static const Duration _timeout = Duration(seconds: 30);
+  static const int _pullMaxRetries = 3;
+  static const int _ackMaxRetries = 3;
 
   // ✅ NEW: extra safety (timeout can throw, but this prevents UI stuck)
   static const Duration _failsafeUnlock = Duration(seconds: 45);
@@ -85,13 +88,14 @@ class SyncViewModel extends ChangeNotifier {
     required bool adminCanSync,
   }) async {
     _userEmail = email.trim().toLowerCase();
+    _deviceId = await DeviceIdentityService.getDeviceId();
     _adminCanSync = adminCanSync;
 
     _log.i("🔐 Admin sync permission = $_adminCanSync");
+    _log.i("📱 Sync device_id=$_deviceId");
 
     final prefs = await SharedPreferences.getInstance();
-    _hasLocalImport =
-        prefs.getBool("$_kLocalImportPrefix$_userEmail") ?? false;
+    _hasLocalImport = prefs.getBool("$_kLocalImportPrefix$_userEmail") ?? false;
 
     await _loadAutoSyncSetting();
     _restartAutoSync();
@@ -176,32 +180,44 @@ class SyncViewModel extends ChangeNotifier {
       return;
     }
 
-    if (isSyncing) return;
+    if (isSyncing || _isFinalizingAck) {
+      if (!silent) {
+        _setState(syncing: isSyncing, message: "Finishing previous sync…");
+      }
+      return;
+    }
 
     // ✅ IMPORTANT: Don’t silently return on user tap
     final hasNet = await _hasNetwork();
     if (!hasNet) {
-      _setState(syncing: false, progress: 0, message: "❌ No internet connection");
+      _setState(
+        syncing: false,
+        progress: 0,
+        message: "❌ No internet connection",
+      );
       return;
     }
 
     isBackgroundSync = silent;
 
     // ✅ Start syncing state immediately (button disables correctly)
-    _setState(syncing: true, progress: 0.05, message: silent ? null : "Starting sync…");
+    _setState(
+      syncing: true,
+      progress: 0.05,
+      message: silent ? null : "Starting sync…",
+    );
 
     // ✅ Failsafe unlock if something hangs (prevents "stuck forever")
     _startFailsafeUnlock();
 
     _activeSync = CancelableOperation.fromFuture(
-      _runWithRetry(_userEmail!),
+      _runWithRetry(_userEmail!, await _ensureDeviceId(), silent: silent),
     );
 
     try {
       await _activeSync!.value;
 
-      // If flow finished successfully, _runSyncFlow already set success message.
-      // Nothing needed here.
+      // Success state is already handled inside _runWithRetry.
     } catch (e, st) {
       // ✅ THIS is where your old code broke: exception skipped reset.
       _log.e("❌ Sync failed", error: e, stackTrace: st);
@@ -223,22 +239,38 @@ class SyncViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
   // SYNC FLOW
   // ─────────────────────────────────────────────
-  Future<void> _runWithRetry(String email) async {
-    for (int i = 0; i < _maxRetries; i++) {
+  Future<String> _ensureDeviceId() async {
+    if (_deviceId != null && _deviceId!.trim().isNotEmpty) {
+      return _deviceId!;
+    }
+    _deviceId = await DeviceIdentityService.getDeviceId();
+    return _deviceId!;
+  }
+
+  Future<void> _runWithRetry(
+    String email,
+    String deviceId, {
+    required bool silent,
+  }) async {
+    _setState(syncing: true, progress: 0.1, message: "Starting sync…");
+
+    final pullSw = Stopwatch()..start();
+    SyncBatch? batch;
+    for (int i = 0; i < _pullMaxRetries; i++) {
       try {
-        await _runSyncFlow(email).timeout(_timeout);
-        return;
+        batch = await syncService.pullForMobile(
+          email: email,
+          deviceId: deviceId,
+        );
+        break;
       } catch (e) {
-        if (i == _maxRetries - 1) rethrow;
+        if (i == _pullMaxRetries - 1) rethrow;
+        _log.w("⚠️ pull failed (attempt ${i + 1}/$_pullMaxRetries): $e");
         await Future.delayed(Duration(seconds: 2 << i));
       }
     }
-  }
-
-  Future<void> _runSyncFlow(String email) async {
-    _setState(syncing: true, progress: 0.1, message: "Starting sync…");
-
-    final batch = await syncService.pullForMobile(email: email);
+    pullSw.stop();
+    _log.i("⏱ [Sync] pull ms=${pullSw.elapsedMilliseconds}");
 
     if (batch == null) {
       lastSyncedTime = DateTime.now();
@@ -249,20 +281,78 @@ class SyncViewModel extends ChangeNotifier {
 
     _setState(syncing: true, progress: 0.6, message: "Applying updates…");
 
+    final applySw = Stopwatch()..start();
     final result = await syncRepo!.applyBatch(batch);
-    lastSyncResult = result;
-
-    await syncService.ackBatch(
-      email: email,
-      batchId: batch.batchId,
-      success: true,
+    applySw.stop();
+    _log.i(
+      "⏱ [Sync] apply ms=${applySw.elapsedMilliseconds} batch=${batch.batchId}",
     );
 
+    lastSyncResult = result;
     lastSyncedTime = DateTime.now();
     _setState(syncing: false, progress: 1, message: "✔ Sync complete");
 
-    // 🔔 notify Home/Profile
+    // 🔔 notify Home/Profile right after local apply to keep UI responsive.
     onActivationChanged?.call();
+
+    // ACK in background so slow internet doesn't keep sync spinner active.
+    unawaited(
+      _finalizeAck(
+        email: email,
+        deviceId: deviceId,
+        batchId: batch.batchId,
+        silent: silent,
+      ),
+    );
+  }
+
+  Future<void> _finalizeAck({
+    required String email,
+    required String deviceId,
+    required String batchId,
+    required bool silent,
+  }) async {
+    _isFinalizingAck = true;
+    final ackSw = Stopwatch()..start();
+    bool acked = false;
+
+    try {
+      for (int i = 0; i < _ackMaxRetries; i++) {
+        try {
+          acked = await syncService.ackBatch(
+            email: email,
+            deviceId: deviceId,
+            batchId: batchId,
+            success: true,
+          );
+          if (acked) break;
+        } catch (e) {
+          if (i == _ackMaxRetries - 1) rethrow;
+          _log.w("⚠️ ack failed (attempt ${i + 1}/$_ackMaxRetries): $e");
+        }
+        if (i < _ackMaxRetries - 1) {
+          await Future.delayed(Duration(seconds: 1 << i));
+        }
+      }
+
+      ackSw.stop();
+      if (acked) {
+        _log.i("⏱ [Sync] ack ms=${ackSw.elapsedMilliseconds} batch=$batchId");
+      } else {
+        _log.w("⚠️ [Sync] ack pending batch=$batchId");
+        if (!silent && !isSyncing) {
+          _setState(syncing: false, message: "⚠️ Synced locally, ack pending");
+        }
+      }
+    } catch (e, st) {
+      ackSw.stop();
+      _log.e("❌ [Sync] ack failed batch=$batchId", error: e, stackTrace: st);
+      if (!silent && !isSyncing) {
+        _setState(syncing: false, message: "⚠️ Synced locally, ack pending");
+      }
+    } finally {
+      _isFinalizingAck = false;
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -323,14 +413,11 @@ class SyncViewModel extends ChangeNotifier {
   // HELPERS
   // ─────────────────────────────────────────────
   Future<bool> _hasNetwork() async {
-    return await Connectivity().checkConnectivity() != ConnectivityResult.none;
+    final connectivity = await Connectivity().checkConnectivity();
+    return connectivity.any((c) => c != ConnectivityResult.none);
   }
 
-  void _setState({
-    required bool syncing,
-    double? progress,
-    String? message,
-  }) {
+  void _setState({required bool syncing, double? progress, String? message}) {
     isSyncing = syncing;
     if (progress != null) syncProgress = progress;
 
