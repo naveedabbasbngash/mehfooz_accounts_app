@@ -90,78 +90,161 @@ class HomeViewModel extends ChangeNotifier {
   // INIT — RESTORE USER DB
   // ─────────────────────────────────────────────
   Future<void> init({required UserModel user}) async {
-    if (_hasRestored) return;
+    // 🔑 Single identity for this init run
+    final trace = "HOME_INIT_${DateTime.now().millisecondsSinceEpoch}";
 
-    _log.i("🏁 HomeViewModel.init → ${user.email}");
+    if (_hasRestored) {
+      _log.w("[$trace] ⛔ init skipped (_hasRestored = true)");
+      return;
+    }
 
-    final restored =
-    await DatabaseManager.instance.restoreDatabaseForUser(user.email);
+    _log.i("[$trace] 🏁 init START → email=${user.email}");
 
-    // 🍎 APPLE REVIEW AUTO DEMO DB
-    if (!restored && user.email == _appleReviewEmail) {
-      final demoPath = await _loadAppleReviewDemoDb(user.email);
-      if (demoPath != null) {
-        verifiedDbPath = demoPath;
+    try {
+      // --------------------------------------------------
+      // 1️⃣ Try restore existing DB
+      // --------------------------------------------------
+      _log.i("[$trace] 📦 Calling restoreDatabaseForUser...");
+      final restored =
+      await DatabaseManager.instance.restoreDatabaseForUser(user.email);
 
+      _log.i("[$trace] 📦 restoreDatabaseForUser result = $restored");
+
+      // --------------------------------------------------
+      // 🍎 Apple Review Auto Demo DB
+      // --------------------------------------------------
+// 🍎 APPLE REVIEW — ALWAYS FORCE DEMO DB
+      if (user.email == _appleReviewEmail) {
+        _log.w("🍎 Apple Review user — forcing demo DB");
+
+        await DatabaseManager.instance.clearUserDb(user.email);
+
+        final demoPath = await _loadAppleReviewDemoDb(user.email);
+
+        if (demoPath == null) {
+          _log.e("❌ Apple demo DB failed to load");
+        } else {
+          verifiedDbPath = demoPath;
+          _log.i("🍎 Demo DB forced → $demoPath");
+
+          await _restoreCompanySelection();
+          _startDashboardStreams();
+
+          if (syncVM != null) {
+            syncVM!.attachDatabase(DatabaseManager.instance.db);
+            await syncVM!.markLocalImportDone();
+          }
+
+          _hasRestored = true;
+          notifyListeners();
+          return;
+        }
+      }
+
+      // --------------------------------------------------
+      // ✅ Normal restore path
+      // --------------------------------------------------
+      if (restored) {
+        verifiedDbPath = DatabaseManager.instance.activeDbPath;
+        _log.i("[$trace] ✅ Local DB restored → $verifiedDbPath");
+
+        _log.i("[$trace] 🏢 Restoring company selection...");
         await _restoreCompanySelection();
+
+        _log.i("[$trace] 📊 Starting dashboard streams...");
         _startDashboardStreams();
 
         if (syncVM != null) {
+          _log.i("[$trace] 🔗 Attaching DB to SyncVM...");
           syncVM!.attachDatabase(DatabaseManager.instance.db);
+
+          _log.i("[$trace] ☑ Marking local import done...");
           await syncVM!.markLocalImportDone();
+        } else {
+          _log.w("[$trace] ⚠ syncVM is NULL (restore path)");
         }
-
-        _hasRestored = true;
-        notifyListeners();
-        return;
+      } else {
+        _log.w("[$trace] ⚠ No local DB restored AND not Apple demo");
       }
+    } catch (e, st) {
+      _log.e(
+        "[$trace] 🔥 init FAILED",
+        error: e,
+        stackTrace: st,
+      );
+    } finally {
+      _hasRestored = true;
+      _log.i("[$trace] 🔚 init EXIT (_hasRestored=true)");
+      notifyListeners();
     }
-
-    if (restored) {
-      verifiedDbPath = DatabaseManager.instance.activeDbPath;
-
-      await _restoreCompanySelection();
-      _startDashboardStreams();
-
-      if (syncVM != null) {
-        syncVM!.attachDatabase(DatabaseManager.instance.db);
-        await syncVM!.markLocalImportDone();
-      }
-    } else {
-      _log.w("⚠ No local DB restored for user");
-    }
-
-    _hasRestored = true;
-    notifyListeners();
   }
-
   // ─────────────────────────────────────────────
   // 🍎 APPLE REVIEW DEMO DB LOADER
   // ─────────────────────────────────────────────
   Future<String?> _loadAppleReviewDemoDb(String email) async {
     try {
-      _log.w("🍎 Apple Review detected — loading demo DB");
+      _log.w("🍎 Apple Review detected — starting demo DB load");
 
-      final byteData =
-      await rootBundle.load('assets/demo/demo.sqlite');
+      // --------------------------------------------------
+      // 1️⃣ Load asset
+      // --------------------------------------------------
+      _log.i("📦 Loading asset: assets/demo/demo.sqlite");
+      final byteData = await rootBundle.load('assets/demo/demo.sqlite');
 
-      final tempPath =
-      await SqliteImportService.writeBytesToTemp(byteData);
+      _log.i(
+        "📦 Asset loaded: "
+            "bytes=${byteData.lengthInBytes}",
+      );
 
+      // --------------------------------------------------
+      // 2️⃣ Write to temp file
+      // --------------------------------------------------
+      _log.i("📝 Writing demo DB to temp file...");
+      final tempPath = await SqliteImportService.writeBytesToTemp(byteData);
+
+      _log.i("📝 Demo DB written to tempPath = $tempPath");
+
+      // --------------------------------------------------
+      // 3️⃣ Validate SQLite file
+      // --------------------------------------------------
+      _log.i("🔍 Validating demo SQLite DB...");
       await SqliteValidationService().validateDatabase(tempPath);
+
+      _log.i("✅ Demo DB validation PASSED");
+
+      // --------------------------------------------------
+      // 4️⃣ Activate DB for user
+      // --------------------------------------------------
+      _log.i("🔄 Activating demo DB for user = $email");
 
       await DatabaseManager.instance.useImportedDbForUser(
         tempPath,
         email,
       );
 
-      return DatabaseManager.instance.activeDbPath;
-    } catch (e) {
-      _log.e("❌ Apple Review demo DB failed: $e");
+      final activePath = DatabaseManager.instance.activeDbPath;
+      _log.i("✅ Demo DB activated at: $activePath");
+
+      // --------------------------------------------------
+      // 5️⃣ Sanity check (CRITICAL)
+      // --------------------------------------------------
+      try {
+        final tables = await SqliteImportService.getTables(activePath!);
+        _log.i("📊 Demo DB tables = ${tables.join(', ')}");
+      } catch (e) {
+        _log.w("⚠ Could not list demo DB tables: $e");
+      }
+
+      return activePath;
+    } catch (e, st) {
+      _log.e(
+        "❌ Apple Review demo DB FAILED",
+        error: e,
+        stackTrace: st,
+      );
       return null;
     }
-  }
-  // ─────────────────────────────────────────────
+  }  // ─────────────────────────────────────────────
   // IMPORT DATABASE (UNCHANGED)
   // ─────────────────────────────────────────────
   Future<void> importDatabase(String inputPath, UserModel user) async {

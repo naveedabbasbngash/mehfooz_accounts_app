@@ -2,14 +2,17 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mehfooz_accounts_app/ui/auth/auth_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/database_manager.dart';
 import '../../model/user_model.dart';
+import '../../services/device_identity_service.dart';
 import '../../services/global_state.dart';
 import '../home/home_view_model.dart';
+import 'package:http/http.dart' as http;
 
 class ProfileViewModel extends ChangeNotifier {
   ProfileViewModel({required this.loggedInUser}) {
@@ -22,13 +25,12 @@ class ProfileViewModel extends ChangeNotifier {
   bool isLoading = true;
 
   // 🍎 Apple App Review account
-  static const String _appleReviewEmail =
-      'applereviewmehfooz@gmail.com';
+  static const String _appleReviewEmail = 'applereviewmehfooz@gmail.com';
 
   late UserModel loggedInUser;
+
   /// 🔑 Admin permission from backend
-  bool get isAdminSyncAllowed =>
-      loggedInUser.planStatus?.canSync ?? false;
+  bool get isAdminSyncAllowed => loggedInUser.planStatus?.canSync ?? false;
 
   // Company selection
   List<CompanyTableData> companies = [];
@@ -44,6 +46,8 @@ class ProfileViewModel extends ChangeNotifier {
 
   /// When true, ONLY Profile tab is allowed (HomeWrapper checks this)
   bool isRestricted = false;
+
+  String deviceId = 'Loading...';
 
   // ─────────────────────────────────────────────────────────────
   // DERIVED GETTERS
@@ -68,12 +72,11 @@ class ProfileViewModel extends ChangeNotifier {
 
     if (expiry == null) return false;
 
-    final expired =
-        expiry.isExpired == true || expiry.remainingDays <= 0;
+    final expired = expiry.isExpired == true || expiry.remainingDays <= 0;
 
     debugPrint(
       "🟡 [SUBSCRIPTION] PAID plan | "
-          "remainingDays=${expiry.remainingDays} | expired=$expired",
+      "remainingDays=${expiry.remainingDays} | expired=$expired",
     );
 
     return expired;
@@ -89,9 +92,10 @@ class ProfileViewModel extends ChangeNotifier {
   /// Sync allowed?
   bool get canSync =>
       isAdminSyncAllowed &&
-          databaseFound &&
-          emailMatch &&
-          !isSubscriptionExpired;
+      databaseFound &&
+      emailMatch &&
+      !isSubscriptionExpired;
+
   /// Import allowed? (blocked only when subscription expired)
   bool get canImport => !isSubscriptionExpired;
 
@@ -118,15 +122,14 @@ class ProfileViewModel extends ChangeNotifier {
       // 1️⃣ Restore database from disk
       // 🔒 If DB is already active for this user, DO NOT restore again
       if (DatabaseManager.instance.activeDbPath != null &&
-          DatabaseManager.instance.activeUserEmail ==
-              loggedInUser.email) {
+          DatabaseManager.instance.activeUserEmail == loggedInUser.email) {
         databaseFound = true;
       } else {
-        final hasDb =
-        await dbManager.restoreDatabaseForUser(loggedInUser.email);
+        final hasDb = await dbManager.restoreDatabaseForUser(
+          loggedInUser.email,
+        );
         databaseFound = hasDb;
       }
-
 
       final db = dbManager.db;
 
@@ -137,8 +140,9 @@ class ProfileViewModel extends ChangeNotifier {
       final storedId = prefs.getInt("selected_company_id");
       if (storedId != null && companies.isNotEmpty) {
         try {
-          selectedCompany =
-              companies.firstWhere((c) => c.companyId == storedId);
+          selectedCompany = companies.firstWhere(
+            (c) => c.companyId == storedId,
+          );
 
           GlobalState.instance.setCompany(
             id: selectedCompany!.companyId!,
@@ -169,7 +173,8 @@ class ProfileViewModel extends ChangeNotifier {
       }
 
       // 4️⃣ Check email match
-      emailMatch = dbEmail != null &&
+      emailMatch =
+          dbEmail != null &&
           dbEmail!.trim().toLowerCase() ==
               loggedInUser.email.trim().toLowerCase();
 
@@ -189,10 +194,12 @@ class ProfileViewModel extends ChangeNotifier {
         isRestricted = false;
       }
 
+      deviceId = await DeviceIdentityService.getDeviceId();
     } catch (e, st) {
       debugPrint("❌ Error in ProfileViewModel._init: $e");
       debugPrintStack(stackTrace: st);
       isRestricted = true;
+      deviceId = 'Not available';
     } finally {
       isLoading = false;
       notifyListeners();
@@ -208,7 +215,6 @@ class ProfileViewModel extends ChangeNotifier {
   // COMPANY SELECTOR
   // ─────────────────────────────────────────────────────────────
   Future<void> selectCompany(int id, {required BuildContext context}) async {
-
     try {
       selectedCompany = companies.firstWhere((c) => c.companyId == id);
 
@@ -247,7 +253,6 @@ class ProfileViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-
   Future<void> onLocalDatabaseImported() async {
     debugPrint("🟡 [IMPORT] onLocalDatabaseImported() called");
 
@@ -273,7 +278,8 @@ class ProfileViewModel extends ChangeNotifier {
       debugPrint("🟢 [IMPORT] dbEmail from DB = $dbEmail");
       debugPrint("🟢 [IMPORT] loggedInUser.email = ${loggedInUser.email}");
 
-      emailMatch = dbEmail != null &&
+      emailMatch =
+          dbEmail != null &&
           dbEmail!.trim().toLowerCase() ==
               loggedInUser.email.trim().toLowerCase();
 
@@ -293,7 +299,6 @@ class ProfileViewModel extends ChangeNotifier {
       } else {
         isRestricted = false;
       }
-
 
       debugPrint("🔴 [IMPORT] FINAL isRestricted = $isRestricted");
     } catch (e, st) {
@@ -316,9 +321,80 @@ class ProfileViewModel extends ChangeNotifier {
   /// 💰 Paid plan = not free
   bool get isPaidPlan => !isFreePlan;
 
-
   // 🍎 Detect Apple Review user
   bool get isAppleReviewUser =>
-      loggedInUser.email.trim().toLowerCase() ==
-          _appleReviewEmail;
+      loggedInUser.email.trim().toLowerCase() == _appleReviewEmail;
+
+  Future<void> deleteAccount(BuildContext context) async {
+    final email = loggedInUser.email;
+
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      debugPrint("🧨 [DELETE] Starting delete account flow");
+      debugPrint("🧨 [DELETE] Email = $email");
+      debugPrint(
+        "🧨 [DELETE] API = https://admin.mahfoozaccounts.com/api/deleteAccount",
+      );
+
+      final uri = Uri.parse(
+        "https://admin.mahfoozaccounts.com/api/deleteAccount",
+      );
+
+      final response = await http.post(
+        uri,
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: {"email": email},
+      );
+
+      // 🔍 LOG EVERYTHING
+      debugPrint("🧨 [DELETE] Status code = ${response.statusCode}");
+      debugPrint("🧨 [DELETE] Response headers = ${response.headers}");
+      debugPrint("🧨 [DELETE] Raw response body = ${response.body}");
+
+      if (response.statusCode == 200) {
+        debugPrint("✅ [DELETE] Server accepted delete request");
+
+        // Optional: parse body if JSON
+        if (response.body.isNotEmpty) {
+          debugPrint("📦 [DELETE] Server message = ${response.body}");
+        }
+
+        // 🧹 Clear local data
+        await DatabaseManager.instance.clearAllForUser(email);
+        debugPrint("🧹 [DELETE] Local DB cleared");
+
+        if (context.mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const AuthScreen()),
+            (_) => false,
+          );
+        }
+      } else {
+        // ❌ Server responded but not OK
+        throw Exception(
+          "Delete API failed | "
+          "status=${response.statusCode} | "
+          "body=${response.body}",
+        );
+      }
+    } catch (e, st) {
+      debugPrint("❌ [DELETE] ERROR: $e");
+      debugPrintStack(stackTrace: st);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Account deletion failed. Please try again."),
+        ),
+      );
+    } finally {
+      isLoading = false;
+      notifyListeners();
+      debugPrint("🏁 [DELETE] Flow finished");
+    }
+  }
 }

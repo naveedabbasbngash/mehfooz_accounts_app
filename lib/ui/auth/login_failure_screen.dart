@@ -95,7 +95,6 @@ class LoginFailureScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => AuthScreen(
-                              sliderDrawerKey: sliderDrawerKey,   // ✔ FIXED
                             ),
                           ),
                         );

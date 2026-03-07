@@ -134,7 +134,30 @@ class _ReportsScreenBody extends StatelessWidget {
             color: AppColors.primary,
             disabled: ui.loading,
             onTap: () async {
+              final companyId = GlobalState.instance.companyId;
+              if (companyId == null) {
+                _toast(context, "Please select a company first");
+                return;
+              }
               final file = await vm.generateBalanceReport();
+              if (file == null) {
+                _toast(context, "No data available");
+                return;
+              }
+              OpenFileService.openPdf(context, file);
+            },
+          ),
+
+          const SizedBox(height: 12),
+
+          // ---------------- SUB GROUP ----------------
+          _reportButton(
+            label: "Sub group",
+            icon: Icons.account_tree_outlined,
+            color: AppColors.primary,
+            disabled: ui.loading,
+            onTap: () async {
+              final file = await vm.generateSubgroupReport();
               if (file == null) {
                 _toast(context, "No data available");
                 return;

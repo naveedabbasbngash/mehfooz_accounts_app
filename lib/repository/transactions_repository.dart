@@ -7,6 +7,7 @@ import '../model/balance_row.dart';
 import '../model/last_credit_row.dart';
 import '../model/pending_group_row.dart';
 import '../model/simple_currency_summary.dart';
+import '../model/subgroup_balance_row.dart';
 import '../model/tx_filter.dart';
 import '../model/tx_item_ui.dart';
 
@@ -52,7 +53,7 @@ SELECT
     SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS notPaidAmount,
     SUM(CASE WHEN currencystatus LIKE '%P%'  THEN Dr ELSE 0 END) AS paidAmount,
     SUM(CASE WHEN currencystatus LIKE '%p%'  THEN Dr ELSE 0 END)
-      - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS balance,
+      - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS balance, 
     MAX(hwls1)        AS sender,
     MAX(advancemess)  AS receiver,
     AccTypeID         AS accTypeId,
@@ -69,8 +70,8 @@ HAVING
             (SUM(CASE WHEN currencystatus LIKE '%p%' THEN Dr ELSE 0 END)
              - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END)) < 0
         )
-    END
-ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
+     END
+ORDER BY beginDate DESC, voucherNo DESC;
 """;
 
     // --------------------------------------------------
@@ -81,15 +82,17 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     debugPrint("   companyId = $companyId");
     debugPrint("   showAll   = $showAll");
 
-    final result = await db.customSelect(
-      query,
-      variables: [
-        Variable.withInt(accId),
-        Variable.withInt(companyId),
-        Variable.withInt(showAll ? 1 : 0),
-      ],
-      readsFrom: {db.transactionsP, db.accPersonal, db.accType},
-    ).get();
+    final result = await db
+        .customSelect(
+          query,
+          variables: [
+            Variable.withInt(accId),
+            Variable.withInt(companyId),
+            Variable.withInt(showAll ? 1 : 0),
+          ],
+          readsFrom: {db.transactionsP, db.accPersonal, db.accType},
+        )
+        .get();
 
     // --------------------------------------------------
     // 🔍 LOG RESULT COUNT
@@ -124,7 +127,61 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     return rows;
   }
 
+  // =========================================================
+  // SUBGROUP BALANCE (Trial Balance by Subgroup)
+  // =========================================================
+  Future<List<SubgroupBalanceRow>> getSubgroupBalances({
+    required int companyId,
+  }) async {
+    const query = r"""
+SELECT 
+    ap.statusg AS Subgroup,
+    ap.Name AS Name,
+    at.AccTypeName AS Currency,
+    SUM(tp.Cr - tp.Dr) AS Balance
+FROM Acc_Personal AS ap
+INNER JOIN Transactions_P AS tp 
+    ON ap.AccID = tp.AccID
+INNER JOIN AccType AS at 
+    ON tp.AccTypeID = at.AccTypeID
+INNER JOIN Company AS c 
+    ON ap.CompanyID = c.CompanyID
+WHERE  tp.CompanyID = ?1
+   AND ap.AccID NOT IN (1003, 1004)
+GROUP BY 
+    ap.statusg,
+    ap.Name,
+    at.AccTypeName
+ORDER BY 
+    ap.statusg,
+    ap.Name;
+""";
 
+    final result = await db
+        .customSelect(
+          query,
+          variables: [Variable.withInt(companyId)],
+          readsFrom: {
+            db.transactionsP,
+            db.accPersonal,
+            db.accType,
+            db.companyTable,
+          },
+        )
+        .get();
+
+    return result.map((row) {
+      final data = row.data;
+      final rawBalance = data['Balance'];
+      final balance = rawBalance is num ? rawBalance.toDouble() : 0.0;
+      return SubgroupBalanceRow(
+        subgroup: (data['Subgroup'] as String?) ?? '',
+        name: (data['Name'] as String?) ?? '',
+        currency: (data['Currency'] as String?) ?? '',
+        balance: balance,
+      );
+    }).toList();
+  }
 
   // =========================================================
   // TRANSACTIONS LIST ✅ companyId already added (keep same)
@@ -135,7 +192,7 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     String? name,
     TxFilter filter = TxFilter.all,
     String? startDate, // yyyy-MM-dd
-    String? endDate,   // yyyy-MM-dd
+    String? endDate, // yyyy-MM-dd
   }) {
     final only = filter.asOnlyParam;
 
@@ -165,22 +222,29 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
       LIMIT ?6;
     ''';
 
-    return db.customSelect(
-      sql,
-      variables: [
-        Variable.withInt(companyId),
-        (name == null || name.trim().isEmpty)
-            ? const Variable(null)
-            : Variable.withString(name.trim()),
-        Variable.withString(only),
-        startDate == null ? const Variable(null) : Variable.withString(startDate),
-        endDate == null ? const Variable(null) : Variable.withString(endDate),
-        Variable.withInt(limit),
-      ],
-      readsFrom: {db.transactionsP, db.accPersonal, db.accType},
-    ).watch().map((rows) {
-      return rows.map((r) => TxItemUi.fromRow(r.data)).toList();
-    });
+    return db
+        .customSelect(
+          sql,
+          variables: [
+            Variable.withInt(companyId),
+            (name == null || name.trim().isEmpty)
+                ? const Variable(null)
+                : Variable.withString(name.trim()),
+            Variable.withString(only),
+            startDate == null
+                ? const Variable(null)
+                : Variable.withString(startDate),
+            endDate == null
+                ? const Variable(null)
+                : Variable.withString(endDate),
+            Variable.withInt(limit),
+          ],
+          readsFrom: {db.transactionsP, db.accPersonal, db.accType},
+        )
+        .watch()
+        .map((rows) {
+          return rows.map((r) => TxItemUi.fromRow(r.data)).toList();
+        });
   }
 
   // =========================================================
@@ -190,8 +254,9 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     required int companyId,
     required String name,
   }) async {
-    final rows = await db.customSelect(
-      '''
+    final rows = await db
+        .customSelect(
+          '''
     SELECT AccID AS accId
     FROM Acc_Personal
     WHERE CompanyID = ?1
@@ -199,12 +264,10 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
           = REPLACE(TRIM(?2), '  ', ' ') COLLATE NOCASE
     LIMIT 1
     ''',
-      variables: [
-        Variable.withInt(companyId),
-        Variable.withString(name),
-      ],
-      readsFrom: {db.accPersonal},
-    ).get();
+          variables: [Variable.withInt(companyId), Variable.withString(name)],
+          readsFrom: {db.accPersonal},
+        )
+        .get();
 
     if (rows.isEmpty) return null;
     return rows.first.data['accId'] as int?;
@@ -250,37 +313,47 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
 
     final vars = (companyId == null)
         ? [
-      Variable.withInt(accId),
-      startDate == null ? const Variable(null) : Variable.withString(startDate),
-      endDate == null ? const Variable(null) : Variable.withString(endDate),
-    ]
+            Variable.withInt(accId),
+            startDate == null
+                ? const Variable(null)
+                : Variable.withString(startDate),
+            endDate == null
+                ? const Variable(null)
+                : Variable.withString(endDate),
+          ]
         : [
-      Variable.withInt(companyId),
-      Variable.withInt(accId),
-      startDate == null ? const Variable(null) : Variable.withString(startDate),
-      endDate == null ? const Variable(null) : Variable.withString(endDate),
-    ];
+            Variable.withInt(companyId),
+            Variable.withInt(accId),
+            startDate == null
+                ? const Variable(null)
+                : Variable.withString(startDate),
+            endDate == null
+                ? const Variable(null)
+                : Variable.withString(endDate),
+          ];
 
     double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
-    return db.customSelect(
-      sql,
-      variables: vars,
-      readsFrom: {db.transactionsP, db.accType},
-    ).watch().map((rows) {
-      return rows.map((row) {
-        final cr = (row.data['cr'] as num?)?.toDouble() ?? 0.0;
-        final dr = (row.data['dr'] as num?)?.toDouble() ?? 0.0;
+    return db
+        .customSelect(
+          sql,
+          variables: vars,
+          readsFrom: {db.transactionsP, db.accType},
+        )
+        .watch()
+        .map((rows) {
+          return rows.map((row) {
+            final cr = (row.data['cr'] as num?)?.toDouble() ?? 0.0;
+            final dr = (row.data['dr'] as num?)?.toDouble() ?? 0.0;
 
-        return BalanceCurrencyUi(
-          currency: (row.data['currency'] as String?) ?? '',
-          credit: _fixZero(cr),
-          debit: _fixZero(dr),
-        );
-      }).toList();
-    });
+            return BalanceCurrencyUi(
+              currency: (row.data['currency'] as String?) ?? '',
+              credit: _fixZero(cr),
+              debit: _fixZero(dr),
+            );
+          }).toList();
+        });
   }
-
 
   // =========================================================
   // ✅ RESOLVE AccTypeID BY NAME — add OPTIONAL companyId
@@ -290,8 +363,9 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     required int companyId,
     required String currencyName,
   }) async {
-    final rows = await db.customSelect(
-      '''
+    final rows = await db
+        .customSelect(
+          '''
     SELECT DISTINCT at.AccTypeID AS id
     FROM AccType at
     INNER JOIN Transactions_P tp
@@ -300,16 +374,18 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
       AND LOWER(at.AccTypeName) = LOWER(?2)
     LIMIT 1
     ''',
-      variables: [
-        Variable.withInt(companyId),
-        Variable.withString(currencyName),
-      ],
-      readsFrom: {db.accType, db.transactionsP},
-    ).get();
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withString(currencyName),
+          ],
+          readsFrom: {db.accType, db.transactionsP},
+        )
+        .get();
 
     if (rows.isEmpty) return null;
     return rows.first.data['id'] as int?;
   }
+
   // =========================================================
   // BALANCE MATRIX ✅ add OPTIONAL companyId (recommended)
   // =========================================================
@@ -324,8 +400,8 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
         GROUP BY at.AccTypeName
         HAVING 
-          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) 
-        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) <> 0
+          OR IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
         ORDER BY at.AccTypeName COLLATE NOCASE
       '''
         : r'''
@@ -335,15 +411,19 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         WHERE tp.CompanyID = ?1
         GROUP BY at.AccTypeName
         HAVING 
-          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) 
-        - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
+          IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) <> 0
+          OR IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) <> 0
         ORDER BY at.AccTypeName COLLATE NOCASE
       ''';
 
-    final curRows = await db.customSelect(
-      curSql,
-      variables: companyId == null ? const [] : [Variable.withInt(companyId)],
-    ).get();
+    final curRows = await db
+        .customSelect(
+          curSql,
+          variables: companyId == null
+              ? const []
+              : [Variable.withInt(companyId)],
+        )
+        .get();
 
     List<String> currencies = curRows
         .map((r) => (r.data['cur'] as String?)?.trim() ?? '')
@@ -385,10 +465,14 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
       ''';
 
-    final rawRows = await db.customSelect(
-      rawSql,
-      variables: companyId == null ? const [] : [Variable.withInt(companyId)],
-    ).get();
+    final rawRows = await db
+        .customSelect(
+          rawSql,
+          variables: companyId == null
+              ? const []
+              : [Variable.withInt(companyId)],
+        )
+        .get();
 
     double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
@@ -413,32 +497,22 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     // ===============================
     // STEP 4: BUILD ROWS
     // ===============================
-    final rows = pivot.entries
-        .map((e) => BalanceRow(
-      name: e.key,
-      byCurrency: Map<String, double>.from(e.value),
-    ))
-        .toList()
-      ..sort((a, b) =>
-          a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    final rows =
+        pivot.entries
+            .map(
+              (e) => BalanceRow(
+                name: e.key,
+                byCurrency: Map<String, double>.from(e.value),
+              ),
+            )
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
 
-    // ===============================
-    // STEP 5: CLEAN UNUSED CURRENCIES
-    // ===============================
-    final usedCurrencies = <String>{};
-    for (final r in rows) {
-      r.byCurrency.forEach((k, v) {
-        if (v != 0.0) usedCurrencies.add(k);
-      });
-    }
-
-    currencies = currencies.where(usedCurrencies.contains).toList();
-
-    return BalanceMatrixResult(
-      currencies: currencies,
-      rows: rows,
-    );
+    return BalanceMatrixResult(currencies: currencies, rows: rows);
   }
+
   // =========================================================
   // CREDIT MATRIX ✅ add OPTIONAL companyId
   // =========================================================
@@ -466,10 +540,14 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         ORDER BY at.AccTypeName COLLATE NOCASE
       ''';
 
-    final curRows = await db.customSelect(
-      curSql,
-      variables: companyId == null ? const [] : [Variable.withInt(companyId)],
-    ).get();
+    final curRows = await db
+        .customSelect(
+          curSql,
+          variables: companyId == null
+              ? const []
+              : [Variable.withInt(companyId)],
+        )
+        .get();
 
     var currencies = curRows
         .map((r) => (r.data['cur'] as String?)?.trim() ?? '')
@@ -511,10 +589,14 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
       ''';
 
-    final rawRows = await db.customSelect(
-      rawSql,
-      variables: companyId == null ? const [] : [Variable.withInt(companyId)],
-    ).get();
+    final rawRows = await db
+        .customSelect(
+          rawSql,
+          variables: companyId == null
+              ? const []
+              : [Variable.withInt(companyId)],
+        )
+        .get();
 
     double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
@@ -533,14 +615,19 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
       pivot[name]![cur] = net;
     }
 
-    var rows = pivot.entries
-        .map((e) => BalanceRow(
-      name: e.key,
-      byCurrency: Map<String, double>.from(e.value),
-    ))
-        .where((r) => r.byCurrency.values.any((v) => v > 0))
-        .toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    var rows =
+        pivot.entries
+            .map(
+              (e) => BalanceRow(
+                name: e.key,
+                byCurrency: Map<String, double>.from(e.value),
+              ),
+            )
+            .where((r) => r.byCurrency.values.any((v) => v > 0))
+            .toList()
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
 
     final usedCurrencies = <String>{};
     for (final row in rows) {
@@ -558,46 +645,52 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
   // =========================================================
 
   Future<int?> resolveAccIdExact(String name) async {
-    final rows = await db.customSelect(
-      '''
+    final rows = await db
+        .customSelect(
+          '''
       SELECT AccID AS accId
       FROM Acc_Personal
       WHERE TRIM(Name) = TRIM(?1) COLLATE NOCASE
       LIMIT 1;
       ''',
-      variables: [Variable.withString(name)],
-    ).get();
+          variables: [Variable.withString(name)],
+        )
+        .get();
 
     if (rows.isEmpty) return null;
     return rows.first.data['accId'] as int?;
   }
 
   Future<int?> resolveAccIdLoose(String name) async {
-    final rows = await db.customSelect(
-      '''
+    final rows = await db
+        .customSelect(
+          '''
       SELECT AccID AS accId
       FROM Acc_Personal
       WHERE REPLACE(TRIM(Name), '  ', ' ')
             = REPLACE(TRIM(?1), '  ', ' ') COLLATE NOCASE
       LIMIT 1;
       ''',
-      variables: [Variable.withString(name)],
-    ).get();
+          variables: [Variable.withString(name)],
+        )
+        .get();
 
     if (rows.isEmpty) return null;
     return rows.first.data['accId'] as int?;
   }
 
   Future<int?> findAccTypeIdByName(String currency) async {
-    final rows = await db.customSelect(
-      '''
+    final rows = await db
+        .customSelect(
+          '''
       SELECT AccTypeID AS id
       FROM AccType
       WHERE TRIM(AccTypeName) = TRIM(?1) COLLATE NOCASE
       LIMIT 1;
       ''',
-      variables: [Variable.withString(currency)],
-    ).get();
+          variables: [Variable.withString(currency)],
+        )
+        .get();
 
     if (rows.isEmpty) return null;
     return rows.first.data['id'] as int?;
@@ -628,16 +721,16 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
 
     final vars = (companyId == null)
         ? [
-      Variable.withInt(accId),
-      Variable.withInt(accTypeId),
-      Variable.withString(fromDate),
-    ]
+            Variable.withInt(accId),
+            Variable.withInt(accTypeId),
+            Variable.withString(fromDate),
+          ]
         : [
-      Variable.withInt(companyId),
-      Variable.withInt(accId),
-      Variable.withInt(accTypeId),
-      Variable.withString(fromDate),
-    ];
+            Variable.withInt(companyId),
+            Variable.withInt(accId),
+            Variable.withInt(accTypeId),
+            Variable.withString(fromDate),
+          ];
 
     final rows = await db.customSelect(sql, variables: vars).get();
 
@@ -648,7 +741,6 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
     // 🔒 kill -0.00 noise
     return raw.abs() < 0.005 ? 0.0 : raw;
   }
-
 
   Future<List<Map<String, dynamic>>> fetchLedgerRowsRaw({
     int? companyId,
@@ -690,22 +782,23 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
 
     final vars = (companyId == null)
         ? [
-      Variable.withInt(accId),
-      Variable.withInt(accTypeId),
-      Variable.withString(fromDate),
-      Variable.withString(toDate),
-    ]
+            Variable.withInt(accId),
+            Variable.withInt(accTypeId),
+            Variable.withString(fromDate),
+            Variable.withString(toDate),
+          ]
         : [
-      Variable.withInt(companyId),
-      Variable.withInt(accId),
-      Variable.withInt(accTypeId),
-      Variable.withString(fromDate),
-      Variable.withString(toDate),
-    ];
+            Variable.withInt(companyId),
+            Variable.withInt(accId),
+            Variable.withInt(accTypeId),
+            Variable.withString(fromDate),
+            Variable.withString(toDate),
+          ];
 
-    return db.customSelect(sql, variables: vars).get().then(
-          (rows) => rows.map((r) => r.data).toList(),
-    );
+    return db
+        .customSelect(sql, variables: vars)
+        .get()
+        .then((rows) => rows.map((r) => r.data).toList());
   }
 
   // =========================================================
@@ -825,11 +918,13 @@ ORDER BY accTypeName COLLATE NOCASE ASC, beginDate ASC, voucherNo ASC;
         ? [Variable.withInt(currencyId)]
         : [Variable.withInt(companyId), Variable.withInt(currencyId)];
 
-    final result = await db.customSelect(
-      sql,
-      variables: vars,
-      readsFrom: {db.transactionsP, db.accPersonal, db.accType},
-    ).get();
+    final result = await db
+        .customSelect(
+          sql,
+          variables: vars,
+          readsFrom: {db.transactionsP, db.accPersonal, db.accType},
+        )
+        .get();
 
     return result.map((row) => LastCreditRow.fromRow(row.data)).toList();
   }

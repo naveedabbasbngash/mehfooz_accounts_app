@@ -221,6 +221,7 @@ class TransactionsViewModel extends ChangeNotifier {
     return BalancePdfService.instance.render(
       currencies: balanceRow.byCurrency.keys.toList(),
       rows: [balanceRow],
+      includeTotalsRow: false,
     );
   }
   @override

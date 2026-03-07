@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
@@ -12,6 +13,7 @@ import '../../model/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/file_picker_service.dart';
 import '../../services/sqlite_import_service.dart';
+import '../../services/sync/pending_share.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodel/home/home_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
@@ -51,12 +53,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
   late int _pageIndex = widget.initialTabIndex;
   bool _initDone = false;
 
-  final List<String> _titles = [
-    "Home",
-    "Transaction",
-    "Reports",
-    "Profile",
-  ];
+  final List<String> _titles = ["Home", "Transaction", "Reports", "Profile"];
 
   final List<Widget> _screens = const [
     HomeScreenContent(),
@@ -68,7 +65,22 @@ class _HomeWrapperState extends State<HomeWrapper> {
   @override
   void initState() {
     super.initState();
+
+    const channel = MethodChannel('icloud_file_access');
+
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'onFileReceived') {
+        final rawPath = call.arguments as String;
+
+        debugPrint("📥 Flutter received path: $rawPath");
+
+        await _handleImportPath(rawPath);
+      }
+    });
+
+    // Android share flow (stream + cold-start payload)
     _listenToSharedFiles();
+    _handleInitialSharedFile();
   }
 
   @override
@@ -77,7 +89,9 @@ class _HomeWrapperState extends State<HomeWrapper> {
     if (_initDone) return;
     _initDone = true;
 
-    Future.microtask(() async {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+
       final homeVM = context.read<HomeViewModel>();
       final profileVM = context.read<ProfileViewModel>();
       final syncVM = context.read<SyncViewModel>();
@@ -89,6 +103,16 @@ class _HomeWrapperState extends State<HomeWrapper> {
 
       await homeVM.init(user: widget.user);
       await profileVM.refresh();
+
+      // 🔥 HANDLE iOS OPEN-IN FILE (THE IMPORTANT PART)
+      final pendingPath = PendingShare.path;
+      if (pendingPath != null) {
+        debugPrint("📥 Processing pending Open-In file: $pendingPath");
+
+        await _handleImportPath(pendingPath);
+
+        PendingShare.clear();
+      }
 
       if (profileVM.isRestricted && mounted) {
         setState(() => _pageIndex = 3);
@@ -103,60 +127,128 @@ class _HomeWrapperState extends State<HomeWrapper> {
     super.dispose();
   }
 
+  void routeLog(String msg) {
+    debugPrint("🧭 [HOME_WRAPPER] $msg");
+  }
+
   // ============================================================
   // ANDROID SHARE INTENT
   // ============================================================
+  // ============================================================
+  // SHARE / OPEN-IN (Android + iOS)
+  // ============================================================
   void _listenToSharedFiles() {
-    if (!Platform.isAndroid) return;
+    routeLog("_listenToSharedFiles() platform=${Platform.operatingSystem}");
 
-    _intentStream =
-        ReceiveSharingIntent.instance.getMediaStream().listen(_handleImport);
+    _intentStream = ReceiveSharingIntent.instance.getMediaStream().listen(
+      (files) async {
+        routeLog("getMediaStream() files=${files.length}");
 
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) async {
-      if (files.isNotEmpty) {
-        await _handleImport(files);
+        if (files.isNotEmpty) {
+          final path = files.first.path;
+          routeLog("Shared file path=$path");
+
+          if (path.isNotEmpty) {
+            await _handleImportPath(path);
+          }
+        }
+
+        // Important: reset after handling
+        await ReceiveSharingIntent.instance.reset();
+      },
+      onError: (e) {
+        routeLog("getMediaStream() ERROR: $e");
+      },
+    );
+  }
+
+  Future<void> _handleInitialSharedFile() async {
+    try {
+      final initialFiles = await ReceiveSharingIntent.instance
+          .getInitialMedia();
+      routeLog("getInitialMedia() files=${initialFiles.length}");
+
+      if (initialFiles.isNotEmpty) {
+        final path = initialFiles.first.path;
+        routeLog("Initial shared file path=$path");
+
+        if (path.isNotEmpty) {
+          await _handleImportPath(path);
+        }
       }
+
       await ReceiveSharingIntent.instance.reset();
-    });
+    } catch (e) {
+      routeLog("getInitialMedia() ERROR: $e");
+    }
   }
 
   // ============================================================
   // IMPORT HANDLER
   // ============================================================
-  Future<void> _handleImport(List<SharedMediaFile> files) async {
-    if (files.isEmpty) return;
+  Future<void> _handleImportPath(String rawPath) async {
+    debugPrint("🚀 _handleImportPath()");
+    debugPrint("📦 Raw path: $rawPath");
 
+    // 🔥 CRITICAL FIX: handle iOS file:// URLs correctly
+    String path;
     try {
-      final file = files.first;
-      final path = file.path.toLowerCase();
-
-      if (!path.endsWith(".sqlite") && !path.endsWith(".db")) {
-        _showError("Only .sqlite or .db files allowed");
-        return;
-      }
-
-      final savedPath =
-      await SqliteImportService.importAndSaveDb(file.path);
-
-      if (savedPath == null) {
-        _showError("Import failed");
-        return;
-      }
-
-      await context
-          .read<HomeViewModel>()
-          .confirmAndImportDatabase(
-        context: context,
-        inputPath: savedPath,
-        user: widget.user,
-      );
-
-      await context.read<ProfileViewModel>().refresh();
-
-      if (mounted) setState(() => _pageIndex = 3);
+      final uri = Uri.parse(rawPath);
+      path = uri.toFilePath(); // <-- THIS FIXES Mobile Documents issue
     } catch (e) {
-      _showError(e.toString());
+      debugPrint("❌ URI parse failed, using raw path");
+      path = rawPath.replaceFirst("file://", "");
     }
+
+    debugPrint("📄 Clean path: $path");
+    debugPrint("📄 Exists: ${File(path).existsSync()}");
+
+    if (!File(path).existsSync()) {
+      _showErrorSafe("File not found. iCloud file not accessible.");
+      return;
+    }
+
+    if (!path.toLowerCase().endsWith('.sqlite') &&
+        !path.toLowerCase().endsWith('.db')) {
+      _showErrorSafe("Only .sqlite or .db files allowed");
+      return;
+    }
+
+    final savedPath = await SqliteImportService.importAndSaveDb(path);
+    debugPrint("💾 Saved internal path: $savedPath");
+
+    if (savedPath == null) {
+      _showErrorSafe("Import failed");
+      return;
+    }
+
+    await context.read<HomeViewModel>().confirmAndImportDatabase(
+      context: context,
+      inputPath: savedPath,
+      user: widget.user,
+    );
+
+    await context.read<ProfileViewModel>().refresh();
+
+    if (mounted) {
+      setState(() => _pageIndex = 3);
+    }
+  }
+
+  void _showErrorSafe(String msg) {
+    if (!mounted) return;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      // Safer than dialog during startup:
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+
+      // If you MUST use dialog, do it here (post-frame):
+      // showDialog(...);
+    });
   }
 
   // ============================================================
@@ -271,11 +363,10 @@ class _HomeWrapperState extends State<HomeWrapper> {
     }
   }
 
-
   void _restrictedMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text("Feature restricted by administrator."),
+        content: Text("Feature restricted. First upload database."),
         backgroundColor: Colors.red,
       ),
     );
@@ -291,7 +382,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text("OK"),
-          )
+          ),
         ],
       ),
     );

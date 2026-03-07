@@ -17,6 +17,8 @@ class UserModel {
   final ExpiryInfo? expiry;
   final SubscriptionInfo? subscription;
 
+  bool get isValidLoggedInUser => isLogin == 1 && email.isNotEmpty;
+
   UserModel({
     required this.status,
     required this.message,
@@ -257,4 +259,6 @@ class SubscriptionInfo {
     "start_date": startDate,
     "end_date": endDate,
   };
+
+
 }

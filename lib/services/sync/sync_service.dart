@@ -1,4 +1,5 @@
 // lib/services/sync_service.dart
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -28,9 +29,9 @@ class SyncBatch {
 
   bool get isEmpty =>
       accPersonal.isEmpty &&
-          accTypes.isEmpty &&
-          assignments.isEmpty &&
-          transactions.isEmpty;
+      accTypes.isEmpty &&
+      assignments.isEmpty &&
+      transactions.isEmpty;
 
   @override
   String toString() {
@@ -42,29 +43,46 @@ class SyncBatch {
   }
 }
 
+class PendingBatchItem {
+  final String batchId;
+  final String status;
+  final int entryCount;
+  final String? createdAt;
+  final String? updatedAt;
+
+  const PendingBatchItem({
+    required this.batchId,
+    required this.status,
+    required this.entryCount,
+    this.createdAt,
+    this.updatedAt,
+  });
+}
+
 /// Low-level HTTP client for sync API.
 /// Does NOT touch Drift or DatabaseManager.
 /// Repositories/ViewModels will use this.
 class SyncService {
-  /// Example: "https://kheloaurjeeto.net/mahfooz_accounts/"
+  /// Example: "https://admin.mahfoozaccounts.com/"
   final String baseUrl;
 
   final Logger _log;
+  static const Duration _pullRequestTimeout = Duration(seconds: 25);
+  static const Duration _ackRequestTimeout = Duration(seconds: 15);
+  static const Duration _pendingRequestTimeout = Duration(seconds: 12);
 
-  SyncService({
-    String? baseUrl,
-    Logger? logger,
-  })  : baseUrl = (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/')
-      .trim()
-      .endsWith('/')
-      ? (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/').trim()
-      : (baseUrl ?? 'https://kheloaurjeeto.net/mahfooz_accounts/').trim(),
-        _log = logger ?? Logger();
+  SyncService({String? baseUrl, Logger? logger})
+    : baseUrl =
+          (baseUrl ?? 'https://admin.mahfoozaccounts.com/').trim().endsWith('/')
+          ? (baseUrl ?? 'https://admin.mahfoozaccounts.com/').trim()
+          : (baseUrl ?? 'https://admin.mahfoozaccounts.com/').trim(),
+      _log = logger ?? Logger();
 
   Uri _buildUri(String path) {
     // Ensure no double slashes
-    final normalizedBase =
-    baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
     return Uri.parse('$normalizedBase/$normalizedPath');
   }
@@ -72,7 +90,7 @@ class SyncService {
   /// ------------------------------------------------------------
   /// PULL FOR MOBILE
   ///   POST /pull-for-mobile
-  ///   BODY: { "email": "<user email>" }
+  ///   BODY: { "email": "user email", "device_id": "unique device id" }
   ///
   /// Returns:
   ///   - null  → if server says "empty"
@@ -80,26 +98,32 @@ class SyncService {
   /// Throws:
   ///   - Exception on network / protocol errors
   /// ------------------------------------------------------------
-  Future<SyncBatch?> pullForMobile({required String email}) async {
-    _log.i('📡 [SyncService] pullForMobile email=$email');
+  Future<SyncBatch?> pullForMobile({
+    required String email,
+    required String deviceId,
+  }) async {
+    _log.i('📡 [SyncService] pullForMobile email=$email device_id=$deviceId');
 
     final uri = _buildUri('pull-for-mobile');
 
-    final payload = <String, dynamic>{
-      'email': email,
-    };
+    final payload = <String, dynamic>{'email': email, 'device_id': deviceId};
     _logRequest('POST', uri, payload);
 
     http.Response resp;
     try {
-      resp = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      );
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(_pullRequestTimeout);
+    } on TimeoutException catch (e, st) {
+      _log.e('❌ [SyncService] pullForMobile timeout', error: e, stackTrace: st);
+      throw Exception('Timeout while pulling sync batch');
     } catch (e, st) {
       _log.e(
         '❌ [SyncService] pullForMobile network error',
@@ -141,8 +165,11 @@ class SyncService {
     // Example server future:
     // { "status": "denied", "message": "Sync not allowed" }
     if (status != 'ok') {
-      final msg = (body['message'] ?? 'pull-for-mobile returned status=$status').toString();
-      _log.w('⛔ [SyncService] pullForMobile blocked status=$status message=$msg');
+      final msg = (body['message'] ?? 'pull-for-mobile returned status=$status')
+          .toString();
+      _log.w(
+        '⛔ [SyncService] pullForMobile blocked status=$status message=$msg',
+      );
       throw Exception(msg);
     }
 
@@ -155,7 +182,7 @@ class SyncService {
 
     final rows = body['rows'] as Map<String, dynamic>? ?? {};
 
-    List<Map<String, dynamic>> _readList(String key) {
+    List<Map<String, dynamic>> readList(String key) {
       final raw = rows[key];
       if (raw is List) {
         return raw
@@ -166,10 +193,10 @@ class SyncService {
       return const <Map<String, dynamic>>[];
     }
 
-    final accPersonal = _readList('acc_personal');
-    final accTypes = _readList('acc_types');
-    final assignments = _readList('assignments');
-    final transactions = _readList('transactions');
+    final accPersonal = readList('acc_personal');
+    final accTypes = readList('acc_types');
+    final assignments = readList('assignments');
+    final transactions = readList('transactions');
 
     final batch = SyncBatch(
       batchId: batchId,
@@ -194,6 +221,7 @@ class SyncService {
   /// ------------------------------------------------------------
   Future<bool> ackBatch({
     required String email,
+    required String deviceId,
     required String batchId,
     required bool success,
   }) async {
@@ -201,25 +229,31 @@ class SyncService {
     final status = success ? 'OK' : 'FAILED';
 
     _log.i(
-      '📡 [SyncService] ackBatch email=$email batchId=$batchId status=$status',
+      '📡 [SyncService] ackBatch email=$email device_id=$deviceId batchId=$batchId status=$status',
     );
 
     final payload = <String, dynamic>{
       'email': email,
+      'device_id': deviceId,
       'batch_id': batchId,
       'status': status,
     };
 
     http.Response resp;
     try {
-      resp = await http.post(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode(payload),
-      );
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(_ackRequestTimeout);
+    } on TimeoutException catch (e, st) {
+      _log.e('❌ [SyncService] ackBatch timeout', error: e, stackTrace: st);
+      throw Exception('Timeout while sending ack-batch');
     } catch (e, st) {
       _log.e(
         '❌ [SyncService] ackBatch network error',
@@ -246,16 +280,102 @@ class SyncService {
         return false;
       }
     } catch (e, st) {
-      _log.e(
-        '❌ [SyncService] ackBatch invalid JSON',
-        error: e,
-        stackTrace: st,
-      );
+      _log.e('❌ [SyncService] ackBatch invalid JSON', error: e, stackTrace: st);
       return false;
     }
 
     _log.i('✅ [SyncService] ackBatch OK for batchId=$batchId');
     return true;
+  }
+
+  /// ------------------------------------------------------------
+  /// GET PENDING BATCHES (for current email + device_id)
+  ///   POST /get-pending-batches
+  ///   BODY: { "email": "...", "device_id": "..." }
+  /// ------------------------------------------------------------
+  Future<List<PendingBatchItem>> fetchPendingBatches({
+    required String email,
+    required String deviceId,
+  }) async {
+    final uri = _buildUri('get-pending-batches');
+    final payload = <String, dynamic>{'email': email, 'device_id': deviceId};
+    _logRequest('POST', uri, payload);
+
+    http.Response resp;
+    try {
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(_pendingRequestTimeout);
+    } on TimeoutException {
+      throw Exception('Timeout while loading pending batches');
+    } catch (e) {
+      throw Exception('Network error while loading pending batches: $e');
+    }
+
+    if (resp.statusCode != 200) {
+      throw Exception(
+        'get-pending-batches failed with status ${resp.statusCode}',
+      );
+    }
+
+    final decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    final status = decoded['status']?.toString().toLowerCase() ?? '';
+    if (status != 'ok') {
+      final msg =
+          decoded['message']?.toString() ?? 'Unable to load pending batches';
+      throw Exception(msg);
+    }
+
+    final List<PendingBatchItem> result = [];
+    final rawRows =
+        decoded['rows'] ?? decoded['batches'] ?? decoded['pending_batches'];
+
+    if (rawRows is List) {
+      for (final item in rawRows) {
+        if (item is! Map) continue;
+        final map = item.map((k, v) => MapEntry(k.toString(), v));
+        final batchId = map['batch_id']?.toString() ?? '';
+        if (batchId.isEmpty) continue;
+        result.add(
+          PendingBatchItem(
+            batchId: batchId,
+            status: (map['status']?.toString() ?? 'PENDING').toUpperCase(),
+            entryCount: _toInt(map['entry_count']),
+            createdAt: map['created_at']?.toString(),
+            updatedAt: map['updated_at']?.toString(),
+          ),
+        );
+      }
+    } else if (decoded['batch_ids'] is String) {
+      final ids = (decoded['batch_ids'] as String)
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty);
+      for (final batchId in ids) {
+        result.add(
+          PendingBatchItem(batchId: batchId, status: 'PENDING', entryCount: 0),
+        );
+      }
+    }
+
+    _log.i(
+      '📦 [SyncService] pending batches count=${result.length} for device_id=$deviceId',
+    );
+    return result;
+  }
+
+  int _toInt(dynamic v) {
+    if (v == null) return 0;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString()) ?? 0;
   }
 
   void _logRequest(String method, Uri uri, Map<String, dynamic>? body) {
