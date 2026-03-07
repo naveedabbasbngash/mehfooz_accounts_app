@@ -56,6 +56,7 @@ class BalancePdfService extends BasePdfService {
   Future<File> render({
     required List<String> currencies,
     required List<BalanceRow> rows,
+    bool includeTotalsRow = true,
   }) async {
     await _loadUrduFont();
 
@@ -86,6 +87,7 @@ class BalancePdfService extends BasePdfService {
           _buildTable(
             currencies: currencies,
             rows: rows,
+            includeTotalsRow: includeTotalsRow,
             latin: latin,
             latinBold: latinBold,
             deepBlue: deepBlue,
@@ -141,6 +143,7 @@ class BalancePdfService extends BasePdfService {
   pw.Widget _buildTable({
     required List<String> currencies,
     required List<BalanceRow> rows,
+    required bool includeTotalsRow,
     required pw.Font latin,
     required pw.Font latinBold,
     required PdfColor deepBlue,
@@ -190,28 +193,30 @@ class BalancePdfService extends BasePdfService {
       );
     }
 
-    // Totals row (Balance)
-    final totals = <String, double>{};
-    for (final c in currencies) {
-      totals[c] = 0.0;
-    }
-    for (final row in rows) {
-      row.byCurrency.forEach((cur, value) {
-        totals[cur] = (totals[cur] ?? 0.0) + value;
-      });
-    }
+    if (includeTotalsRow) {
+      // Totals row (Balance)
+      final totals = <String, double>{};
+      for (final c in currencies) {
+        totals[c] = 0.0;
+      }
+      for (final row in rows) {
+        row.byCurrency.forEach((cur, value) {
+          totals[cur] = (totals[cur] ?? 0.0) + value;
+        });
+      }
 
-    tableRows.add(
-      pw.TableRow(
-        children: [
-          _totalLabelCell('Balance', latinBold),
-          ...currencies.map((c) {
-            final value = totals[c] ?? 0.0;
-            return _totalValueCell(value, latinBold);
-          }),
-        ],
-      ),
-    );
+      tableRows.add(
+        pw.TableRow(
+          children: [
+            _totalLabelCell('Balance', latinBold),
+            ...currencies.map((c) {
+              final value = totals[c] ?? 0.0;
+              return _totalValueCell(value, latinBold);
+            }),
+          ],
+        ),
+      );
+    }
 
     return pw.Table(
       border: pw.TableBorder.all(width: 0.3),

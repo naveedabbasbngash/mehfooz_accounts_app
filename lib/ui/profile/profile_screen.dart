@@ -19,6 +19,16 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   bool expandCompanies = false;
+  bool _showPendingBatches = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<SyncViewModel>().refreshPendingBatches(silent: true);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +179,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                   ),
                 ),
+                _pendingCountChip(svm),
+                const SizedBox(width: 8),
+                _pendingToggleButton(svm),
+                const SizedBox(width: 8),
                 _syncCapsule(svm),
               ],
             ),
@@ -176,6 +190,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 10),
 
             _syncStatusText(svm),
+            const SizedBox(height: 8),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeInOut,
+              child: _showPendingBatches
+                  ? _pendingBatchesPanel(context, svm)
+                  : const SizedBox.shrink(),
+            ),
 
             if (svm.isSyncing) ...[
               const SizedBox(height: 10),
@@ -201,6 +223,173 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // _autoSyncSelector(context, svm),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _pendingCountChip(SyncViewModel svm) {
+    final count = svm.pendingBatchCount;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: count > 0 ? Colors.orange.shade100 : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        "Pending: $count",
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: count > 0 ? Colors.orange.shade900 : Colors.grey.shade700,
+        ),
+      ),
+    );
+  }
+
+  Widget _pendingToggleButton(SyncViewModel svm) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () async {
+        setState(() => _showPendingBatches = !_showPendingBatches);
+        if (_showPendingBatches) {
+          await svm.refreshPendingBatches();
+        }
+      },
+      child: Container(
+        width: 30,
+        height: 30,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: AnimatedRotation(
+          turns: _showPendingBatches ? 0.5 : 0,
+          duration: const Duration(milliseconds: 220),
+          child: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _pendingBatchesPanel(BuildContext context, SyncViewModel svm) {
+    if (svm.isPendingBatchesLoading) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 4),
+        child: Row(
+          children: const [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 8),
+            Text("Loading pending batches..."),
+          ],
+        ),
+      );
+    }
+
+    if (svm.pendingBatchesError != null) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                svm.pendingBatchesError!,
+                style: TextStyle(color: Colors.red.shade700, fontSize: 12),
+              ),
+            ),
+            TextButton(
+              onPressed: () => svm.refreshPendingBatches(),
+              child: const Text("Retry"),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (svm.pendingBatches.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          "No pending batches for this device.",
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        children: svm.pendingBatches.map((batch) {
+          final timestamp = _formatPendingTimestamp(
+            batch.createdAt ?? batch.updatedAt ?? "",
+          );
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    "${batch.entryCount} entries",
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blue.shade800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      batch.batchId,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.blueGrey.shade700,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 92,
+                  child: Text(
+                    timestamp,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
@@ -380,6 +569,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (d.inMinutes < 60) return "${d.inMinutes} min ago";
     if (d.inHours < 24) return "${d.inHours} hr ago";
     return "${d.inDays} days ago";
+  }
+
+  String _formatPendingTimestamp(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return "-";
+
+    final parsed = DateTime.tryParse(value.replaceFirst(' ', 'T'));
+    if (parsed != null) {
+      final dd = parsed.day.toString().padLeft(2, '0');
+      final mm = parsed.month.toString().padLeft(2, '0');
+      final hh = parsed.hour.toString().padLeft(2, '0');
+      final min = parsed.minute.toString().padLeft(2, '0');
+      return "$dd/$mm $hh:$min";
+    }
+
+    return value.length > 16 ? value.substring(0, 16) : value;
   }
 
   Widget _companySelectorAnimated(

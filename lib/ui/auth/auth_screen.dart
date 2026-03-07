@@ -111,7 +111,7 @@ class _AccountChooserStep extends StatelessWidget {
         const SizedBox(height: 24),
 
         ...vm.savedAccounts.map(
-              (user) => _AccountTile(
+          (user) => _AccountTile(
             user: user,
             onTap: () async {
               vm.email = user.email;
@@ -193,10 +193,7 @@ class _EmailStepState extends State<_EmailStep> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _Header(
-          title: 'Welcome',
-          subtitle: 'Sign in with your email',
-        ),
+        const _Header(title: 'Welcome', subtitle: 'Sign in with your email'),
         const SizedBox(height: 24),
         TextField(
           controller: controller,
@@ -247,10 +244,7 @@ class _PasswordStepState extends State<_PasswordStep> {
               icon: const Icon(Icons.arrow_back),
             ),
             Expanded(
-              child: _Header(
-                title: 'Welcome back',
-                subtitle: vm.email,
-              ),
+              child: _Header(title: 'Welcome back', subtitle: vm.email),
             ),
           ],
         ),
@@ -283,12 +277,6 @@ class _PasswordStepState extends State<_PasswordStep> {
         ),
 
         if (vm.errorMessage != null) _ErrorBox(vm.errorMessage!),
-
-        const SizedBox(height: 8),
-
-        // ✅ FIXED OVERFLOW
-
-        if (vm.errorMessage != null) _ErrorBox(vm.errorMessage!),
         const SizedBox(height: 16),
 
         _PrimaryButton(
@@ -297,8 +285,8 @@ class _PasswordStepState extends State<_PasswordStep> {
           onPressed: () async {
             final user = await vm.loginWithPassword(controller.text);
             if (user != null && context.mounted) {
-              final appState =
-              context.findAncestorStateOfType<MahfoozAppState>();
+              final appState = context
+                  .findAncestorStateOfType<MahfoozAppState>();
               await appState?.onLoginSuccess();
             }
           },
@@ -333,7 +321,10 @@ class _SetPasswordStepState extends State<_SetPasswordStep> {
       children: [
         Row(
           children: [
-            IconButton(onPressed: vm.goBack, icon: const Icon(Icons.arrow_back)),
+            IconButton(
+              onPressed: vm.goBack,
+              icon: const Icon(Icons.arrow_back),
+            ),
             const _Header(
               title: 'Set your password',
               subtitle: 'Create a password for your account',
@@ -429,11 +420,7 @@ class _ContactStep extends StatelessWidget {
           subtitle: 'This email is not registered',
         ),
         const SizedBox(height: 24),
-        _PrimaryButton(
-          loading: false,
-          label: 'Back',
-          onPressed: vm.goBack,
-        ),
+        _PrimaryButton(loading: false, label: 'Back', onPressed: vm.goBack),
       ],
     );
   }
@@ -452,12 +439,15 @@ class _Header extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title,
-            style:
-            const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 6),
-        Text(subtitle,
-            style: const TextStyle(fontSize: 14, color: Colors.black54)),
+        Text(
+          subtitle,
+          style: const TextStyle(fontSize: 14, color: Colors.black54),
+        ),
       ],
     );
   }
@@ -483,10 +473,10 @@ class _PrimaryButton extends StatelessWidget {
         onPressed: loading ? null : onPressed,
         child: loading
             ? const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        )
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
             : Text(label),
       ),
     );
@@ -507,8 +497,10 @@ class _ErrorBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.red.shade200),
       ),
-      child: Text(text,
-          style: const TextStyle(color: Colors.red, fontSize: 13)),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.red, fontSize: 13),
+      ),
     );
   }
 }
@@ -527,8 +519,10 @@ class _SuccessBox extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.green.shade200),
       ),
-      child: Text(text,
-          style: const TextStyle(color: Colors.green, fontSize: 13)),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.green, fontSize: 13),
+      ),
     );
   }
 }

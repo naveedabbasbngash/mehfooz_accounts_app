@@ -80,7 +80,6 @@ class SubgroupPdfService extends BasePdfService {
             grouped,
             subgroupTotals,
             currencies,
-            font,
             fontBold,
             totalYellow,
             positiveGreen,
@@ -178,7 +177,6 @@ class SubgroupPdfService extends BasePdfService {
     Map<String, Map<String, Map<String, double>>> grouped,
     Map<String, Map<String, double>> subgroupTotals,
     List<String> currencies,
-    pw.Font font,
     pw.Font fontBold,
     PdfColor totalYellow,
     PdfColor positiveGreen,
@@ -195,144 +193,134 @@ class SubgroupPdfService extends BasePdfService {
 
     grouped.forEach((subgroup, namesMap) {
       final names = namesMap.keys.toList()..sort();
+      final visibleNames = names.where((name) {
+        final byCur = namesMap[name]!;
+        return currencies.any((c) => (byCur[c] ?? 0.0) != 0.0);
+      }).toList();
 
-      // left block: subgroup label (spans), name column
-      final subgroupHeight = _rowHeight * (names.length + 1);
-      final leftColumn = pw.Container(
-        width: _subgroupColWidth,
-        height: subgroupHeight,
-        decoration: pw.BoxDecoration(
-          border: pw.Border(
-            left: pw.BorderSide(color: borderGreen, width: 1),
-            top: pw.BorderSide(color: grid, width: 0.5),
-            bottom: pw.BorderSide(color: grid, width: 0.5),
-            right: pw.BorderSide(color: grid, width: 0.5),
-          ),
-        ),
-        child: pw.Stack(
-          children: [
-            pw.Positioned.fill(
-              child: pw.Container(
-                margin: const pw.EdgeInsets.fromLTRB(10, 6, 8, 6),
-                decoration: pw.BoxDecoration(
-                  border: pw.Border(
-                    right: pw.BorderSide(color: teal, width: 2),
-                    bottom: pw.BorderSide(color: teal, width: 2),
-                  ),
-                ),
-              ),
+      if (visibleNames.isEmpty) return;
+
+      final rowSpecs = visibleNames.map((name) {
+        final byCur = namesMap[name]!;
+        final lineCount = _nameLineCount(name);
+        return _SubgroupRowSpec(
+          name: name,
+          byCur: byCur,
+          lineCount: lineCount,
+          height: _rowHeight * lineCount,
+        );
+      }).toList();
+
+      final chunks = _chunkRows(rowSpecs, maxChunkHeight: 430);
+      final totals = subgroupTotals[subgroup]!;
+
+      for (int chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        final chunk = chunks[chunkIndex];
+        final isLastChunk = chunkIndex == chunks.length - 1;
+        final bodyHeight = chunk.fold<double>(
+          0.0,
+          (sum, row) => sum + row.height,
+        );
+        final chunkHeight = bodyHeight + (isLastChunk ? _rowHeight : 0.0);
+
+        final nameRows = <pw.Widget>[];
+        final currencyRows = <pw.Widget>[];
+
+        for (final row in chunk) {
+          nameRows.add(
+            _nameCell(
+              row.name,
+              fontBold,
+              grid,
+              height: row.height,
+              maxLines: row.lineCount,
             ),
-            pw.Center(
+          );
+
+          currencyRows.add(
+            pw.Row(
+              mainAxisSize: pw.MainAxisSize.min,
+              children: currencies.map((c) {
+                final v = row.byCur[c] ?? 0.0;
+                return _valueBox(
+                  v,
+                  fontBold,
+                  grid,
+                  positiveGreen,
+                  negativeRed,
+                  width: _currencyColWidth,
+                  height: row.height,
+                );
+              }).toList(),
+            ),
+          );
+        }
+
+        if (isLastChunk) {
+          nameRows.add(
+            pw.Container(
+              width: _nameColWidth,
+              height: _rowHeight,
+              alignment: pw.Alignment.centerLeft,
+              padding: const pw.EdgeInsets.symmetric(horizontal: 6),
+              decoration: pw.BoxDecoration(
+                color: totalYellow,
+                border: pw.Border.all(color: PdfColors.black, width: 1),
+              ),
               child: pw.Text(
-                subgroup,
-                textAlign: pw.TextAlign.center,
+                "Total",
                 style: pw.TextStyle(font: fontBold, fontSize: 10),
               ),
             ),
-          ],
-        ),
-      );
+          );
 
-      final nameRows = <pw.Widget>[];
-      for (final name in names) {
-        nameRows.add(
+          currencyRows.add(
+            pw.Row(
+              mainAxisSize: pw.MainAxisSize.min,
+              children: currencies.map((c) {
+                final v = totals[c] ?? 0.0;
+                return _totalBox(
+                  v,
+                  fontBold,
+                  grid,
+                  totalYellow,
+                  width: _currencyColWidth,
+                  height: _rowHeight,
+                );
+              }).toList(),
+            ),
+          );
+        }
+
+        widgets.add(
           pw.Container(
-            width: _nameColWidth,
-            height: _rowHeight,
-            alignment: pw.Alignment.centerLeft,
-            padding: const pw.EdgeInsets.symmetric(horizontal: 6),
+            width: tableWidth,
             decoration: pw.BoxDecoration(
               border: pw.Border(
-                left: pw.BorderSide(color: grid, width: 0.5),
-                right: pw.BorderSide(color: grid, width: 0.5),
+                left: pw.BorderSide(color: borderGreen, width: 1),
+                right: pw.BorderSide(color: borderGreen, width: 1),
                 top: pw.BorderSide(color: grid, width: 0.5),
-                bottom: pw.BorderSide(color: grid, width: 0.5),
               ),
             ),
-            child: pw.Text(
-              name,
-              style: pw.TextStyle(font: fontBold, fontSize: 10),
+            child: pw.Row(
+              mainAxisSize: pw.MainAxisSize.min,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                _subgroupSpanCell(
+                  subgroup,
+                  fontBold,
+                  grid,
+                  teal,
+                  borderGreen,
+                  height: chunkHeight,
+                ),
+                pw.Column(children: nameRows),
+                pw.Column(children: currencyRows),
+              ],
             ),
           ),
         );
       }
-      nameRows.add(
-        pw.Container(
-          width: _nameColWidth,
-          height: _rowHeight,
-          alignment: pw.Alignment.centerLeft,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 6),
-          decoration: pw.BoxDecoration(
-            color: totalYellow,
-            border: pw.Border.all(color: PdfColors.black, width: 1),
-          ),
-          child: pw.Text(
-            "Total",
-            style: pw.TextStyle(font: fontBold, fontSize: 10),
-          ),
-        ),
-      );
-
-      final currencyRows = <pw.Widget>[];
-      for (final name in names) {
-        final byCur = namesMap[name]!;
-        currencyRows.add(
-          pw.Row(
-            mainAxisSize: pw.MainAxisSize.min,
-            children: currencies.map((c) {
-              final v = byCur[c] ?? 0.0;
-              return _valueBox(
-                v,
-                fontBold,
-                grid,
-                positiveGreen,
-                negativeRed,
-                width: _currencyColWidth,
-                height: _rowHeight,
-              );
-            }).toList(),
-          ),
-        );
-      }
-      final totals = subgroupTotals[subgroup]!;
-      currencyRows.add(
-        pw.Row(
-          mainAxisSize: pw.MainAxisSize.min,
-          children: currencies.map((c) {
-            final v = totals[c] ?? 0.0;
-            return _totalBox(
-              v,
-              fontBold,
-              grid,
-              totalYellow,
-              width: _currencyColWidth,
-              height: _rowHeight,
-            );
-          }).toList(),
-        ),
-      );
-
-      widgets.add(
-        pw.Container(
-          width: tableWidth,
-          decoration: pw.BoxDecoration(
-            border: pw.Border(
-              left: pw.BorderSide(color: borderGreen, width: 1),
-              right: pw.BorderSide(color: borderGreen, width: 1),
-              top: pw.BorderSide(color: grid, width: 0.5),
-            ),
-          ),
-          child: pw.Row(
-            mainAxisSize: pw.MainAxisSize.min,
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              leftColumn,
-              pw.Column(children: nameRows),
-              pw.Column(children: currencyRows),
-            ],
-          ),
-        ),
-      );
     });
 
     return widgets;
@@ -397,6 +385,123 @@ class SubgroupPdfService extends BasePdfService {
 
   // ----- Cell helpers -----
 
+  List<List<_SubgroupRowSpec>> _chunkRows(
+    List<_SubgroupRowSpec> rows, {
+    required double maxChunkHeight,
+  }) {
+    final chunks = <List<_SubgroupRowSpec>>[];
+    var current = <_SubgroupRowSpec>[];
+    double currentHeight = 0;
+
+    for (final row in rows) {
+      final willOverflow =
+          current.isNotEmpty && (currentHeight + row.height > maxChunkHeight);
+      if (willOverflow) {
+        chunks.add(current);
+        current = <_SubgroupRowSpec>[];
+        currentHeight = 0;
+      }
+      current.add(row);
+      currentHeight += row.height;
+    }
+
+    if (current.isNotEmpty) {
+      chunks.add(current);
+    }
+
+    if (chunks.isNotEmpty) {
+      final last = chunks.last;
+      final lastHeight = last.fold<double>(0.0, (sum, r) => sum + r.height);
+      if (lastHeight + _rowHeight > maxChunkHeight && last.length > 1) {
+        final moved = last.removeLast();
+        chunks[chunks.length - 1] = last;
+        chunks.add([moved]);
+      }
+    }
+
+    return chunks;
+  }
+
+  int _nameLineCount(String name) {
+    final len = name.trim().length;
+    if (len > 52) return 3;
+    if (len > 26) return 2;
+    return 1;
+  }
+
+  pw.Widget _subgroupSpanCell(
+    String text,
+    pw.Font font,
+    PdfColor grid,
+    PdfColor teal,
+    PdfColor borderGreen, {
+    required double height,
+  }) {
+    return pw.Container(
+      width: _subgroupColWidth,
+      height: height,
+      decoration: pw.BoxDecoration(
+        border: pw.Border(
+          left: pw.BorderSide(color: borderGreen, width: 1),
+          right: pw.BorderSide(color: grid, width: 0.5),
+          top: pw.BorderSide(color: grid, width: 0.5),
+          bottom: pw.BorderSide(color: grid, width: 0.5),
+        ),
+      ),
+      child: pw.Stack(
+        children: [
+          pw.Positioned.fill(
+            child: pw.Container(
+              margin: const pw.EdgeInsets.fromLTRB(10, 6, 8, 6),
+              decoration: pw.BoxDecoration(
+                border: pw.Border(
+                  right: pw.BorderSide(color: teal, width: 2),
+                  bottom: pw.BorderSide(color: teal, width: 2),
+                ),
+              ),
+            ),
+          ),
+          pw.Center(
+            child: pw.Text(
+              text,
+              textAlign: pw.TextAlign.center,
+              style: pw.TextStyle(font: font, fontSize: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _nameCell(
+    String text,
+    pw.Font font,
+    PdfColor grid, {
+    required double height,
+    required int maxLines,
+  }) {
+    return pw.Container(
+      width: _nameColWidth,
+      height: height,
+      alignment: pw.Alignment.topLeft,
+      padding: const pw.EdgeInsets.fromLTRB(8, 4, 4, 4),
+      decoration: pw.BoxDecoration(
+        border: pw.Border(
+          left: pw.BorderSide(color: grid, width: 0.5),
+          right: pw.BorderSide(color: grid, width: 0.5),
+          top: pw.BorderSide(color: grid, width: 0.5),
+          bottom: pw.BorderSide(color: grid, width: 0.5),
+        ),
+      ),
+      child: pw.Text(
+        text,
+        maxLines: maxLines,
+        softWrap: true,
+        style: pw.TextStyle(font: font, fontSize: 10),
+      ),
+    );
+  }
+
   pw.Widget _headerLabel(
     String text,
     pw.Font font,
@@ -409,14 +514,11 @@ class SubgroupPdfService extends BasePdfService {
       width: width,
       height: height,
       decoration: pw.BoxDecoration(
+        color: bg,
         border: pw.Border.all(color: borderColor, width: 0.5),
       ),
       child: pw.Center(
-        child: pw.Container(
-          padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-          color: bg,
-          child: pw.Text(text, style: pw.TextStyle(font: font, fontSize: 9)),
-        ),
+        child: pw.Text(text, style: pw.TextStyle(font: font, fontSize: 9)),
       ),
     );
   }
@@ -440,16 +542,13 @@ class SubgroupPdfService extends BasePdfService {
       height: height,
       alignment: pw.Alignment.center,
       decoration: pw.BoxDecoration(
+        color: bg,
         border: pw.Border.all(color: grid, width: 0.5),
       ),
-      child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 6),
-        color: bg,
-        child: pw.Text(
-          value == 0 ? "0" : nf.format(value),
-          textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(font: font, fontSize: 9),
-        ),
+      child: pw.Text(
+        value == 0 ? "0" : nf.format(value),
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(font: font, fontSize: 9),
       ),
     );
   }
@@ -468,21 +567,13 @@ class SubgroupPdfService extends BasePdfService {
       height: height,
       alignment: pw.Alignment.center,
       decoration: pw.BoxDecoration(
+        color: bg,
         border: pw.Border.all(color: grid, width: 0.5),
       ),
-      child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 6),
-        decoration: pw.BoxDecoration(
-          color: bg,
-          border: value == 0
-              ? null
-              : pw.Border.all(color: PdfColors.black, width: 1),
-        ),
-        child: pw.Text(
-          value == 0 ? "0" : nf.format(value),
-          textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(font: font, fontSize: 9),
-        ),
+      child: pw.Text(
+        value == 0 ? "0" : nf.format(value),
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(font: font, fontSize: 9),
       ),
     );
   }
@@ -506,17 +597,28 @@ class SubgroupPdfService extends BasePdfService {
       height: height,
       alignment: pw.Alignment.center,
       decoration: pw.BoxDecoration(
+        color: bg,
         border: pw.Border.all(color: grid, width: 0.5),
       ),
-      child: pw.Container(
-        padding: const pw.EdgeInsets.symmetric(vertical: 2, horizontal: 6),
-        color: bg,
-        child: pw.Text(
-          value == 0 ? "0" : nf.format(value),
-          textAlign: pw.TextAlign.center,
-          style: pw.TextStyle(font: font, fontSize: 9),
-        ),
+      child: pw.Text(
+        value == 0 ? "0" : nf.format(value),
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(font: font, fontSize: 9),
       ),
     );
   }
+}
+
+class _SubgroupRowSpec {
+  final String name;
+  final Map<String, double> byCur;
+  final int lineCount;
+  final double height;
+
+  const _SubgroupRowSpec({
+    required this.name,
+    required this.byCur,
+    required this.lineCount,
+    required this.height,
+  });
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:logger/logger.dart';
 import 'package:mehfooz_accounts_app/services/logging/logger_service.dart';
 import 'package:provider/provider.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
@@ -58,23 +57,59 @@ class HomeHeader extends StatelessWidget {
   // LEFT SIDE (Welcome + Company)
   // ─────────────────────────────────────────────────────────────
   Widget _buildLeft(BuildContext context, String companyName) {
+    final welcomeStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: Colors.grey.shade700,
+          fontWeight: FontWeight.w500,
+        );
+    final companyStyle = Theme.of(context).textTheme.headlineSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.3,
+          fontSize: 20,
+        );
+    final reportingStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Colors.grey.shade700,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+          letterSpacing: 0.2,
+        );
+
+    final welcomeAnchor = _measureOffsetToLetter(
+      context,
+      "Welcome",
+      welcomeStyle,
+      "o",
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Welcome",
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: Colors.grey.shade700,
-            fontWeight: FontWeight.w500,
-          ),
+          "Welcome to",
+          style: welcomeStyle,
         ),
         const SizedBox(height: 4),
-        Text(
-          companyName,
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            letterSpacing: 0.3,
-          ),
+        Row(
+          children: [
+            SizedBox(width: welcomeAnchor),
+            Flexible(
+              child: RichText(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: companyName,
+                      style: companyStyle,
+                    ),
+                    TextSpan(
+                      text: " Reporting",
+                      style: reportingStyle,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         TextButton.icon(
@@ -95,6 +130,26 @@ class HomeHeader extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  double _measureTextWidth(BuildContext context, String text, TextStyle? style) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+    )..layout();
+    return painter.width;
+  }
+
+  double _measureOffsetToLetter(
+    BuildContext context,
+    String text,
+    TextStyle? style,
+    String letter,
+  ) {
+    final idx = text.toLowerCase().indexOf(letter.toLowerCase());
+    if (idx <= 0) return 0;
+    return _measureTextWidth(context, text.substring(0, idx), style);
   }
 
   // ─────────────────────────────────────────────────────────────

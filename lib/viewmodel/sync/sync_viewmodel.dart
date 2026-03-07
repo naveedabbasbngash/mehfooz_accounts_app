@@ -47,6 +47,9 @@ class SyncViewModel extends ChangeNotifier {
   double syncProgress = 0.0;
   String lastMessage = '';
   DateTime? lastSyncedTime;
+  bool isPendingBatchesLoading = false;
+  String? pendingBatchesError;
+  List<PendingBatchItem> pendingBatches = const [];
 
   // 🔴 NEW: last sync result
   SyncResult? lastSyncResult;
@@ -99,6 +102,7 @@ class SyncViewModel extends ChangeNotifier {
 
     await _loadAutoSyncSetting();
     _restartAutoSync();
+    await refreshPendingBatches(silent: true);
     notifyListeners();
   }
 
@@ -113,6 +117,7 @@ class SyncViewModel extends ChangeNotifier {
   }
 
   bool get isReady => syncRepo != null;
+  int get pendingBatchCount => pendingBatches.length;
 
   // ─────────────────────────────────────────────
   // SYNC GATE
@@ -276,6 +281,7 @@ class SyncViewModel extends ChangeNotifier {
       lastSyncedTime = DateTime.now();
       lastSyncResult = null;
       _setState(syncing: false, progress: 1, message: "Nothing to update");
+      await refreshPendingBatches(silent: true);
       return;
     }
 
@@ -352,6 +358,34 @@ class SyncViewModel extends ChangeNotifier {
       }
     } finally {
       _isFinalizingAck = false;
+      unawaited(refreshPendingBatches(silent: true));
+    }
+  }
+
+  Future<void> refreshPendingBatches({bool silent = false}) async {
+    if (_userEmail == null) return;
+    final email = _userEmail!;
+    final deviceId = await _ensureDeviceId();
+
+    if (!silent) {
+      isPendingBatchesLoading = true;
+      pendingBatchesError = null;
+      notifyListeners();
+    }
+
+    try {
+      final rows = await syncService.fetchPendingBatches(
+        email: email,
+        deviceId: deviceId,
+      );
+      pendingBatches = rows;
+      pendingBatchesError = null;
+    } catch (e) {
+      _log.w("⚠️ pending batches load failed: $e");
+      pendingBatchesError = "Unable to load pending batches";
+    } finally {
+      isPendingBatchesLoading = false;
+      notifyListeners();
     }
   }
 
