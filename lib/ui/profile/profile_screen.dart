@@ -52,7 +52,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Align(
                     alignment: Alignment.topRight,
-                    child: _deviceIdBadge(context, vm.deviceId),
+                    child: _referenceIdBadge(
+                      context,
+                      svm,
+                      vm.loggedInUser.email,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   _userHeaderCard(context, user),
@@ -119,41 +123,82 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _deviceIdBadge(BuildContext context, String deviceId) {
+  Widget _referenceIdBadge(
+    BuildContext context,
+    SyncViewModel svm,
+    String email,
+  ) {
+    final hasReferenceId = svm.hasReferenceId;
+    final referenceId = svm.referenceId ?? "";
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 300),
           child: Text(
-            "Reference ID: $deviceId",
+            hasReferenceId ? "Reference ID: $referenceId" : "Reference ID not added",
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.grey.shade700,
+              color: hasReferenceId ? Colors.grey.shade700 : Colors.orange.shade700,
               fontWeight: FontWeight.w600,
               fontSize: 12,
             ),
           ),
         ),
-        IconButton(
-          icon: const Icon(Icons.copy, size: 16),
-          tooltip: 'Copy reference ID',
-          visualDensity: VisualDensity.compact,
-          constraints: const BoxConstraints(),
-          padding: const EdgeInsets.only(left: 6),
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: deviceId));
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text("Reference ID copied"),
-                duration: Duration(seconds: 1),
-              ),
-            );
-          },
-        ),
+        if (hasReferenceId)
+          IconButton(
+            icon: const Icon(Icons.copy, size: 16),
+            tooltip: 'Copy reference ID',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(),
+            padding: const EdgeInsets.only(left: 6),
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: referenceId));
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Reference ID copied"),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+          )
+        else
+          IconButton(
+            icon: Icon(
+              Icons.add_circle_rounded,
+              size: 22,
+              color: AppColors.primary,
+            ),
+            tooltip: 'Add Reference ID',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(),
+            padding: const EdgeInsets.only(left: 6),
+            onPressed: () => _openAddReferenceIdScreen(context, svm, email),
+          ),
       ],
+    );
+  }
+
+  Future<void> _openAddReferenceIdScreen(
+    BuildContext context,
+    SyncViewModel svm,
+    String email,
+  ) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => _AddReferenceIdScreen(
+          svm: svm,
+          email: email,
+        ),
+      ),
+    );
+
+    if (!mounted || saved != true) return;
+    ScaffoldMessenger.of(this.context).showSnackBar(
+      const SnackBar(content: Text("Reference ID verified and saved")),
     );
   }
 
@@ -705,6 +750,207 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Navigator.pop(context);
               await vm.deleteAccount(context);
             },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddReferenceIdScreen extends StatefulWidget {
+  final SyncViewModel svm;
+  final String email;
+
+  const _AddReferenceIdScreen({
+    required this.svm,
+    required this.email,
+  });
+
+  @override
+  State<_AddReferenceIdScreen> createState() => _AddReferenceIdScreenState();
+}
+
+class _AddReferenceIdScreenState extends State<_AddReferenceIdScreen> {
+  final TextEditingController _controller = TextEditingController();
+  bool _isSubmitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final ref = _controller.text.trim();
+    if (ref.isEmpty) {
+      setState(() => _error = "Please enter Reference ID");
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+      _error = null;
+    });
+
+    final ok = await widget.svm.verifyAndSaveReferenceId(ref);
+    if (!mounted) return;
+
+    if (ok) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+      _error = widget.svm.referenceIdError ?? "Verification failed";
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.app_bg,
+      appBar: AppBar(
+        title: const Text("Add Reference ID"),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.12),
+                  Colors.white,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.22)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.verified_user_outlined,
+                    color: AppColors.primary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: const [
+                      Text(
+                        "Verify Reference ID",
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.textDark,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        "Enter your assigned Reference ID to activate sync on this device.",
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Logged-in email",
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    widget.email,
+                    style: const TextStyle(
+                      color: AppColors.textDark,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _controller,
+                    textInputAction: TextInputAction.done,
+                    autofocus: true,
+                    onSubmitted: (_) => _submit(),
+                    decoration: InputDecoration(
+                      labelText: "Reference ID",
+                      hintText: "Enter Referecne Id",
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _error!,
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _isSubmitting ? null : _submit,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    )
+                  : const Text("Submit"),
+            ),
           ),
         ],
       ),

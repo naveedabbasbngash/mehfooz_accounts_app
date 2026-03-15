@@ -1,4 +1,7 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -15,12 +18,64 @@ class SubgroupPdfService extends BasePdfService {
   static const double _nameColWidth = 150;
   static const double _currencyColWidth = 95;
 
+  bool _isRtl(String? s) {
+    if (s == null || s.trim().isEmpty) return false;
+    return RegExp(
+      r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
+    ).hasMatch(s);
+  }
+
+  pw.TextDirection _dir(String text) =>
+      _isRtl(text) ? pw.TextDirection.rtl : pw.TextDirection.ltr;
+
+  pw.Font _pickFont(String text, pw.Font latin, pw.Font latinBold, bool bold) {
+    if (_isRtl(text)) return latin;
+    return bold ? latinBold : latin;
+  }
+
   Future<File> render({
     required List<SubgroupBalanceRow> rows,
     String title = 'Trial Balance',
   }) async {
+    debugPrint("[SubgroupPdf] render:start rows=${rows.length}");
+    final sw = Stopwatch()..start();
+
+    final fontData = await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+    final payload = <String, dynamic>{
+      'title': title,
+      'fontBytes': fontData.buffer.asUint8List(),
+      'rows': rows
+          .map(
+            (r) => <String, dynamic>{
+              'subgroup': r.subgroup,
+              'name': r.name,
+              'currency': r.currency,
+              'balance': r.balance,
+            },
+          )
+          .toList(),
+    };
+
+    final pdfBytes = await compute(_buildSubgroupPdfBytesInIsolate, payload);
+    final dir = Directory.systemTemp;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${dir.path}/subgroup_report_$ts.pdf');
+    await file.writeAsBytes(pdfBytes, flush: true);
+
+    sw.stop();
+    debugPrint(
+      "[SubgroupPdf] render:done path=${file.path} bytes=${pdfBytes.length} elapsedMs=${sw.elapsedMilliseconds}",
+    );
+    return file;
+  }
+
+  Future<Uint8List> _buildPdfBytes({
+    required List<SubgroupBalanceRow> rows,
+    required String title,
+    required pw.Font font,
+    required pw.Font fontBold,
+  }) async {
     final pdf = pw.Document();
-    final (font, fontBold) = await createFonts();
 
     // Colors from sample
     final headerYellow = PdfColor.fromInt(0xFFFFFF00);
@@ -31,78 +86,145 @@ class SubgroupPdfService extends BasePdfService {
     final teal = PdfColor.fromInt(0xFF00897B);
     final grid = PdfColor.fromInt(0xFF707070);
 
-    final date = DateTime.now();
-    final printed = "${date.day}/${date.month}/${date.year}";
-
-    // Keep currency order stable to match sample
-    final currencies = ['AFG', 'PKR', 'POUND', 'RMB', 'USD'];
+    final printed = DateFormat('dd/MM/yyyy hh:mm a').format(DateTime.now());
 
     // Group: subgroup -> name -> currency -> balance
     final Map<String, Map<String, Map<String, double>>> grouped = {};
     for (final r in rows) {
+      final currency = r.currency.trim();
+      if (currency.isEmpty) continue;
+
       grouped.putIfAbsent(r.subgroup, () => {});
       grouped[r.subgroup]!.putIfAbsent(r.name, () => {});
-      grouped[r.subgroup]![r.name]![r.currency] =
-          (grouped[r.subgroup]![r.name]![r.currency] ?? 0) + r.balance;
+      grouped[r.subgroup]![r.name]![currency] =
+          (grouped[r.subgroup]![r.name]![currency] ?? 0) + r.balance;
     }
+
+    final allCurrencies = grouped.values
+        .expand((byName) => byName.values)
+        .expand((byCur) => byCur.keys)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toUpperCase().compareTo(b.toUpperCase()));
 
     // Totals
     final subgroupTotals = <String, Map<String, double>>{};
-    final grandTotals = <String, double>{for (final c in currencies) c: 0.0};
+    final grandTotalsAll = <String, double>{for (final c in allCurrencies) c: 0.0};
     grouped.forEach((sg, names) {
-      final totals = <String, double>{for (final c in currencies) c: 0.0};
+      final totals = <String, double>{for (final c in allCurrencies) c: 0.0};
       names.forEach((_, byCur) {
         byCur.forEach((c, v) {
           totals[c] = (totals[c] ?? 0) + v;
-          grandTotals[c] = (grandTotals[c] ?? 0) + v;
+          grandTotalsAll[c] = (grandTotalsAll[c] ?? 0) + v;
         });
       });
       subgroupTotals[sg] = totals;
     });
 
+    // Skip currencies that are zero in all rows.
+    final currencies = allCurrencies
+        .where((c) => (grandTotalsAll[c] ?? 0.0).abs() > 0.000001)
+        .toList();
+
+    final visibleCurrencies = currencies.isEmpty ? allCurrencies : currencies;
+    final grandTotals = <String, double>{
+      for (final c in visibleCurrencies) c: grandTotalsAll[c] ?? 0.0,
+    };
+
+    // Horizontal pagination by currency columns (for many currencies).
+    final maxCurrencyCols = _maxCurrencyColsForPage(
+      pageWidth: PdfPageFormat.a4.landscape.width,
+      horizontalMargins: 28,
+    );
+    final currencyChunks = _chunkCurrencyColumns(
+      visibleCurrencies,
+      chunkSize: maxCurrencyCols,
+    );
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(14),
-        build: (_) => [
-          _titleBar(title, fontBold),
-          pw.SizedBox(height: 6),
-          _headerRow(
-            printed,
-            currencies,
-            fontBold,
-            headerYellow,
-            grid,
-            teal,
-            borderGreen,
-          ),
-          ..._bodyRows(
-            grouped,
-            subgroupTotals,
-            currencies,
-            fontBold,
-            totalYellow,
-            positiveGreen,
-            negativeRed,
-            grid,
-            teal,
-            borderGreen,
-          ),
-          _grandTotalRow(
-            currencies,
-            grandTotals,
-            fontBold,
-            totalYellow,
-            positiveGreen,
-            negativeRed,
-            grid,
-            borderGreen,
-          ),
-        ],
+        build: (_) {
+          final widgets = <pw.Widget>[
+            _titleBar(title, fontBold),
+            pw.SizedBox(height: 6),
+          ];
+
+          for (int i = 0; i < currencyChunks.length; i++) {
+            final chunkCurrencies = currencyChunks[i];
+
+            if (i > 0) {
+              widgets.add(pw.NewPage());
+              widgets.add(_titleBar(title, fontBold));
+              widgets.add(pw.SizedBox(height: 6));
+            }
+
+            if (currencyChunks.length > 1) {
+              widgets.add(
+                pw.Text(
+                  "Currencies ${i + 1}/${currencyChunks.length}",
+                  style: pw.TextStyle(font: fontBold, fontSize: 10),
+                ),
+              );
+              widgets.add(pw.SizedBox(height: 4));
+            }
+
+            widgets.add(
+              _buildMahfoozTopRight(
+                currencies: chunkCurrencies,
+                fontBold: fontBold,
+              ),
+            );
+            widgets.add(pw.SizedBox(height: 2));
+
+            widgets.add(
+              _headerRow(
+                printed,
+                chunkCurrencies,
+                fontBold,
+                headerYellow,
+                grid,
+                teal,
+                borderGreen,
+              ),
+            );
+
+            widgets.addAll(
+              _bodyRows(
+                grouped,
+                subgroupTotals,
+                chunkCurrencies,
+                fontBold,
+                totalYellow,
+                positiveGreen,
+                negativeRed,
+                grid,
+                teal,
+                borderGreen,
+              ),
+            );
+
+            widgets.add(
+              _grandTotalRow(
+                chunkCurrencies,
+                grandTotals,
+                fontBold,
+                totalYellow,
+                positiveGreen,
+                negativeRed,
+                grid,
+                borderGreen,
+              ),
+            );
+          }
+
+          return widgets;
+        },
       ),
     );
 
-    return savePdf(pdf, 'subgroup_report');
+    return pdf.save();
   }
 
   // ----- Layout builders -----
@@ -153,9 +275,12 @@ class SubgroupPdfService extends BasePdfService {
                 right: pw.BorderSide(color: grid, width: 0.5),
               ),
             ),
-            child: pw.Text(
-              printed,
-              style: pw.TextStyle(font: fontBold, fontSize: 10),
+            child: pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(horizontal: 8),
+              child: pw.Text(
+                "Generated Date $printed",
+                style: pw.TextStyle(font: fontBold, fontSize: 8),
+              ),
             ),
           ),
           ...currencies.map(
@@ -169,6 +294,29 @@ class SubgroupPdfService extends BasePdfService {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  pw.Widget _buildMahfoozTopRight({
+    required List<String> currencies,
+    required pw.Font fontBold,
+  }) {
+    final tableWidth =
+        _subgroupColWidth +
+            _nameColWidth +
+            (currencies.length * _currencyColWidth);
+    final mahfoozLight = PdfColor.fromInt(0xFFC7CDD7);
+    return pw.Container(
+      width: tableWidth,
+      alignment: pw.Alignment.centerRight,
+      child: pw.Text(
+        "Mahfooz Accounts",
+        style: pw.TextStyle(
+          font: fontBold,
+          fontSize: 8,
+          color: mahfoozLight,
+        ),
       ),
     );
   }
@@ -429,6 +577,33 @@ class SubgroupPdfService extends BasePdfService {
     return 1;
   }
 
+  int _maxCurrencyColsForPage({
+    required double pageWidth,
+    required double horizontalMargins,
+  }) {
+    final usableWidth = pageWidth - horizontalMargins;
+    final fixedWidth = _subgroupColWidth + _nameColWidth;
+    final remaining = usableWidth - fixedWidth;
+    final count = (remaining / _currencyColWidth).floor();
+    return count < 1 ? 1 : count;
+  }
+
+  List<List<String>> _chunkCurrencyColumns(
+    List<String> currencies, {
+    required int chunkSize,
+  }) {
+    if (currencies.isEmpty) return [const []];
+
+    final chunks = <List<String>>[];
+    for (int i = 0; i < currencies.length; i += chunkSize) {
+      final end = (i + chunkSize < currencies.length)
+          ? i + chunkSize
+          : currencies.length;
+      chunks.add(currencies.sublist(i, end));
+    }
+    return chunks;
+  }
+
   pw.Widget _subgroupSpanCell(
     String text,
     pw.Font font,
@@ -464,8 +639,12 @@ class SubgroupPdfService extends BasePdfService {
           pw.Center(
             child: pw.Text(
               text,
+              textDirection: _dir(text),
               textAlign: pw.TextAlign.center,
-              style: pw.TextStyle(font: font, fontSize: 10),
+              style: pw.TextStyle(
+                font: _pickFont(text, font, font, true),
+                fontSize: 10,
+              ),
             ),
           ),
         ],
@@ -480,11 +659,15 @@ class SubgroupPdfService extends BasePdfService {
     required double height,
     required int maxLines,
   }) {
+    final isRtl = _isRtl(text);
+
     return pw.Container(
       width: _nameColWidth,
       height: height,
-      alignment: pw.Alignment.topLeft,
-      padding: const pw.EdgeInsets.fromLTRB(8, 4, 4, 4),
+      alignment: isRtl ? pw.Alignment.topRight : pw.Alignment.topLeft,
+      padding: isRtl
+          ? const pw.EdgeInsets.fromLTRB(4, 4, 8, 4)
+          : const pw.EdgeInsets.fromLTRB(8, 4, 4, 4),
       decoration: pw.BoxDecoration(
         border: pw.Border(
           left: pw.BorderSide(color: grid, width: 0.5),
@@ -495,9 +678,14 @@ class SubgroupPdfService extends BasePdfService {
       ),
       child: pw.Text(
         text,
+        textDirection: _dir(text),
+        textAlign: isRtl ? pw.TextAlign.right : pw.TextAlign.left,
         maxLines: maxLines,
         softWrap: true,
-        style: pw.TextStyle(font: font, fontSize: 10),
+        style: pw.TextStyle(
+          font: _pickFont(text, font, font, true),
+          fontSize: 10,
+        ),
       ),
     );
   }
@@ -621,4 +809,36 @@ class _SubgroupRowSpec {
     required this.lineCount,
     required this.height,
   });
+}
+
+Future<Uint8List> _buildSubgroupPdfBytesInIsolate(
+  Map<String, dynamic> payload,
+) async {
+  final title = (payload['title'] as String?) ?? 'Trial Balance';
+  final fontBytes = payload['fontBytes'] as Uint8List;
+  final rawRows = (payload['rows'] as List?)?.cast<Map>() ?? const <Map>[];
+
+  final rows = rawRows.map((m) {
+    final row = Map<String, dynamic>.from(m.cast<String, dynamic>());
+    return SubgroupBalanceRow(
+      subgroup: (row['subgroup'] as String?) ?? '',
+      name: (row['name'] as String?) ?? '',
+      currency: (row['currency'] as String?) ?? '',
+      balance: (row['balance'] is num) ? (row['balance'] as num).toDouble() : 0.0,
+    );
+  }).toList(growable: false);
+
+  final service = SubgroupPdfService._();
+  final fontData = fontBytes.buffer.asByteData(
+    fontBytes.offsetInBytes,
+    fontBytes.lengthInBytes,
+  );
+  final unicodeFont = pw.Font.ttf(fontData);
+
+  return service._buildPdfBytes(
+    rows: rows,
+    title: title,
+    font: unicodeFont,
+    fontBold: unicodeFont,
+  );
 }

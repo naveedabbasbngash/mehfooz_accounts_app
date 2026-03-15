@@ -1,6 +1,8 @@
 // lib/services/pdf/pending_pdf_service.dart
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
@@ -12,12 +14,6 @@ class PendingPdfService extends BasePdfService {
   static final PendingPdfService instance = PendingPdfService._();
 
   late pw.Font urduFont;
-
-  // ----------------------- Load Urdu Font -----------------------
-  Future<void> _loadUrduFont() async {
-    final data = await rootBundle.load("assets/fonts/NotoSansArabic-Regular.ttf");
-    urduFont = pw.Font.ttf(data.buffer.asByteData());
-  }
 
   // ----------------------- RTL Detector -------------------------
   bool _isRtl(String? s) {
@@ -43,91 +39,85 @@ class PendingPdfService extends BasePdfService {
   }) async {
     if (rows.isEmpty) throw StateError("No pending rows to export");
 
-    await _loadUrduFont();
+    debugPrint("🧾 [PendingPdfService] render start rows=${rows.length}");
 
-    final pdf = pw.Document();
+    final fontData = await rootBundle.load("assets/fonts/NotoSansArabic-Regular.ttf");
+    final payload = <String, dynamic>{
+      'title': title,
+      'fontBytes': fontData.buffer.asUint8List(),
+      'rows': rows
+          .map(
+            (r) => <String, dynamic>{
+              'voucherNo': r.voucherNo,
+              'dateIso': r.dateIso,
+              'pd': r.pd ?? "",
+              'msg': r.msg ?? "",
+              'sender': r.sender ?? "",
+              'receiver': r.receiver ?? "",
+              'description': r.description ?? "",
+              'notPaidAmount': r.notPaidAmount,
+              'paidAmount': r.paidAmount,
+              'balance': r.balance,
+              'currency': r.currency,
+            },
+          )
+          .toList(),
+    };
 
-    final (latin, latinBold) = await createFonts();
+    final pdfBytes = await compute(_buildPendingPdfBytesInIsolate, payload);
 
-    // ---------------- FIX: Always top-aligned PDF ----------------
-    final double pageWidth = PdfPageFormat.cm * 29.7;   // A4 width
-    final double pageHeight = PdfPageFormat.cm * 55.0;  // Tall (prevents centering)
-    final pageFormat = PdfPageFormat(pageWidth, pageHeight, marginAll: 12);
-
-    final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
-    final greyLine = PdfColor.fromInt(0xFFBEC3C8);
-    final subtleBg = PdfColor.fromInt(0xFFF7F9FC);
-
-    pdf.addPage(
-      pw.Page(
-        pageFormat: pageFormat,
-        build: (ctx) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              _buildHeader(
-                officeName: officeName,
-                title: title,
-                font: latin,
-                fontBold: latinBold,
-                deepBlue: deepBlue,
-              ),
-              pw.SizedBox(height: 12),
-
-              ..._buildCurrencySections(
-                rows: rows,
-                latin: latin,
-                latinBold: latinBold,
-                deepBlue: deepBlue,
-                greyLine: greyLine,
-                subtleBg: subtleBg,
-              ),
-            ],
-          );
-        },
-      ),
+    final dir = Directory.systemTemp;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${dir.path}/pending_report_$ts.pdf');
+    await file.writeAsBytes(pdfBytes, flush: true);
+    final bytes = await file.length();
+    debugPrint(
+      "🧾 [PendingPdfService] render done path=${file.path} bytes=$bytes",
     );
-
-    return savePdf(pdf, "pending_report");
+    return file;
   }
 
   // ======================================================================
   //                       Header (Same Style)
   // ======================================================================
   pw.Widget _buildHeader({
-    required String officeName,
     required String title,
     required pw.Font font,
     required pw.Font fontBold,
     required PdfColor deepBlue,
   }) {
-    final today =
-        "${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}";
+    final generated = DateFormat('dd/MM/yyyy hh:mm a').format(DateTime.now());
+    final mahfoozLight = PdfColor.fromInt(0xFFC7CDD7);
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          children: [
-            pw.Text(
-              officeName,
-              style: pw.TextStyle(font: fontBold, fontSize: 12, color: deepBlue),
-            ),
-            pw.Text(
-              "Printed $today",
-              style: pw.TextStyle(font: fontBold, fontSize: 10, color: deepBlue),
-            ),
-          ],
-        ),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: 3),
         pw.Center(
           child: pw.Text(
             title,
             style: pw.TextStyle(font: fontBold, fontSize: 18, color: deepBlue),
           ),
         ),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: 5),
+        pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              "Generated Date $generated",
+              style: pw.TextStyle(font: fontBold, fontSize: 8, color: deepBlue),
+            ),
+            pw.Text(
+              "Mahfooz Accounts",
+              style: pw.TextStyle(
+                font: fontBold,
+                fontSize: 8,
+                color: mahfoozLight,
+              ),
+            ),
+          ],
+        ),
+        pw.SizedBox(height: 1),
         pw.Container(height: 1.5, color: deepBlue),
       ],
     );
@@ -154,29 +144,45 @@ class PendingPdfService extends BasePdfService {
     }
 
     final currencies = map.keys.toList()..sort();
+    const rowsPerChunk = 12;
 
     for (final cur in currencies) {
-      widgets.add(
-        pw.Text(
-          "Currency: $cur",
-          style: pw.TextStyle(font: latinBold, fontSize: 12, color: deepBlue),
-        ),
+      final currencyRows = map[cur]!;
+      final chunks = _chunkRows(currencyRows, rowsPerChunk);
+      debugPrint(
+        "🧾 [PendingPdfService] currency=$cur rows=${currencyRows.length} "
+            "chunks=${chunks.length}",
       );
 
-      widgets.add(pw.SizedBox(height: 4));
+      for (int i = 0; i < chunks.length; i++) {
+        final label = chunks.length == 1
+            ? "Currency: $cur"
+            : "Currency: $cur (${i + 1}/${chunks.length})";
 
-      widgets.add(
-        _buildCurrencyTable(
-          rows: map[cur]!,
-          latinFont: latin,
-          latinBold: latinBold,
-          deepBlue: deepBlue,
-          greyLine: greyLine,
-          subtleBg: subtleBg,
-        ),
-      );
+        widgets.add(
+          pw.Text(
+            label,
+            style: pw.TextStyle(font: latinBold, fontSize: 12, color: deepBlue),
+          ),
+        );
 
-      widgets.add(pw.SizedBox(height: 12));
+        widgets.add(pw.SizedBox(height: 4));
+
+        widgets.add(
+          _buildCurrencyTable(
+            rows: chunks[i],
+            latinFont: latin,
+            latinBold: latinBold,
+            deepBlue: deepBlue,
+            greyLine: greyLine,
+            subtleBg: subtleBg,
+            showTotals: i == chunks.length - 1,
+            totalsSource: currencyRows,
+          ),
+        );
+
+        widgets.add(pw.SizedBox(height: 12));
+      }
     }
 
     return widgets;
@@ -192,6 +198,8 @@ class PendingPdfService extends BasePdfService {
     required PdfColor deepBlue,
     required PdfColor greyLine,
     required PdfColor subtleBg,
+    bool showTotals = true,
+    List<PendingRow>? totalsSource,
   }) {
     const colFlex = <double>[0.12, 0.12, 0.12, 0.16, 0.16, 0.11, 0.11, 0.12];
 
@@ -229,17 +237,12 @@ class PendingPdfService extends BasePdfService {
           head("Msg#"),
           head("Sender"),
           head("Receiver"),
-          head("P.Amount"),
+          head("Invoice Amount"),
           head("Paid"),
           head("Balance"),
         ],
       ),
     );
-
-    // ---------- TOTALS (DOUBLE SAFE) ----------
-    double totalNotPaid = 0;
-    double totalPaid = 0;
-    double totalBalance = 0;
 
     int i = 0;
     final sorted = [...rows]..sort((a, b) => a.dateIso.compareTo(b.dateIso));
@@ -277,10 +280,6 @@ class PendingPdfService extends BasePdfService {
     for (final r in sorted) {
       final rowBg = i.isEven ? PdfColors.white : subtleBg;
       i++;
-
-      totalNotPaid += r.notPaidAmount;
-      totalPaid += r.paidAmount;
-      totalBalance += r.balance;
 
       table.children.add(
         pw.TableRow(
@@ -347,6 +346,20 @@ class PendingPdfService extends BasePdfService {
       );
     }
 
+    final totalsInput = totalsSource ?? rows;
+    final totalNotPaidAll = totalsInput.fold<double>(
+      0.0,
+      (sum, r) => sum + r.notPaidAmount,
+    );
+    final totalPaidAll = totalsInput.fold<double>(
+      0.0,
+      (sum, r) => sum + r.paidAmount,
+    );
+    final totalBalanceAll = totalsInput.fold<double>(
+      0.0,
+      (sum, r) => sum + r.balance,
+    );
+
     final totals = pw.Table(
       columnWidths: const {
         0: pw.FlexColumnWidth(1),
@@ -358,17 +371,19 @@ class PendingPdfService extends BasePdfService {
         pw.TableRow(
           children: [
             totalsCell("Totals:", align: pw.TextAlign.left),
-            totalsCell("Not Paid: ${money(totalNotPaid)}"),
-            totalsCell("Paid: ${money(totalPaid)}"),
+            totalsCell("Not Paid: ${money(totalNotPaidAll)}"),
+            totalsCell("Paid: ${money(totalPaidAll)}"),
             totalsCell(
-              totalBalance < 0
-                  ? "Balance: -${money(totalBalance)}"
-                  : "Balance: ${money(totalBalance)}",
+              totalBalanceAll < 0
+                  ? "Balance: -${money(totalBalanceAll)}"
+                  : "Balance: ${money(totalBalanceAll)}",
             ),
           ],
         ),
       ],
     );
+
+    if (!showTotals) return table;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
@@ -379,17 +394,14 @@ class PendingPdfService extends BasePdfService {
       ],
     );
   }
-  pw.Widget _totalsCell(String text, pw.Font font, PdfColor deepBlue,
-      {pw.TextAlign align = pw.TextAlign.left}) {
-    return pw.Padding(
-      padding: const pw.EdgeInsets.only(top: 6),
-      child: pw.Text(
-        text,
-        textDirection: _dir(text),
-        textAlign: align,
-        style: pw.TextStyle(font: font, fontSize: 11, color: deepBlue),
-      ),
-    );
+
+  List<List<PendingRow>> _chunkRows(List<PendingRow> rows, int chunkSize) {
+    final chunks = <List<PendingRow>>[];
+    for (int i = 0; i < rows.length; i += chunkSize) {
+      final end = (i + chunkSize < rows.length) ? i + chunkSize : rows.length;
+      chunks.add(rows.sublist(i, end));
+    }
+    return chunks;
   }
 
   String _formatDate(String iso) {
@@ -400,4 +412,77 @@ class PendingPdfService extends BasePdfService {
       return iso;
     }
   }
+}
+
+Future<Uint8List> _buildPendingPdfBytesInIsolate(
+  Map<String, dynamic> payload,
+) async {
+  final title = (payload['title'] as String?) ?? 'Pending Amount';
+  final fontBytes = payload['fontBytes'] as Uint8List;
+  final rawRows = (payload['rows'] as List).cast<Map>();
+
+  final rows = rawRows.map((m) {
+    final row = Map<String, dynamic>.from(m.cast<String, dynamic>());
+    double toDouble(dynamic v) => (v is num) ? v.toDouble() : 0.0;
+    int toInt(dynamic v) => (v is num) ? v.toInt() : 0;
+    String toStr(dynamic v) => v?.toString() ?? "";
+    return PendingRow(
+      voucherNo: toInt(row['voucherNo']),
+      dateIso: toStr(row['dateIso']),
+      pd: toStr(row['pd']),
+      msg: toStr(row['msg']),
+      sender: toStr(row['sender']),
+      receiver: toStr(row['receiver']),
+      description: toStr(row['description']),
+      notPaidAmount: toDouble(row['notPaidAmount']),
+      paidAmount: toDouble(row['paidAmount']),
+      balance: toDouble(row['balance']),
+      currency: toStr(row['currency']),
+    );
+  }).toList();
+
+  final service = PendingPdfService._();
+  final fontData = fontBytes.buffer.asByteData(
+    fontBytes.offsetInBytes,
+    fontBytes.lengthInBytes,
+  );
+  final unicodeFont = pw.Font.ttf(fontData);
+  service.urduFont = unicodeFont;
+
+  final pdf = pw.Document();
+  final latin = unicodeFont;
+  final latinBold = unicodeFont;
+
+  final pageFormat = PdfPageFormat.a4.landscape;
+  final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
+  final greyLine = PdfColor.fromInt(0xFFBEC3C8);
+  final subtleBg = PdfColor.fromInt(0xFFF7F9FC);
+
+  final sections = service._buildCurrencySections(
+    rows: rows,
+    latin: latin,
+    latinBold: latinBold,
+    deepBlue: deepBlue,
+    greyLine: greyLine,
+    subtleBg: subtleBg,
+  );
+
+  pdf.addPage(
+    pw.MultiPage(
+      pageFormat: pageFormat,
+      maxPages: 5000,
+      margin: const pw.EdgeInsets.all(12),
+      mainAxisAlignment: pw.MainAxisAlignment.start,
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      header: (_) => service._buildHeader(
+        title: title,
+        font: latin,
+        fontBold: latinBold,
+        deepBlue: deepBlue,
+      ),
+      build: (_) => [...sections],
+    ),
+  );
+
+  return await pdf.save();
 }

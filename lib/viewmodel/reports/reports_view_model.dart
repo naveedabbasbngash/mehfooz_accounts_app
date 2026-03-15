@@ -2,10 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../../repository/transactions_repository.dart';
-import '../../repository/pending_repository.dart';
 import '../../model/balance_row.dart';
 import '../../model/balance_matrix_result.dart';
 import '../../model/pending_row.dart';
+import '../../model/pending_group_row.dart';
 
 // PDF services
 import '../../services/global_state.dart';
@@ -21,6 +21,7 @@ import '../../services/pdf/subgroup_pdf_service.dart';
 class ReportsUiState {
   final bool loading;
   final String? error;
+  final String? activeReportKey;
 
   final List<String> currencies;
   final List<BalanceRow> rows;
@@ -29,6 +30,7 @@ class ReportsUiState {
   const ReportsUiState({
     this.loading = false, // ✅ idle by default
     this.error,
+    this.activeReportKey,
     this.currencies = const [],
     this.rows = const [],
     this.pending = const [],
@@ -37,6 +39,7 @@ class ReportsUiState {
   ReportsUiState copyWith({
     bool? loading,
     String? error,
+    String? activeReportKey,
     List<String>? currencies,
     List<BalanceRow>? rows,
     List<PendingRow>? pending,
@@ -44,6 +47,7 @@ class ReportsUiState {
     return ReportsUiState(
       loading: loading ?? this.loading,
       error: error,
+      activeReportKey: activeReportKey,
       currencies: currencies ?? this.currencies,
       rows: rows ?? this.rows,
       pending: pending ?? this.pending,
@@ -56,7 +60,6 @@ class ReportsUiState {
 /// =====================================================
 class ReportsViewModel extends ChangeNotifier {
   final TransactionsRepository repo;
-  final PendingRepository pendingRepo;
 
   // ✅ FIX 1: start idle
   ReportsUiState _ui = const ReportsUiState();
@@ -64,20 +67,31 @@ class ReportsViewModel extends ChangeNotifier {
 
   ReportsViewModel({
     required this.repo,
-    required this.pendingRepo,
   });
 
   // =====================================================
   // INTERNAL LOADING HELPERS (simple & safe)
   // =====================================================
-  void _startLoading() {
-    _ui = _ui.copyWith(loading: true, error: null);
+  void _startLoading(String reportKey) {
+    _ui = _ui.copyWith(
+      loading: true,
+      error: null,
+      activeReportKey: reportKey,
+    );
     notifyListeners();
   }
 
   void _stopLoading() {
-    _ui = _ui.copyWith(loading: false);
+    _ui = _ui.copyWith(
+      loading: false,
+      activeReportKey: null,
+    );
     notifyListeners();
+  }
+
+  Future<void> _yieldForLoaderFrame() async {
+    // Let the loading indicator paint before starting heavier work.
+    await Future<void>.delayed(const Duration(milliseconds: 16));
   }
 
   // =====================================================
@@ -104,7 +118,8 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   Future<File?> generateBalanceReport() async {
     try {
-      _startLoading();
+      _startLoading('balance');
+      await _yieldForLoaderFrame();
 
       if (_ui.rows.isEmpty || _ui.currencies.isEmpty) {
         await loadBalanceMatrix();
@@ -128,7 +143,8 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   Future<File?> generateCreditReport() async {
     try {
-      _startLoading();
+      _startLoading('credit');
+      await _yieldForLoaderFrame();
 
       final result = await repo.getCreditMatrix();
       if (result.rows.isEmpty || result.currencies.isEmpty) return null;
@@ -150,7 +166,8 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   Future<File?> generateDebitReport() async {
     try {
-      _startLoading();
+      _startLoading('debit');
+      await _yieldForLoaderFrame();
 
       // Ensure matrix loaded
       if (_ui.rows.isEmpty || _ui.currencies.isEmpty) {
@@ -208,18 +225,37 @@ class ReportsViewModel extends ChangeNotifier {
     required int companyId,
   }) async {
     try {
-      _startLoading();
+      _startLoading('pending');
+      await _yieldForLoaderFrame();
 
-      final List<PendingRow> rows = await pendingRepo.getPendingRows(
+      final List<PendingGroupRow> groups = await repo.getPendingGroups(
         accId: accId,
         companyId: companyId,
+        statusFilter: 'NOTPAID',
       );
+
+      final rows = groups.map((g) {
+        return PendingRow(
+          voucherNo: g.voucherNo,
+          dateIso: g.beginDate,
+          pd: g.pd ?? "",
+          msg: g.msgNo ?? "",
+          sender: g.sender ?? "",
+          receiver: g.receiver ?? "",
+          description: "",
+          notPaidAmount: g.notPaidAmount,
+          paidAmount: g.paidAmount,
+          balance: g.balance,
+          currency: g.accTypeName ?? "",
+        );
+      }).toList();
 
       if (rows.isEmpty) return null;
 
       return await PendingPdfService.instance.render(
         officeName: officeName,
         rows: rows,
+        title: "Pending Amount (Grouped)",
       );
     } catch (e) {
       _ui = _ui.copyWith(error: e.toString());
@@ -239,7 +275,8 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   Future<File?> generateSubgroupReport() async {
     try {
-      _startLoading();
+      _startLoading('subgroup');
+      await _yieldForLoaderFrame();
 
       final companyId = GlobalState.instance.companyId;
       if (companyId == null) {

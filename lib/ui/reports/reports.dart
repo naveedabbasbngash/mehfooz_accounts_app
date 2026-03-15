@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,12 +5,13 @@ import '../../services/global_state.dart';
 import '../../services/pdf/open_file_service.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodel/reports/last_credit_view_model.dart';
+import '../../viewmodel/reports/currency_summary_report_view_model.dart';
 import '../../viewmodel/reports/ledger_filter_view_model.dart';
 import '../../viewmodel/reports/reports_view_model.dart';
 import '../../repository/transactions_repository.dart';
-import '../../repository/pending_repository.dart';
 import '../../data/local/database_manager.dart';
 import 'last_credit_summary_screen.dart';
+import 'currency_summary_report_screen.dart';
 import 'ledger_filter_screen.dart';
 
 class ReportsScreen extends StatelessWidget {
@@ -23,7 +23,6 @@ class ReportsScreen extends StatelessWidget {
       // ✅ NO eager loading here
       create: (_) => ReportsViewModel(
         repo: TransactionsRepository(DatabaseManager.instance.db),
-        pendingRepo: PendingRepository(DatabaseManager.instance.db),
       ),
       child: const _ReportsScreenBody(),
     );
@@ -40,36 +39,18 @@ class _ReportsScreenBody extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.app_bg,
-      body: Stack(
-        children: [
-          // ================= MAIN CONTENT =================
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
-            child: SingleChildScrollView(
-              physics: ui.loading
-                  ? const NeverScrollableScrollPhysics()
-                  : const BouncingScrollPhysics(),
-              child: Column(
-                children: [
-                  _buildMainCard(context, vm, ui),
-                ],
-              ),
-            ),
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+        child: SingleChildScrollView(
+          physics: ui.loading
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
+          child: Column(
+            children: [
+              _buildMainCard(context, vm, ui),
+            ],
           ),
-
-          // ================= LOADING OVERLAY =================
-          if (ui.loading)
-            Container(
-              color: Colors.black.withOpacity(0.12), // softer, professional
-              child: const Center(
-                child: SizedBox(
-                  width: 44,
-                  height: 44,
-                  child: CircularProgressIndicator(strokeWidth: 3),
-                ),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -129,16 +110,13 @@ class _ReportsScreenBody extends StatelessWidget {
 
           // ---------------- BALANCE ----------------
           _reportButton(
+            reportKey: 'balance',
+            activeReportKey: ui.activeReportKey,
             label: "Balance Report",
             icon: Icons.assessment_outlined,
             color: AppColors.primary,
             disabled: ui.loading,
             onTap: () async {
-              final companyId = GlobalState.instance.companyId;
-              if (companyId == null) {
-                _toast(context, "Please select a company first");
-                return;
-              }
               final file = await vm.generateBalanceReport();
               if (file == null) {
                 _toast(context, "No data available");
@@ -152,6 +130,8 @@ class _ReportsScreenBody extends StatelessWidget {
 
           // ---------------- SUB GROUP ----------------
           _reportButton(
+            reportKey: 'subgroup',
+            activeReportKey: ui.activeReportKey,
             label: "Sub group",
             icon: Icons.account_tree_outlined,
             color: AppColors.primary,
@@ -170,6 +150,8 @@ class _ReportsScreenBody extends StatelessWidget {
 
           // ---------------- CREDIT ----------------
           _reportButton(
+            reportKey: 'credit',
+            activeReportKey: ui.activeReportKey,
             label: "Jama / Credit Report",
             icon: Icons.credit_score_outlined,
             color: AppColors.success,
@@ -188,6 +170,8 @@ class _ReportsScreenBody extends StatelessWidget {
 
           // ---------------- DEBIT ----------------
           _reportButton(
+            reportKey: 'debit',
+            activeReportKey: ui.activeReportKey,
             label: "Banam / Debit Report",
             icon: Icons.trending_down_outlined,
             color: AppColors.error,
@@ -206,6 +190,8 @@ class _ReportsScreenBody extends StatelessWidget {
 
           // ---------------- PENDING ----------------
           _reportButton(
+            reportKey: 'pending',
+            activeReportKey: ui.activeReportKey,
             label: "Pending Report",
             icon: Icons.schedule_outlined,
             color: Colors.orange,
@@ -214,13 +200,8 @@ class _ReportsScreenBody extends StatelessWidget {
               final companyId = GlobalState.instance.companyId;
               final officeName = GlobalState.instance.companyName;
 
-              if (companyId == null) {
-                _toast(context, "Please select a company first");
-                return;
-              }
-
               final file = await vm.generatePendingReport(
-                officeName: officeName ?? "Mehfooz Accounts",
+                officeName: officeName,
                 accId: 3,
                 companyId: companyId,
               );
@@ -238,6 +219,8 @@ class _ReportsScreenBody extends StatelessWidget {
 
           // ---------------- LEDGER FILTER ----------------
           _reportButton(
+            reportKey: 'ledger',
+            activeReportKey: ui.activeReportKey,
             label: "Ledger Report",
             icon: Icons.receipt_long_outlined,
             color: AppColors.primary,
@@ -257,8 +240,38 @@ class _ReportsScreenBody extends StatelessWidget {
 
           const SizedBox(height: 12),
 
+          // ---------------- CURRENCY SUMMARY ----------------
+          _reportButton(
+            reportKey: 'currency_summary',
+            activeReportKey: ui.activeReportKey,
+            label: "Currency Summry Report",
+            icon: Icons.currency_exchange_outlined,
+            color: AppColors.primary,
+            disabled: ui.loading,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ChangeNotifierProvider(
+                    create: (_) => CurrencySummaryReportViewModel(
+                      repo: TransactionsRepository(
+                        DatabaseManager.instance.db,
+                      ),
+                      companyId: GlobalState.instance.companyId,
+                    ),
+                    child: const CurrencySummaryReportScreen(),
+                  ),
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 12),
+
           // ---------------- LAST CREDIT ----------------
           _reportButton(
+            reportKey: 'last_credit',
+            activeReportKey: ui.activeReportKey,
             label: "Last Credit Summary",
             icon: Icons.summarize_outlined,
             color: AppColors.primary,
@@ -289,45 +302,80 @@ class _ReportsScreenBody extends StatelessWidget {
   // BUTTON
   // =====================================================
   Widget _reportButton({
+    required String reportKey,
+    required String? activeReportKey,
     required String label,
     required IconData icon,
     required Color color,
     required VoidCallback onTap,
     bool disabled = false,
   }) {
-    return Opacity(
-      opacity: disabled ? 0.55 : 1,
-      child: InkWell(
-        onTap: disabled ? null : onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
-          decoration: BoxDecoration(
-            color: AppColors.cardBackground,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.divider),
+    final isActive = activeReportKey == reportKey;
+    final isDisabled = disabled && !isActive;
+
+    return InkWell(
+      onTap: disabled ? null : onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 14),
+        decoration: BoxDecoration(
+          color: isActive ? AppColors.highlight : AppColors.cardBackground,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isActive ? AppColors.primary : AppColors.divider,
           ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 26),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
-                  ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isDisabled ? AppColors.textMuted : color,
+              size: 26,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: FontWeight.w700,
+                  color: isDisabled ? AppColors.textMuted : AppColors.textDark,
                 ),
               ),
+            ),
+            if (isActive)
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primary,
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.primary,
+                      size: 16,
+                    ),
+                  ],
+                ),
+              )
+            else
               Icon(
                 Icons.chevron_right_rounded,
                 color: AppColors.textMuted,
                 size: 22,
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );

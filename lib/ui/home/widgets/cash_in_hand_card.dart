@@ -2,21 +2,24 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:country_flags/country_flags.dart';
 
+import 'package:mehfooz_accounts_app/data/local/database_manager.dart';
+import 'package:mehfooz_accounts_app/model/cash_in_hand_row.dart';
+import 'package:mehfooz_accounts_app/repository/transactions_repository.dart';
+import 'package:mehfooz_accounts_app/services/exchange_rate_service.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../services/pdf/export_summary_pdf.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 import '../../commons/fade_slide.dart';
 
-class CashInHandCard extends StatelessWidget {
+class CashInHandCard extends StatefulWidget {
   final HomeViewModel vm;
   final bool isExpanded;
   final VoidCallback onToggle;
   final int maxVisible;
 
-  final NumberFormat fmt = NumberFormat('#,##0.00');
-
-  CashInHandCard({
+  const CashInHandCard({
     super.key,
     required this.vm,
     required this.isExpanded,
@@ -25,10 +28,498 @@ class CashInHandCard extends StatelessWidget {
   });
 
   @override
+  State<CashInHandCard> createState() => _CashInHandCardState();
+}
+
+class _CashInHandCardState extends State<CashInHandCard> {
+  final NumberFormat _fmt = NumberFormat('#,##0.00');
+
+  List<String> _accTypeCurrencies = const [];
+  bool _loadingBaseCurrencies = false;
+  String? _selectedBaseCurrency;
+
+  bool _loadingRates = false;
+  String? _ratesError;
+  Map<String, double> _onlineRates = const {};
+  Map<String, double> _manualRates = const {};
+  int _rateRequestId = 0;
+  String _rowsSignature = '';
+
+  String _norm(String value) => value.trim().toUpperCase();
+  bool _isZero(double v) => v.abs() < 0.005;
+
+  String _currencyToCountryCode(String currency) {
+    switch (_norm(currency)) {
+      case 'PKR':
+        return 'PK';
+      case 'USD':
+        return 'US';
+      case 'AED':
+        return 'AE';
+      case 'SAR':
+        return 'SA';
+      case 'EUR':
+        return 'EU';
+      case 'GBP':
+      case 'POUND':
+        return 'GB';
+      case 'INR':
+      case 'IND':
+        return 'IN';
+      case 'AFG':
+      case 'AFN':
+        return 'AF';
+      case 'CAD':
+        return 'CA';
+      case 'JPY':
+        return 'JP';
+      case 'RMB':
+      case 'CNY':
+        return 'CN';
+      case 'IRR':
+        return 'IR';
+      case 'BHD':
+        return 'BH';
+      case 'OMR':
+        return 'OM';
+      case 'QAR':
+        return 'QA';
+      case 'DKK':
+        return 'DK';
+      case 'SEK':
+        return 'SE';
+      case 'NOK':
+        return 'NO';
+      case 'MYR':
+        return 'MY';
+      case 'AUD':
+        return 'AU';
+      case 'HKD':
+        return 'HK';
+      case 'SGD':
+      case 'SGP':
+        return 'SG';
+      case 'RUB':
+        return 'RU';
+      default:
+        return 'UN';
+    }
+  }
+
+  String _countryNameForCurrency(String currency) {
+    switch (_norm(currency)) {
+      case 'PKR':
+        return 'Pakistan';
+      case 'USD':
+        return 'United States';
+      case 'AED':
+        return 'United Arab Emirates';
+      case 'SAR':
+        return 'Saudi Arabia';
+      case 'EUR':
+        return 'European Union';
+      case 'GBP':
+      case 'POUND':
+        return 'United Kingdom';
+      case 'INR':
+      case 'IND':
+        return 'India';
+      case 'AFG':
+      case 'AFN':
+        return 'Afghanistan';
+      case 'CAD':
+        return 'Canada';
+      case 'JPY':
+        return 'Japan';
+      case 'RMB':
+      case 'CNY':
+        return 'China';
+      case 'IRR':
+        return 'Iran';
+      case 'BHD':
+        return 'Bahrain';
+      case 'OMR':
+        return 'Oman';
+      case 'QAR':
+        return 'Qatar';
+      case 'DKK':
+        return 'Denmark';
+      case 'SEK':
+        return 'Sweden';
+      case 'NOK':
+        return 'Norway';
+      case 'MYR':
+        return 'Malaysia';
+      case 'AUD':
+        return 'Australia';
+      case 'HKD':
+        return 'Hong Kong';
+      case 'SGD':
+      case 'SGP':
+        return 'Singapore';
+      case 'RUB':
+        return 'Russia';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  void _clearBaseCurrency() {
+    setState(() {
+      _selectedBaseCurrency = null;
+      _onlineRates = const {};
+      _manualRates = const {};
+      _ratesError = null;
+      _loadingRates = false;
+    });
+  }
+
+  double? _rateForCurrency(String currency) {
+    final base = _selectedBaseCurrency;
+    if (base == null || base.trim().isEmpty) return null;
+    final c = _norm(currency);
+    final b = _norm(base);
+    if (c == b) return 1.0;
+    final manual = _manualRates[c];
+    if (manual != null && manual > 0) return manual;
+    final online = _onlineRates[c];
+    if (online != null && online > 0) return online;
+    return null;
+  }
+
+  Future<void> _showEditRateDialog({
+    required String currency,
+  }) async {
+    final base = _selectedBaseCurrency;
+    if (base == null || base.trim().isEmpty) return;
+
+    final currentRate = _rateForCurrency(currency);
+    final controller = TextEditingController(
+      text: currentRate == null ? '' : currentRate.toStringAsFixed(6),
+    );
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text('Edit Rate ($currency)'),
+          content: TextField(
+            controller: controller,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              hintText: '1 $base = ? $currency',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final parsed = double.tryParse(controller.text.trim());
+                if (parsed != null && parsed > 0) {
+                  setState(() {
+                    _manualRates = Map<String, double>.from(_manualRates)
+                      ..[_norm(currency)] = parsed;
+                  });
+                }
+                Navigator.pop(ctx);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _ensureBaseCurrenciesLoaded() async {
+    if (_loadingBaseCurrencies || _accTypeCurrencies.isNotEmpty) return;
+
+    setState(() => _loadingBaseCurrencies = true);
+    try {
+      final companyId = widget.vm.selectedCompanyId ?? 1;
+      final repo = TransactionsRepository(DatabaseManager.instance.db);
+      final items = await repo.getCompanyCurrencies(companyId: companyId);
+      if (!mounted) return;
+      setState(() {
+        _accTypeCurrencies = items.where((e) => e.trim().isNotEmpty).toList(
+              growable: false,
+            );
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to load base currencies')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _loadingBaseCurrencies = false);
+      }
+    }
+  }
+
+  Future<void> _pickBaseCurrency(List<CashInHandRow> rows) async {
+    await _ensureBaseCurrenciesLoaded();
+    if (!mounted || _accTypeCurrencies.isEmpty) return;
+
+    String query = '';
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final filtered = _accTypeCurrencies
+                .where(
+                  (c) => c.toLowerCase().contains(query.trim().toLowerCase()),
+                )
+                .toList(growable: false);
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  14,
+                  8,
+                  14,
+                  14 + MediaQuery.of(ctx).viewInsets.bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Select Base Currency',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0B1E3A),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      autofocus: false,
+                      onChanged: (v) => setModalState(() => query = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search currency...',
+                        prefixIcon: const Icon(Icons.search),
+                        filled: true,
+                        fillColor: const Color(0xFFF7F8FA),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    if ((_selectedBaseCurrency ?? '').trim().isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      ListTile(
+                        dense: true,
+                        leading: const Icon(
+                          Icons.clear_rounded,
+                          color: Color(0xFFB91C1C),
+                        ),
+                        title: const Text(
+                          'Clear Base Currency',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFFB91C1C),
+                          ),
+                        ),
+                        onTap: () => Navigator.pop(ctx, '__CLEAR__'),
+                      ),
+                      const Divider(height: 1),
+                    ],
+                    const SizedBox(height: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 360),
+                      child: filtered.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 28),
+                                child: Text(
+                                  'No currency found',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: filtered.length,
+                              separatorBuilder: (context, index) =>
+                                  const Divider(height: 1),
+                              itemBuilder: (context, index) {
+                                final currency = filtered[index];
+                                final selected = _norm(_selectedBaseCurrency ?? '') ==
+                                    _norm(currency);
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    currency,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  trailing: selected
+                                      ? const Icon(
+                                          Icons.check_circle_rounded,
+                                          color: Color(0xFF09550C),
+                                        )
+                                      : null,
+                                  onTap: () => Navigator.pop(ctx, currency),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || selected == null) return;
+
+    if (selected == '__CLEAR__') {
+      _clearBaseCurrency();
+      return;
+    }
+
+    if (selected.trim().isEmpty) return;
+    setState(() {
+      _selectedBaseCurrency = selected.trim();
+      _manualRates = const {};
+      _onlineRates = const {};
+      _ratesError = null;
+    });
+    await _loadRatesForRows(rows);
+  }
+
+  Future<void> _loadRatesForRows(List<CashInHandRow> rows) async {
+    final base = _selectedBaseCurrency;
+    if (base == null || base.trim().isEmpty || rows.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _onlineRates = const {};
+        _ratesError = null;
+        _loadingRates = false;
+      });
+      return;
+    }
+
+    final requestId = ++_rateRequestId;
+    if (mounted) {
+      setState(() {
+        _loadingRates = true;
+        _ratesError = null;
+      });
+    }
+
+    try {
+      final rates = await ExchangeRateService.instance.getRates(
+        baseCurrency: base,
+        targetCurrencies: rows.map((e) => e.currency).toList(growable: false),
+      );
+      if (!mounted || requestId != _rateRequestId) return;
+      setState(() {
+        _onlineRates = rates.map((k, v) => MapEntry(_norm(k), v));
+        _loadingRates = false;
+        _ratesError = null;
+      });
+    } catch (_) {
+      if (!mounted || requestId != _rateRequestId) return;
+      setState(() {
+        _onlineRates = const {};
+        _loadingRates = false;
+        _ratesError = 'Live rate unavailable';
+      });
+    }
+  }
+
+  void _refreshRatesIfRowsChanged(List<CashInHandRow> rows) {
+    final signature = rows
+        .map((r) => '${r.currency}:${r.amount.toStringAsFixed(4)}')
+        .join('|');
+    if (signature == _rowsSignature) return;
+    _rowsSignature = signature;
+
+    if ((_selectedBaseCurrency ?? '').trim().isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _loadRatesForRows(rows);
+      }
+    });
+  }
+
+  double? _amountByRate({
+    required String currency,
+    required double amount,
+  }) {
+    final base = _selectedBaseCurrency;
+    if (base == null || base.trim().isEmpty) return null;
+
+    final c = _norm(currency);
+    final b = _norm(base);
+    if (c == b) return amount;
+
+    final rate = _rateForCurrency(currency);
+    if (rate == null || rate <= 0) return null;
+    return amount * rate;
+  }
+
+  Future<void> _exportCombinedPdf(BuildContext context) async {
+    final vm = widget.vm;
+    final companyName = vm.selectedCompanyName ?? "Mahfooz Accounts";
+    final base = _selectedBaseCurrency?.trim();
+    final hasBase = base != null && base.isNotEmpty;
+
+    final jbRows = vm.cashInHandSummary
+        .where((r) => !_isZero(r.amount.toDouble()))
+        .map((r) {
+      final currency = r.currency.trim().isEmpty ? 'Unknown' : r.currency.trim();
+      final amount = r.amount.toDouble();
+      return <String, dynamic>{
+        'currency': currency,
+        'amount': amount,
+        'rate': hasBase ? _rateForCurrency(currency) : null,
+        'converted': hasBase
+            ? _amountByRate(currency: currency, amount: amount)
+            : null,
+      };
+    }).toList(growable: false);
+
+    final acc1Rows = vm.acc1CashSummary
+        .where((r) => !_isZero(r.amount.toDouble()))
+        .toList(growable: false);
+
+    final file = await SummaryCombinedPdfService.instance.render(
+      companyName: companyName,
+      jbRows: jbRows,
+      acc1Rows: acc1Rows,
+      jbBaseCurrency: hasBase ? base : null,
+    );
+
+    await OpenFilex.open(file.path);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final rows =
-    vm.cashInHandSummary.where((r) => r.amount != 0).toList();
+    final rows = widget.vm.cashInHandSummary
+        .where((r) => !_isZero(r.amount.toDouble()))
+        .toList(growable: false);
     final hasData = rows.isNotEmpty;
+    _refreshRatesIfRowsChanged(rows);
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 200),
@@ -36,23 +527,87 @@ class CashInHandCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(16),
       decoration: _cardDecoration,
-      child: hasData ? _buildContent(context, rows) : _emptyState(),
+      child: hasData ? _buildContent(context, rows) : _emptyState(context),
     );
   }
 
-  Column _buildContent(BuildContext context, List<dynamic> rows) {
+  Column _buildContent(BuildContext context, List<CashInHandRow> rows) {
+    final base = _selectedBaseCurrency?.trim();
+    final hasBase = base != null && base.isNotEmpty;
+    final subtitle = hasBase
+        ? 'Summary by currency "$base"'
+        : 'Summary by currency';
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _titleRow(context),
+        _titleRow(context, rows),
         const SizedBox(height: 4),
-        Text(
-          "Summary by currency",
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: AppColors.textMuted),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                subtitle,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppColors.textMuted),
+              ),
+            ),
+            if (hasBase)
+              InkWell(
+                onTap: _clearBaseCurrency,
+                borderRadius: BorderRadius.circular(999),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFD1D5DB)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.restart_alt_rounded,
+                        size: 13,
+                        color: Color(0xFF6B7280),
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'Reset',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF4B5563),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
+        if (_loadingRates)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        if (_ratesError != null && _ratesError!.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              _ratesError!,
+              style: const TextStyle(
+                color: Color(0xFFB45309),
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         const SizedBox(height: 10),
         Divider(height: 16, color: AppColors.divider),
         AnimatedSize(
@@ -61,8 +616,13 @@ class CashInHandCard extends StatelessWidget {
           child: Column(
             children: [
               ..._buildRows(rows),
-              if (rows.length > maxVisible)
-                _buildExpandToggle(rows.length - maxVisible),
+              if (rows.length > widget.maxVisible)
+                _buildExpandToggle(rows.length - widget.maxVisible),
+              if ((_selectedBaseCurrency ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Divider(height: 12, color: AppColors.divider),
+                _buildTotalRow(rows),
+              ],
             ],
           ),
         ),
@@ -70,7 +630,7 @@ class CashInHandCard extends StatelessWidget {
     );
   }
 
-  Row _titleRow(BuildContext context) {
+  Row _titleRow(BuildContext context, List<CashInHandRow> rows) {
     return Row(
       children: [
         Icon(Icons.money, color: AppColors.primary, size: 22),
@@ -87,32 +647,131 @@ class CashInHandCard extends StatelessWidget {
         IconButton(
           icon: Icon(Icons.picture_as_pdf, color: AppColors.primary),
           tooltip: "Share PDF",
-          onPressed: () => _exportCombinedPdf(context, vm),
+          onPressed: () => _exportCombinedPdf(context),
+        ),
+        IconButton(
+          icon: Icon(Icons.more_vert, color: AppColors.primary),
+          tooltip: "Select base currency",
+          onPressed: () => _pickBaseCurrency(rows),
         ),
       ],
     );
   }
 
-  List<Widget> _buildRows(List<dynamic> rows) {
-    final visible =
-    isExpanded ? rows.length : rows.length.clamp(0, maxVisible);
+  List<Widget> _buildRows(List<CashInHandRow> rows) {
+    final base = _selectedBaseCurrency?.trim();
+    final hasBase = base != null && base.isNotEmpty;
+    final visible = widget.isExpanded
+        ? rows.length
+        : rows.length.clamp(0, widget.maxVisible).toInt();
 
     return List.generate(visible, (i) {
       final row = rows[i];
-      final isPositive = row.amount >= 0;
+      final currency = row.currency.trim().isEmpty ? 'Unknown' : row.currency.trim();
+      final countryName = _countryNameForCurrency(currency);
+      final original = row.amount.toDouble();
+      final calculated = _amountByRate(
+        currency: currency,
+        amount: original,
+      );
+      final rate = _rateForCurrency(currency);
+      final showCalculated = hasBase && calculated != null;
+      final isPositive = original >= 0;
 
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(row.currency,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            _AnimatedMoneyText(
-              value: row.amount.toDouble(),
-              fmt: fmt,
-              color:
-              isPositive ? AppColors.primary : AppColors.error,
+            Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CountryFlag.fromCountryCode(
+                    _currencyToCountryCode(currency),
+                    theme: const ImageTheme(
+                      width: 26,
+                      height: 26,
+                      shape: Circle(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      currency,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    Text(
+                      countryName,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _AnimatedMoneyText(
+                  value: original,
+                  fmt: _fmt,
+                  color: isPositive ? AppColors.primary : AppColors.error,
+                ),
+                if (hasBase)
+                  InkWell(
+                    borderRadius: BorderRadius.circular(6),
+                    onTap: () => _showEditRateDialog(currency: currency),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.edit_outlined,
+                            size: 11,
+                            color: Color(0xFF6B7280),
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            rate == null
+                                ? 'Rate --'
+                                : 'Rate ${rate.toStringAsFixed(4)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF4B5563),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (hasBase)
+                  Text(
+                    showCalculated
+                        ? 'Total ${_fmt.format(calculated)}'
+                        : 'Total --',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: showCalculated
+                          ? const Color(0xFF1D4ED8)
+                          : const Color(0xFFB45309),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+              ],
             ),
           ],
         ),
@@ -120,16 +779,61 @@ class CashInHandCard extends StatelessWidget {
     });
   }
 
+  Widget _buildTotalRow(List<CashInHandRow> rows) {
+    final base = _selectedBaseCurrency?.trim();
+    final hasBase = base != null && base.isNotEmpty;
+    if (!hasBase) {
+      return const SizedBox.shrink();
+    }
+
+    double total = 0;
+    for (final row in rows) {
+      final raw = row.amount.toDouble();
+      final calculated = _amountByRate(currency: row.currency, amount: raw);
+      if (calculated != null) {
+        total += calculated;
+      }
+    }
+
+    final color = total >= 0 ? AppColors.primary : AppColors.error;
+    final label = 'Total ($base)';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              color: AppColors.textDark,
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            _fmt.format(total),
+            style: TextStyle(
+              color: color,
+              fontSize: 14.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildExpandToggle(int hiddenCount) {
     return InkWell(
-      onTap: onToggle,
+      onTap: widget.onToggle,
       child: Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isExpanded
+              widget.isExpanded
                   ? Icons.keyboard_arrow_up
                   : Icons.keyboard_arrow_down,
               size: 18,
@@ -137,7 +841,7 @@ class CashInHandCard extends StatelessWidget {
             ),
             const SizedBox(width: 5),
             Text(
-              isExpanded ? "Show less" : "+ $hiddenCount more",
+              widget.isExpanded ? "Show less" : "+ $hiddenCount more",
               style: TextStyle(
                 fontSize: 13,
                 color: AppColors.primary,
@@ -150,14 +854,14 @@ class CashInHandCard extends StatelessWidget {
     );
   }
 
-  Widget _emptyState() {
+  Widget _emptyState(BuildContext context) {
     return FadeSlide(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 20),
         child: Column(
           children: [
             Icon(Icons.wallet_outlined,
-                size: 40, color: AppColors.primary.withOpacity(0.35)),
+                size: 40, color: AppColors.primary.withValues(alpha: 0.35)),
             const SizedBox(height: 12),
             Text(
               "No Summary Yet",
@@ -193,7 +897,6 @@ class _AnimatedMoneyText extends StatefulWidget {
   final Color color;
 
   const _AnimatedMoneyText({
-    super.key,
     required this.value,
     required this.fmt,
     required this.color,
@@ -226,7 +929,7 @@ class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
       tween: Tween<double>(begin: _oldValue, end: widget.value),
       duration: const Duration(milliseconds: 1500),
       curve: Curves.easeOutCubic,
-      builder: (_, v, __) {
+      builder: (context, v, child) {
         return Text(
           widget.fmt.format(v),
           style: TextStyle(
@@ -237,16 +940,4 @@ class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
       },
     );
   }
-}
-
-void _exportCombinedPdf(BuildContext context, HomeViewModel vm) async {
-  final companyName = vm.selectedCompanyName ?? "Mahfooz Accounts";
-
-  final file = await SummaryCombinedPdfService.instance.render(
-    companyName: companyName,
-    jbRows: vm.cashInHandSummary,
-    acc1Rows: vm.acc1CashSummary,
-  );
-
-  await OpenFilex.open(file.path);
 }

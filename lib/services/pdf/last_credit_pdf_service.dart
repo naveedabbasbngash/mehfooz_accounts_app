@@ -38,15 +38,19 @@ class LastCreditPdfService extends BasePdfService {
         margin: const pw.EdgeInsets.all(24),
         build: (context) {
           return [
+            pw.SizedBox(height: 8),
             // --------------------------------------------------
             // HEADER
             // --------------------------------------------------
-            pw.Text(
-              'Last Credit Summary',
-              style: pw.TextStyle(
-                font: latinBold,
-                fontSize: 20,
-                color: deepBlue,
+            pw.Center(
+              child: pw.Text(
+                'Last Credit Summary',
+                textAlign: pw.TextAlign.center,
+                style: pw.TextStyle(
+                  font: latinBold,
+                  fontSize: 20,
+                  color: deepBlue,
+                ),
               ),
             ),
             pw.SizedBox(height: 4),
@@ -72,7 +76,29 @@ class LastCreditPdfService extends BasePdfService {
                 ),
               ],
             ),
-            pw.SizedBox(height: 16),
+            pw.SizedBox(height: 6),
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Generated on: ${DateFormat('dd/MM/yyyy hh:mm a').format(DateTime.now())}',
+                  style: pw.TextStyle(
+                    font: latin,
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+                pw.Text(
+                  'Mehfooz Acounts',
+                  style: pw.TextStyle(
+                    font: latin,
+                    fontSize: 9,
+                    color: PdfColors.grey600,
+                  ),
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 8),
 
             // --------------------------------------------------
             // TABLE
@@ -215,23 +241,6 @@ class LastCreditPdfService extends BasePdfService {
                   );
                 }),
               ],
-            ),
-
-            pw.SizedBox(height: 12),
-
-            // --------------------------------------------------
-            // FOOTER
-            // --------------------------------------------------
-            pw.Align(
-              alignment: pw.Alignment.centerRight,
-              child: pw.Text(
-                'Generated on: ${DateFormat('dd/MM/yyyy hh:mm a').format(DateTime.now())}',
-                style: pw.TextStyle(
-                  font: latin,
-                  fontSize: 9,
-                  color: PdfColors.grey600,
-                ),
-              ),
             ),
           ];
         },

@@ -257,7 +257,7 @@ class _PasswordStepState extends State<_PasswordStep> {
             labelText: 'Password',
             border: const OutlineInputBorder(),
             suffixIcon: IconButton(
-              icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
+              icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
               onPressed: () => setState(() => obscure = !obscure),
             ),
           ),

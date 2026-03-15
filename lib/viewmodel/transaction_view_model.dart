@@ -41,6 +41,8 @@ class TransactionsViewModel extends ChangeNotifier {
   StreamSubscription? _itemsSub;
   StreamSubscription? _balanceSub;
 
+  bool _isZero(double v) => v.abs() < 0.005;
+
   /* -----------------------------------------------------
    * PUBLIC GETTERS
    * ----------------------------------------------------- */
@@ -174,7 +176,8 @@ class TransactionsViewModel extends ChangeNotifier {
       endDate: _endDate,
     )
         .listen((rows) {
-      _balanceByCurrency = rows;
+      _balanceByCurrency =
+          rows.where((r) => !_isZero(r.balance)).toList(growable: false);
       notifyListeners();
     });
   }
@@ -222,8 +225,11 @@ class TransactionsViewModel extends ChangeNotifier {
       currencies: balanceRow.byCurrency.keys.toList(),
       rows: [balanceRow],
       includeTotalsRow: false,
+      portrait: true,
+      currencyAmountRows: true,
     );
   }
+
   @override
   void dispose() {
     _itemsSub?.cancel();

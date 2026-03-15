@@ -194,6 +194,12 @@ class DatabaseManager {
     await _ensureColumnExists(db, "Transactions_P", "UpdatedAt", "TEXT");
     await _ensureColumnExists(db, "Transactions_P", "IsDeleted", "INTEGER DEFAULT 0");
 
+    // Ledger/report performance index (safe, idempotent)
+    await db.customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_transactions_main
+      ON Transactions_P (CompanyID, AccID, AccTypeID, TDate, VoucherNo);
+    ''');
+
     _log.i("✅ Auto-migration done.");
   }
 

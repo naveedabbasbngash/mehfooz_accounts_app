@@ -10,68 +10,35 @@ class AccountRepository {
   AccountRepository(this.db);
 
   static const String _pendingAmountSummaryQuery = """
-    WITH PendingGrouped AS (
+    SELECT
+      currency,
+      SUM(totalCr) AS totalCr,
+      SUM(totalDr) AS totalDr,
+      SUM(pendingUnits) AS pendingUnits
+    FROM (
       SELECT
         tp.AccTypeID,
         at.AccTypeName AS currency,
-        tp.msgno,
+        SUM(CAST(IFNULL(tp.Cr, 0) AS REAL)) AS totalCr,
+        SUM(CAST(IFNULL(tp.Dr, 0) AS REAL)) AS totalDr,
         SUM(
-          CASE
-            WHEN tp.currencystatus LIKE '%np%'
-              THEN CAST(IFNULL(tp.Cr, 0) AS REAL)
-            ELSE 0
-          END
-        ) AS notPaidAmount,
-        SUM(
-          CASE
-            WHEN tp.currencystatus LIKE '%P%'
-              THEN CAST(IFNULL(tp.Dr, 0) AS REAL)
-            ELSE 0
-          END
-        ) AS paidAmount,
-        SUM(
-          CASE
-            WHEN tp.currencystatus LIKE '%p%'
-              THEN CAST(IFNULL(tp.Dr, 0) AS REAL)
-            ELSE 0
-          END
-        ) -
-        SUM(
-          CASE
-            WHEN tp.currencystatus LIKE '%np%'
-              THEN CAST(IFNULL(tp.Cr, 0) AS REAL)
-            ELSE 0
-          END
-        ) AS balance
+          CAST(IFNULL(tp.Cr, 0) AS REAL) - CAST(IFNULL(tp.Dr, 0) AS REAL)
+        ) AS pendingUnits,
+        tp.CompanyID
       FROM Transactions_P tp
       INNER JOIN AccType at ON tp.AccTypeID = at.AccTypeID
       WHERE tp.CompanyID = ?1
         AND tp.AccID = ?2
-      GROUP BY tp.msgno, tp.AccTypeID, at.AccTypeName, tp.AccID
+      GROUP BY
+        tp.AccTypeID,
+        at.AccTypeName,
+        tp.CompanyID
       HAVING
         SUM(
-          CASE
-            WHEN tp.currencystatus LIKE '%p%'
-              THEN CAST(IFNULL(tp.Dr, 0) AS REAL)
-            ELSE 0
-          END
-        ) -
-        SUM(
-          CASE
-            WHEN tp.currencystatus LIKE '%np%'
-              THEN CAST(IFNULL(tp.Cr, 0) AS REAL)
-            ELSE 0
-          END
-        ) < 0
-    )
-    SELECT
-      currency,
-      SUM(notPaidAmount) AS totalCr,
-      SUM(paidAmount) AS totalDr,
-      SUM(balance) AS pendingUnits
-    FROM PendingGrouped
+          CAST(IFNULL(tp.Cr, 0) AS REAL) - CAST(IFNULL(tp.Dr, 0) AS REAL)
+        ) <> 0
+    ) grouped
     GROUP BY currency
-    HAVING SUM(balance) <> 0
     ORDER BY pendingUnits DESC;
   """;
 

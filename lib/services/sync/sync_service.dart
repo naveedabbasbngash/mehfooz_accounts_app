@@ -59,6 +59,16 @@ class PendingBatchItem {
   });
 }
 
+class VerifyDeviceUuidResult {
+  final bool isVerified;
+  final String message;
+
+  const VerifyDeviceUuidResult({
+    required this.isVerified,
+    required this.message,
+  });
+}
+
 /// Low-level HTTP client for sync API.
 /// Does NOT touch Drift or DatabaseManager.
 /// Repositories/ViewModels will use this.
@@ -70,6 +80,7 @@ class SyncService {
   static const Duration _pullRequestTimeout = Duration(seconds: 25);
   static const Duration _ackRequestTimeout = Duration(seconds: 15);
   static const Duration _pendingRequestTimeout = Duration(seconds: 12);
+  static const Duration _verifyRequestTimeout = Duration(seconds: 15);
 
   SyncService({String? baseUrl, Logger? logger})
     : baseUrl =
@@ -85,6 +96,134 @@ class SyncService {
         : baseUrl;
     final normalizedPath = path.startsWith('/') ? path.substring(1) : path;
     return Uri.parse('$normalizedBase/$normalizedPath');
+  }
+
+  Future<VerifyDeviceUuidResult> verifyDeviceUuid({
+    required String email,
+    required String uuid,
+  }) async {
+    final uri = _buildUri('api/verifyDeviceUuid');
+    final cleanEmail = email.trim().toLowerCase();
+    final cleanUuid = uuid.trim();
+
+    _log.i(
+      '📡 [SyncService] verifyDeviceUuid email=$cleanEmail uuid=$cleanUuid',
+    );
+
+    http.Response resp;
+    try {
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: {'email': cleanEmail, 'uuid': cleanUuid},
+          )
+          .timeout(_verifyRequestTimeout);
+    } on TimeoutException {
+      return const VerifyDeviceUuidResult(
+        isVerified: false,
+        message: 'Verification timed out. Please try again.',
+      );
+    } catch (e) {
+      return VerifyDeviceUuidResult(
+        isVerified: false,
+        message: 'Network error during verification: $e',
+      );
+    }
+
+    if (resp.statusCode != 200) {
+      return VerifyDeviceUuidResult(
+        isVerified: false,
+        message: 'Verification failed (${resp.statusCode}).',
+      );
+    }
+
+    final raw = resp.body.trim();
+    if (raw.isEmpty) {
+      return const VerifyDeviceUuidResult(
+        isVerified: false,
+        message: 'Invalid server response.',
+      );
+    }
+
+    try {
+      final decoded = jsonDecode(raw);
+
+      if (decoded is Map<String, dynamic>) {
+        final statusValue = decoded['status'];
+        final status = statusValue?.toString().toLowerCase() ?? '';
+        final statusBool = statusValue is bool ? statusValue : null;
+        final message = (decoded['message'] ?? '').toString();
+        final data = decoded['data'];
+        final dataMap = data is Map<String, dynamic> ? data : null;
+        final isEnabled = dataMap?['is_enabled'];
+        final isEnabledBool = isEnabled is bool ? isEnabled : null;
+        final verifiedBool = decoded['verified'] == true ||
+            decoded['success'] == true ||
+            decoded['is_verified'] == true;
+        final statusOk = status == 'ok' || status == 'success' || status == 'verified';
+        final statusFalse = statusBool == false || status == 'false';
+
+        if (statusFalse) {
+          return VerifyDeviceUuidResult(
+            isVerified: false,
+            message: message.isEmpty ? 'Invalid UUID for this email' : message,
+          );
+        }
+
+        if (isEnabledBool == false) {
+          final statusText = (dataMap?['status_text'] ?? '').toString().trim();
+          final disabledMessage = statusText.isEmpty
+              ? 'UUID found but disabled'
+              : 'UUID found but $statusText';
+          return VerifyDeviceUuidResult(
+            isVerified: false,
+            message: message.isEmpty ? disabledMessage : message,
+          );
+        }
+
+        if (isEnabledBool == true) {
+          return VerifyDeviceUuidResult(
+            isVerified: true,
+            message: message.isEmpty ? 'Valid UUID' : message,
+          );
+        }
+
+        if (verifiedBool || statusOk || statusBool == true) {
+          return VerifyDeviceUuidResult(
+            isVerified: true,
+            message: message.isEmpty ? 'Reference ID verified' : message,
+          );
+        }
+
+        return VerifyDeviceUuidResult(
+          isVerified: false,
+          message: message.isEmpty ? 'Reference ID not verified' : message,
+        );
+      }
+    } catch (_) {
+      // Fallback to non-JSON response check below.
+    }
+
+    final lower = raw.toLowerCase();
+    if (lower.contains('success') ||
+        lower.contains('verified') ||
+        lower == 'ok' ||
+        lower == 'true' ||
+        lower == '1') {
+      return const VerifyDeviceUuidResult(
+        isVerified: true,
+        message: 'Reference ID verified',
+      );
+    }
+
+    return VerifyDeviceUuidResult(
+      isVerified: false,
+      message: raw,
+    );
   }
 
   /// ------------------------------------------------------------

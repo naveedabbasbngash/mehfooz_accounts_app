@@ -32,6 +32,9 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   bool expanded = true;
   final NumberFormat fmt = NumberFormat('#,##0.##');
 
+  Color _balanceColor(double value) =>
+      value >= 0 ? AppColors.success : AppColors.error;
+
   // --------------------------------------------------------
   // Currency → Country Code Mapper
   // --------------------------------------------------------
@@ -107,6 +110,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   // COLLAPSED VIEW
   // ============================================================
   Widget _collapsedView(PendingGroupRow r, bool isNeg) {
+    final balColor = _balanceColor(r.balance);
+
     return Row(
       children: [
         Text(
@@ -147,8 +152,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
         Text(
           fmt.format(r.balance),
-          style: const TextStyle(
-            color: Colors.red,
+          style: TextStyle(
+            color: balColor,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -161,6 +166,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   // EXPANDED VIEW
   // ============================================================
   Widget _expandedView(PendingGroupRow r, bool isNeg) {
+    final balColor = _balanceColor(r.balance);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -204,8 +211,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
             Text(
               fmt.format(r.balance),
-              style: const TextStyle(
-                color: Colors.red,
+              style: TextStyle(
+                color: balColor,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -254,10 +261,10 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
                     const SizedBox(height: 4),
                     Text(
                       fmt.format(r.balance),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.red,
+                        color: balColor,
                       ),
                     ),
                   ],

@@ -5,9 +5,7 @@ import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import 'package:mehfooz_accounts_app/ui/home/widgets/home_header.dart';
 import 'package:provider/provider.dart';
 
-import '../../repository/transactions_repository.dart';
 import '../../viewmodel/home/home_view_model.dart';
-import '../../data/local/database_manager.dart';
 
 // Extracted Widgets
 import '../../viewmodel/home/not_paid_view_model.dart';
@@ -130,15 +128,15 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(
-                                builder: (_) => ChangeNotifierProvider(
+                              PageRouteBuilder(
+                                transitionDuration: Duration.zero,
+                                reverseTransitionDuration: Duration.zero,
+                                pageBuilder: (context, animation, secondary) =>
+                                    ChangeNotifierProvider(
                                   create: (_) => NotPaidViewModel(
-                                    repository: TransactionsRepository(
-                                      DatabaseManager.instance.db,
-                                    ),
                                     accId: 3,
                                     companyId: companyId,
-                                  )..loadRows(),
+                                  ),
                                   child: const NotPaidGroupedScreen(),
                                 ),
                               ),

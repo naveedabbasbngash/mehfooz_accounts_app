@@ -5,7 +5,9 @@ import '../model/balance_currency_ui.dart';
 import '../model/balance_matrix_result.dart';
 import '../model/balance_row.dart';
 import '../model/last_credit_row.dart';
+import '../model/pending_currency_summary.dart';
 import '../model/pending_group_row.dart';
+import '../model/pending_status_summary.dart';
 import '../model/simple_currency_summary.dart';
 import '../model/subgroup_balance_row.dart';
 import '../model/tx_filter.dart';
@@ -16,62 +18,184 @@ class TransactionsRepository {
 
   TransactionsRepository(this.db);
 
+  String _pendingStatusClause(String statusFilter) {
+    switch (statusFilter.toUpperCase()) {
+      case 'PAID':
+        // Paid tab uses both statuses, then filters in HAVING.
+        return "((tp.Status = 'Not Paid ( + )' AND tp.currencystatus = 'np') OR (tp.Status = 'Paid ( - )' AND tp.st = 'lok' AND tp.currencystatus = 'p'))";
+      case 'NOTPAID':
+        // Include both paid/not-paid rows so net balance per voucher is accurate.
+        return "((tp.Status = 'Not Paid ( + )' AND tp.currencystatus = 'np') OR (tp.Status = 'Paid ( - )' AND tp.st = 'lok' AND tp.currencystatus = 'p'))";
+      case 'ALL':
+      default:
+        return "((tp.Status = 'Not Paid ( + )' AND tp.currencystatus = 'np') OR (tp.Status = 'Paid ( - )' AND tp.st = 'lok' AND tp.currencystatus = 'p'))";
+    }
+  }
+
+  String _pendingHavingClause(String statusFilter) {
+    switch (statusFilter.toUpperCase()) {
+      case 'PAID':
+        return "(SUM(tp.Cr) - SUM(tp.Dr) < 0 OR (SUM(tp.Cr) - SUM(tp.Dr) > 0 AND MAX(tp.Status) = 'Paid ( - )'))";
+      case 'NOTPAID':
+        return "SUM(tp.Cr) - SUM(tp.Dr) > 0";
+      case 'ALL':
+      default:
+        return "SUM(tp.Cr) - SUM(tp.Dr) <> 0";
+    }
+  }
+
+  String _pendingBalanceExpr(String statusFilter) {
+    if (statusFilter.toUpperCase() == 'PAID') {
+      return "-SUM(tp.Dr)";
+    }
+    return "SUM(tp.Cr) - SUM(tp.Dr)";
+  }
+
+  String _pendingOrderByClause(String statusFilter) {
+    if (statusFilter.toUpperCase() == 'ALL') {
+      return "CASE WHEN SUM(tp.Cr) - SUM(tp.Dr) > 0 THEN 0 ELSE 1 END ASC, MIN(tp.TDate) DESC, MIN(tp.VoucherNo) DESC";
+    }
+    return "MIN(tp.TDate) DESC, MIN(tp.VoucherNo) DESC";
+  }
+
+  // =========================================================
+  // PENDING BY CLICKED CURRENCY (Home pending tile tap)
+  // =========================================================
+  Future<List<PendingGroupRow>> getPendingByCurrencyClick({
+    required int companyId,
+    required String currency,
+    String statusFilter = 'ALL',
+  }) async {
+    debugPrint(
+      "📌 getPendingByCurrencyClick companyId=$companyId currency=$currency status=$statusFilter",
+    );
+
+    final statusClause = _pendingStatusClause(statusFilter);
+    final havingClause = _pendingHavingClause(statusFilter);
+    final balanceExpr = _pendingBalanceExpr(statusFilter);
+    final orderByClause = _pendingOrderByClause(statusFilter);
+
+    final query = """
+SELECT 
+    tp.hwls AS VoucherReference, 
+    MIN(tp.VoucherNo) AS FirstVoucherNo, 
+    MIN(substr(tp.TDate, 1, 10)) AS TDate, 
+    MAX(tp.msgno) AS msgno, 
+    COALESCE(
+        MAX(CASE WHEN tp.Dr > 0 THEN tp.hwls1 END), 
+        MAX(tp.hwls1), 
+        'No Sender'
+    ) AS Sender, 
+    COALESCE(
+        MAX(CASE WHEN tp.Cr > 0 THEN tp.advancemess END), 
+        MAX(tp.advancemess), 
+        'No Receiver'
+    ) AS Receiver, 
+    tp.AccID, 
+    MAX(p.Name) AS AccountName, 
+    at.AccTypeName AS Currency, 
+    SUM(tp.Cr) AS Credit, 
+    SUM(tp.Dr) AS Debit, 
+    $balanceExpr AS Balance, 
+    CASE 
+        WHEN SUM(tp.Cr) - SUM(tp.Dr) > 0 THEN 'Not Paid'
+        WHEN SUM(tp.Cr) - SUM(tp.Dr) < 0 THEN 'Paid'
+    END AS PaymentStatus,
+    tp.CompanyID,
+    tp.AccTypeID
+FROM Transactions_P AS tp 
+LEFT JOIN Acc_Personal AS p ON tp.AccID = p.AccID 
+LEFT JOIN AccType AS at ON tp.AccTypeID = at.AccTypeID
+WHERE 
+    tp.AccID = 3
+    AND tp.hwls IS NOT NULL
+    AND tp.hwls != ''
+    AND (
+        $statusClause
+    )
+    AND tp.CompanyID = ?1
+    AND UPPER(at.AccTypeName) = UPPER(?2)
+GROUP BY tp.hwls, tp.AccID, at.AccTypeName
+HAVING $havingClause
+ORDER BY $orderByClause;
+""";
+
+    final result = await db
+        .customSelect(
+          query,
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withString(currency),
+          ],
+          readsFrom: {db.transactionsP, db.accPersonal, db.accType},
+        )
+        .get();
+
+    debugPrint(
+      "✅ getPendingByCurrencyClick returned rows=${result.length}",
+    );
+    for (int i = 0; i < result.length && i < 3; i++) {
+      debugPrint("🔎 clickRow[$i] ${result[i].data}");
+    }
+
+    return result.map((row) => PendingGroupRow.fromRow(row.data)).toList();
+  }
+
   // =========================================================
   // PENDING GROUPS (NotPaidGroupedScreen) ✅ already company scoped
   // =========================================================
   Future<List<PendingGroupRow>> getPendingGroups({
     required int accId,
     required int companyId,
-    required bool showAll,
+    String statusFilter = 'ALL',
   }) async {
-    const query = r"""
-WITH RankedTransactions AS (
-    SELECT 
-        tp.VoucherNo,
-        substr(tp.TDate,1,10) AS TDate,
-        tp.msgno,
-        tp.hwls1,
-        tp.advancemess,
-        tp.AccTypeID,
-        tp.AccID,
-        ap.Name,
-        at.AccTypeName,
-        tp.PD,
-        tp.currencystatus,
-        CAST(IFNULL(tp.Cr, 0) AS REAL) AS Cr,
-        CAST(IFNULL(tp.Dr, 0) AS REAL) AS Dr
-    FROM Transactions_P tp
-    INNER JOIN Acc_Personal ap ON tp.AccID = ap.AccID
-    INNER JOIN AccType at      ON tp.AccTypeID = at.AccTypeID
-    WHERE tp.AccID = ?1
-      AND tp.CompanyID = ?2
-)
+    final statusClause = _pendingStatusClause(statusFilter);
+    final havingClause = _pendingHavingClause(statusFilter);
+    final balanceExpr = _pendingBalanceExpr(statusFilter);
+    final orderByClause = _pendingOrderByClause(statusFilter);
+
+    final query = """
 SELECT 
-    MIN(VoucherNo) AS voucherNo,
-    MIN(TDate)     AS beginDate,
-    msgno          AS msgno,
-    SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS notPaidAmount,
-    SUM(CASE WHEN currencystatus LIKE '%P%'  THEN Dr ELSE 0 END) AS paidAmount,
-    SUM(CASE WHEN currencystatus LIKE '%p%'  THEN Dr ELSE 0 END)
-      - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END) AS balance, 
-    MAX(hwls1)        AS sender,
-    MAX(advancemess)  AS receiver,
-    AccTypeID         AS accTypeId,
-    AccID             AS accId,
-    MAX(Name)         AS name,
-    MAX(AccTypeName)  AS accTypeName,
-    MAX(PD)           AS pd
-FROM RankedTransactions
-GROUP BY msgno, AccTypeID, AccID
-HAVING 
+    tp.hwls AS VoucherReference, 
+    MIN(tp.VoucherNo) AS FirstVoucherNo, 
+    MIN(substr(tp.TDate, 1, 10)) AS TDate, 
+    MAX(tp.msgno) AS msgno, 
+    COALESCE(
+        MAX(CASE WHEN tp.Dr > 0 THEN tp.hwls1 END), 
+        MAX(tp.hwls1), 
+        'No Sender'
+    ) AS Sender, 
+    COALESCE(
+        MAX(CASE WHEN tp.Cr > 0 THEN tp.advancemess END), 
+        MAX(tp.advancemess), 
+        'No Receiver'
+    ) AS Receiver, 
+    tp.AccID, 
+    MAX(p.Name) AS AccountName, 
+    at.AccTypeName AS Currency, 
+    SUM(tp.Cr) AS Credit, 
+    SUM(tp.Dr) AS Debit, 
+    $balanceExpr AS Balance, 
     CASE 
-        WHEN ?3 = 1 THEN 1 
-        ELSE (
-            (SUM(CASE WHEN currencystatus LIKE '%p%' THEN Dr ELSE 0 END)
-             - SUM(CASE WHEN currencystatus LIKE '%np%' THEN Cr ELSE 0 END)) < 0
-        )
-     END
-ORDER BY beginDate DESC, voucherNo DESC;
+        WHEN SUM(tp.Cr) - SUM(tp.Dr) > 0 THEN 'Not Paid'
+        WHEN SUM(tp.Cr) - SUM(tp.Dr) < 0 THEN 'Paid'
+    END AS PaymentStatus,
+    tp.CompanyID,
+    tp.AccTypeID
+FROM Transactions_P AS tp 
+LEFT JOIN Acc_Personal AS p ON tp.AccID = p.AccID 
+LEFT JOIN AccType AS at ON tp.AccTypeID = at.AccTypeID
+WHERE 
+    tp.AccID = ?1
+    AND tp.hwls IS NOT NULL
+    AND tp.hwls != ''
+    AND (
+        $statusClause
+    )
+    AND tp.CompanyID = ?2
+GROUP BY tp.hwls, tp.AccID, at.AccTypeName
+HAVING $havingClause
+ORDER BY $orderByClause;
 """;
 
     // --------------------------------------------------
@@ -80,7 +204,7 @@ ORDER BY beginDate DESC, voucherNo DESC;
     debugPrint("📌 getPendingGroups()");
     debugPrint("   accId     = $accId");
     debugPrint("   companyId = $companyId");
-    debugPrint("   showAll   = $showAll");
+    debugPrint("   status    = $statusFilter");
 
     final result = await db
         .customSelect(
@@ -88,7 +212,6 @@ ORDER BY beginDate DESC, voucherNo DESC;
           variables: [
             Variable.withInt(accId),
             Variable.withInt(companyId),
-            Variable.withInt(showAll ? 1 : 0),
           ],
           readsFrom: {db.transactionsP, db.accPersonal, db.accType},
         )
@@ -127,6 +250,161 @@ ORDER BY beginDate DESC, voucherNo DESC;
     return rows;
   }
 
+  Future<PendingStatusSummary> getPendingStatusSummary({
+    required int accId,
+    required int companyId,
+    String? currency,
+  }) async {
+    final hasCurrency = currency != null && currency.trim().isNotEmpty;
+    final allStatusClause = _pendingStatusClause('ALL');
+    final currencyClause = hasCurrency
+        ? "AND UPPER(at.AccTypeName) = UPPER(?3)"
+        : "";
+
+    final query = """
+WITH grouped AS (
+  SELECT
+      SUM(tp.Cr) - SUM(tp.Dr) AS netBalance,
+      -SUM(tp.Dr) AS paidBalance,
+      MAX(tp.Status) AS maxStatus
+  FROM Transactions_P AS tp
+  LEFT JOIN AccType AS at ON tp.AccTypeID = at.AccTypeID
+  WHERE tp.AccID = ?1
+    AND tp.CompanyID = ?2
+    AND tp.hwls IS NOT NULL
+    AND tp.hwls != ''
+    AND (
+      $allStatusClause
+    )
+    $currencyClause
+  GROUP BY tp.hwls, tp.AccID, at.AccTypeName
+  HAVING SUM(tp.Cr) - SUM(tp.Dr) <> 0
+)
+SELECT
+  COALESCE(SUM(ABS(netBalance)), 0) AS allAmount,
+  COALESCE(SUM(CASE WHEN netBalance > 0 THEN netBalance ELSE 0 END), 0) AS notPaidAmount,
+  COALESCE(
+    SUM(
+      CASE
+        WHEN netBalance < 0 OR (netBalance > 0 AND maxStatus = 'Paid ( - )')
+        THEN ABS(paidBalance)
+        ELSE 0
+      END
+    ),
+    0
+  ) AS paidAmount,
+  COUNT(*) AS allCount,
+  COALESCE(SUM(CASE WHEN netBalance > 0 THEN 1 ELSE 0 END), 0) AS notPaidCount,
+  COALESCE(
+    SUM(
+      CASE
+        WHEN netBalance < 0 OR (netBalance > 0 AND maxStatus = 'Paid ( - )')
+        THEN 1
+        ELSE 0
+      END
+    ),
+    0
+  ) AS paidCount
+FROM grouped;
+""";
+
+    final vars = <Variable>[
+      Variable.withInt(accId),
+      Variable.withInt(companyId),
+      if (hasCurrency) Variable.withString(currency.trim()),
+    ];
+
+    final result = await db
+        .customSelect(
+          query,
+          variables: vars,
+          readsFrom: {db.transactionsP, db.accType},
+        )
+        .getSingleOrNull();
+
+    if (result == null) return PendingStatusSummary.empty;
+
+    final d = result.data;
+    double toDouble(dynamic v) => (v is num) ? v.toDouble() : 0.0;
+    int toInt(dynamic v) => (v is num) ? v.toInt() : 0;
+
+    return PendingStatusSummary(
+      allAmount: toDouble(d['allAmount']),
+      paidAmount: toDouble(d['paidAmount']),
+      notPaidAmount: toDouble(d['notPaidAmount']),
+      allCount: toInt(d['allCount']),
+      paidCount: toInt(d['paidCount']),
+      notPaidCount: toInt(d['notPaidCount']),
+    );
+  }
+
+  Future<List<PendingCurrencySummary>> getPendingStatusSummaryByCurrency({
+    required int accId,
+    required int companyId,
+  }) async {
+    final allStatusClause = _pendingStatusClause('ALL');
+
+    final query = """
+WITH grouped AS (
+  SELECT
+      COALESCE(NULLIF(TRIM(at.AccTypeName), ''), 'Unknown') AS currency,
+      SUM(tp.Cr) - SUM(tp.Dr) AS netBalance,
+      -SUM(tp.Dr) AS paidBalance,
+      MAX(tp.Status) AS maxStatus
+  FROM Transactions_P AS tp
+  LEFT JOIN AccType AS at ON tp.AccTypeID = at.AccTypeID
+  WHERE tp.AccID = ?1
+    AND tp.CompanyID = ?2
+    AND tp.hwls IS NOT NULL
+    AND tp.hwls != ''
+    AND (
+      $allStatusClause
+    )
+  GROUP BY tp.hwls, tp.AccID, at.AccTypeName
+  HAVING SUM(tp.Cr) - SUM(tp.Dr) <> 0
+)
+SELECT
+  currency,
+  COALESCE(SUM(CASE WHEN netBalance > 0 THEN netBalance ELSE 0 END), 0) AS notPaidAmount,
+  COALESCE(
+    SUM(
+      CASE
+        WHEN netBalance < 0 OR (netBalance > 0 AND maxStatus = 'Paid ( - )')
+        THEN ABS(paidBalance)
+        ELSE 0
+      END
+    ),
+    0
+  ) AS paidAmount
+FROM grouped
+GROUP BY currency
+ORDER BY currency COLLATE NOCASE ASC;
+""";
+
+    final result = await db
+        .customSelect(
+          query,
+          variables: [
+            Variable.withInt(accId),
+            Variable.withInt(companyId),
+          ],
+          readsFrom: {db.transactionsP, db.accType},
+        )
+        .get();
+
+    double toDouble(dynamic v) => (v is num) ? v.toDouble() : 0.0;
+
+    return result
+        .map(
+          (r) => PendingCurrencySummary(
+            currency: (r.data['currency'] as String?) ?? 'Unknown',
+            notPaidAmount: toDouble(r.data['notPaidAmount']),
+            paidAmount: toDouble(r.data['paidAmount']),
+          ),
+        )
+        .toList();
+  }
+
   // =========================================================
   // SUBGROUP BALANCE (Trial Balance by Subgroup)
   // =========================================================
@@ -147,7 +425,7 @@ INNER JOIN AccType AS at
 INNER JOIN Company AS c 
     ON ap.CompanyID = c.CompanyID
 WHERE  tp.CompanyID = ?1
-   AND ap.AccID NOT IN (1003, 1004)
+   AND ap.AccID NOT IN (1003, 1004, 1006)
 GROUP BY 
     ap.statusg,
     ap.Name,
@@ -271,6 +549,57 @@ ORDER BY
 
     if (rows.isEmpty) return null;
     return rows.first.data['accId'] as int?;
+  }
+
+  Future<List<String>> getAccountNameSuggestions({
+    required int companyId,
+    int limit = 500,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+    SELECT DISTINCT TRIM(Name) AS name
+    FROM Acc_Personal
+    WHERE CompanyID = ?1
+      AND TRIM(Name) <> ''
+    ORDER BY Name COLLATE NOCASE
+    LIMIT ?2
+    ''',
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withInt(limit),
+          ],
+          readsFrom: {db.accPersonal},
+        )
+        .get();
+
+    return rows
+        .map((r) => (r.data['name'] as String?)?.trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<List<String>> getCompanyCurrencies({
+    required int companyId,
+  }) async {
+    // Kept for API compatibility with callers; currencies are loaded from AccType.
+    final _ = companyId;
+    final rows = await db
+        .customSelect(
+          '''
+    SELECT DISTINCT TRIM(AccTypeName) AS currency
+    FROM AccType
+    WHERE TRIM(AccTypeName) <> ''
+    ORDER BY AccTypeName COLLATE NOCASE
+    ''',
+          readsFrom: {db.accType},
+        )
+        .get();
+
+    return rows
+        .map((r) => (r.data['currency'] as String?)?.trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
   }
 
   // =========================================================
@@ -398,6 +727,7 @@ ORDER BY
         SELECT at.AccTypeName AS cur
         FROM AccType at
         JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
+        WHERE tp.AccID NOT IN (1003, 1004, 1006)
         GROUP BY at.AccTypeName
         HAVING 
           IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) <> 0
@@ -409,6 +739,7 @@ ORDER BY
         FROM AccType at
         JOIN Transactions_P tp ON at.AccTypeID = tp.AccTypeID
         WHERE tp.CompanyID = ?1
+          AND tp.AccID NOT IN (1003, 1004, 1006)
         GROUP BY at.AccTypeName
         HAVING 
           IFNULL(SUM(CAST(tp.Cr AS REAL)),0.0) <> 0
@@ -446,6 +777,7 @@ ORDER BY
         - IFNULL(SUM(CAST(tp.Dr AS REAL)),0.0) AS net
         FROM Acc_Personal ap
         LEFT JOIN Transactions_P tp ON ap.AccID = tp.AccID
+         AND tp.AccID NOT IN (1003, 1004, 1006)
         LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
         GROUP BY ap.Name, at.AccTypeName
         ORDER BY ap.Name COLLATE NOCASE, at.AccTypeName COLLATE NOCASE
@@ -459,6 +791,7 @@ ORDER BY
         FROM Acc_Personal ap
         LEFT JOIN Transactions_P tp 
           ON ap.AccID = tp.AccID
+         AND tp.AccID NOT IN (1003, 1004, 1006)
          AND tp.CompanyID = ?1
         LEFT JOIN AccType at ON tp.AccTypeID = at.AccTypeID
         GROUP BY ap.Name, at.AccTypeName
@@ -702,13 +1035,19 @@ ORDER BY
     required int accTypeId,
     required String fromDate,
   }) async {
+    final sw = Stopwatch()..start();
+    debugPrint(
+      "[LedgerPerf][Repo] opening:start companyId=$companyId accId=$accId "
+      "accTypeId=$accTypeId fromDate=$fromDate",
+    );
+
     final sql = (companyId == null)
         ? r'''
         SELECT IFNULL(SUM(Cr),0.0) - IFNULL(SUM(Dr),0.0) AS opening
         FROM Transactions_P
         WHERE AccID = ?1
           AND AccTypeID = ?2
-          AND substr(TDate,1,10) < ?3
+          AND TDate < ?3
       '''
         : r'''
         SELECT IFNULL(SUM(Cr),0.0) - IFNULL(SUM(Dr),0.0) AS opening
@@ -716,7 +1055,7 @@ ORDER BY
         WHERE CompanyID = ?1
           AND AccID = ?2
           AND AccTypeID = ?3
-          AND substr(TDate,1,10) < ?4
+          AND TDate < ?4
       ''';
 
     final vars = (companyId == null)
@@ -734,9 +1073,19 @@ ORDER BY
 
     final rows = await db.customSelect(sql, variables: vars).get();
 
-    if (rows.isEmpty) return 0.0;
+    if (rows.isEmpty) {
+      sw.stop();
+      debugPrint(
+        "[LedgerPerf][Repo] opening:done empty elapsedMs=${sw.elapsedMilliseconds}",
+      );
+      return 0.0;
+    }
 
     final raw = (rows.first.data['opening'] as num?)?.toDouble() ?? 0.0;
+    sw.stop();
+    debugPrint(
+      "[LedgerPerf][Repo] opening:done value=$raw elapsedMs=${sw.elapsedMilliseconds}",
+    );
 
     // 🔒 kill -0.00 noise
     return raw.abs() < 0.005 ? 0.0 : raw;
@@ -747,13 +1096,19 @@ ORDER BY
     required int accId,
     required int accTypeId,
     required String fromDate,
-    required String toDate,
+    required String toDateExclusive,
   }) async {
+    final sw = Stopwatch()..start();
+    debugPrint(
+      "[LedgerPerf][Repo] rows:start companyId=$companyId accId=$accId "
+      "accTypeId=$accTypeId from=$fromDate toExclusive=$toDateExclusive",
+    );
+
     final sql = (companyId == null)
         ? r'''
           SELECT
               t.VoucherNo            AS voucherNo,
-              substr(t.TDate,1,10)   AS tDate,
+              t.TDate                AS tDate,
               t.Description          AS description,
               IFNULL(t.Dr,0)         AS dr,
               IFNULL(t.Cr,0)         AS cr
@@ -761,13 +1116,14 @@ ORDER BY
           WHERE t.AccID = ?1
             AND t.AccTypeID = ?2
             AND t.TDate IS NOT NULL
-            AND substr(t.TDate,1,10) BETWEEN ?3 AND ?4
-          ORDER BY substr(t.TDate,1,10) ASC, t.VoucherNo ASC
+            AND t.TDate >= ?3
+            AND t.TDate < ?4
+          ORDER BY t.TDate ASC, t.VoucherNo ASC
         '''
         : r'''
           SELECT
               t.VoucherNo            AS voucherNo,
-              substr(t.TDate,1,10)   AS tDate,
+              t.TDate                AS tDate,
               t.Description          AS description,
               IFNULL(t.Dr,0)         AS dr,
               IFNULL(t.Cr,0)         AS cr
@@ -776,8 +1132,9 @@ ORDER BY
             AND t.AccID = ?2
             AND t.AccTypeID = ?3
             AND t.TDate IS NOT NULL
-            AND substr(t.TDate,1,10) BETWEEN ?4 AND ?5
-          ORDER BY substr(t.TDate,1,10) ASC, t.VoucherNo ASC
+            AND t.TDate >= ?4
+            AND t.TDate < ?5
+          ORDER BY t.TDate ASC, t.VoucherNo ASC
         ''';
 
     final vars = (companyId == null)
@@ -785,20 +1142,25 @@ ORDER BY
             Variable.withInt(accId),
             Variable.withInt(accTypeId),
             Variable.withString(fromDate),
-            Variable.withString(toDate),
+            Variable.withString(toDateExclusive),
           ]
         : [
             Variable.withInt(companyId),
             Variable.withInt(accId),
             Variable.withInt(accTypeId),
             Variable.withString(fromDate),
-            Variable.withString(toDate),
+            Variable.withString(toDateExclusive),
           ];
 
-    return db
+    final out = await db
         .customSelect(sql, variables: vars)
         .get()
         .then((rows) => rows.map((r) => r.data).toList());
+    sw.stop();
+    debugPrint(
+      "[LedgerPerf][Repo] rows:done count=${out.length} elapsedMs=${sw.elapsedMilliseconds}",
+    );
+    return out;
   }
 
   // =========================================================

@@ -7,10 +7,8 @@ import 'package:country_flags/country_flags.dart';
 
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../model/pending_amount_row.dart';
-import '../../../repository/transactions_repository.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 import '../../../viewmodel/home/not_paid_view_model.dart';
-import '../../../data/local/database_manager.dart';
 import '../../pending/pending_grouped_screen.dart';
 
 class PendingAmountsList extends StatelessWidget {
@@ -128,16 +126,16 @@ class PendingAmountsList extends StatelessWidget {
 
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) {
+              PageRouteBuilder(
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+                pageBuilder: (context, animation, secondary) {
                   return ChangeNotifierProvider(
                     create: (_) => NotPaidViewModel(
-                      repository: TransactionsRepository(
-                        DatabaseManager.instance.db,
-                      ),
                       accId: 3,
                       companyId: companyId,
-                    )..loadRows(),
+                      currencyFilter: row.currency,
+                    ),
                     child: NotPaidGroupedScreen(
                       filterCurrency: row.currency,
                     ),

@@ -9,6 +9,7 @@ import '../../viewmodel/home/not_paid_view_model.dart';
 import '../../model/pending_group_row.dart';
 import 'widgets/pending_group_list.dart';
 import 'widgets/pending_search_bar.dart';
+import 'widgets/pending_status_summary_card.dart';
 
 class NotPaidGroupedScreen extends StatefulWidget {
   final String? filterCurrency;
@@ -27,61 +28,26 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
 
   bool selectionMode = false;
   final Set<PendingGroupRow> _selectedRows = {};
+  bool _loadStarted = false;
+  bool _isExportingPdf = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _loadStarted) return;
+      _loadStarted = true;
+      // Let the new route render first, then start heavy DB work.
+      await Future<void>.delayed(const Duration(milliseconds: 320));
+      if (!mounted) return;
+      context.read<NotPaidViewModel>().loadRows();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final vm = Provider.of<NotPaidViewModel>(context);
-    List<PendingGroupRow> rows = vm.rows;
-
-    // Currency Filter
-    if (widget.filterCurrency != null) {
-      rows = rows
-          .where((r) => (r.accTypeName ?? "").toLowerCase() ==
-          widget.filterCurrency!.toLowerCase())
-          .toList();
-    }
-
-    // Status filter
-    rows = rows.where((r) {
-      if (statusFilter == "PAID") return r.balance == 0;
-      if (statusFilter == "NOTPAID") return r.balance != 0;
-      return true;
-    }).toList();
-
-    // Date filter
-    if (startDate != null && endDate != null) {
-      rows = rows.where((r) {
-        final date = DateTime.tryParse(r.beginDate);
-        if (date == null) return false;
-        return date.isAfter(startDate!.subtract(const Duration(days: 1))) &&
-            date.isBefore(endDate!.add(const Duration(days: 1)));
-      }).toList();
-    }
-
-    // Search Filter
-    final q = query.trim().toLowerCase();
-    final isNumeric = double.tryParse(q) != null;
-
-    final filtered = rows.where((r) {
-      if (q.isEmpty) return true;
-
-      final sender = (r.sender ?? "").toLowerCase();
-      final receiver = (r.receiver ?? "").toLowerCase();
-      final msgNo = (r.msgNo ?? "").toLowerCase();
-      final accType = (r.accTypeName ?? "").toLowerCase();
-      final beginDate = r.beginDate.toLowerCase();
-      final balance = r.balance.toStringAsFixed(2);
-
-      if (isNumeric) {
-        return balance == q || balance.startsWith(q);
-      }
-
-      return sender.startsWith(q) ||
-          receiver.startsWith(q) ||
-          msgNo.startsWith(q) ||
-          accType.startsWith(q) ||
-          beginDate.startsWith(q);
-    }).toList();
+    final filtered = _applyFilters(vm.rows);
 
     return Scaffold(
       backgroundColor: AppColors.app_bg,
@@ -89,17 +55,52 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
       body: Column(
         children: [
           PendingSearchBar(onChanged: (v) => setState(() => query = v)),
-          const SizedBox(height: 10),
+          PendingStatusSummaryCard(
+            summary: vm.summary,
+            showCurrencyBreakdown: widget.filterCurrency == null,
+            currencySummaries: vm.currencySummaries,
+          ),
 
           Expanded(
-            child: PendingGroupList(
-              rows: filtered,
-              highlight: query,
-              selectionMode: selectionMode,
-              selectedRows: _selectedRows,
-              onToggleSelection: _toggleRowSelection,
-              onLongPressToSelect: _startSelectionFromRow,
-            ),
+            child: vm.isLoading
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: AppColors.primary),
+                        const SizedBox(height: 10),
+                        Text(
+                          "Loading pending amounts...",
+                          style: TextStyle(
+                            color: AppColors.textMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : vm.errorMessage != null
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Text(
+                        "Failed to load data",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                : PendingGroupList(
+                    rows: filtered,
+                    highlight: query,
+                    selectionMode: selectionMode,
+                    selectedRows: _selectedRows,
+                    onToggleSelection: _toggleRowSelection,
+                    onLongPressToSelect: _startSelectionFromRow,
+                  ),
           ),
         ],
       ),
@@ -126,9 +127,10 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
           ),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.picture_as_pdf, color: AppColors.primary),
-            onPressed: _selectedRows.isEmpty ? null : _exportSelected,
+          _pdfExportAction(
+            outlined: false,
+            enabled: _selectedRows.isNotEmpty,
+            onTap: _exportSelected,
           ),
         ],
       );
@@ -148,15 +150,48 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
       ),
       iconTheme: IconThemeData(color: AppColors.textDark),
       actions: [
-        IconButton(
-          icon: Icon(Icons.picture_as_pdf_outlined, color: AppColors.primary),
-          onPressed: filtered.isEmpty ? null : () => _exportAll(filtered),
+        _pdfExportAction(
+          outlined: true,
+          enabled: filtered.isNotEmpty,
+          onTap: () => _exportAll(filtered),
         ),
         IconButton(
           icon: Icon(Icons.filter_list, color: AppColors.primary),
-          onPressed: _openFilterSheet,
+          onPressed: _isExportingPdf ? null : _openFilterSheet,
         ),
       ],
+    );
+  }
+
+  Widget _pdfExportAction({
+    required bool outlined,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) {
+    return IconButton(
+      onPressed: (enabled && !_isExportingPdf) ? onTap : null,
+      icon: SizedBox(
+        width: 32,
+        height: 32,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(
+              outlined ? Icons.picture_as_pdf_outlined : Icons.picture_as_pdf,
+              color: AppColors.primary,
+              size: 20,
+            ),
+            if (_isExportingPdf)
+              Positioned.fill(
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.6,
+                  valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.16),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -193,7 +228,20 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
   // EXPORT ALL
   // ============================================================
   Future<void> _exportAll(List<PendingGroupRow> groups) async {
+    if (_isExportingPdf) return;
     try {
+      setState(() => _isExportingPdf = true);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      debugPrint("🧾 [PendingPDF] _exportAll groups=${groups.length}");
+      if (groups.isNotEmpty) {
+        final g = groups.first;
+        debugPrint(
+          "🧾 [PendingPDF] first group "
+              "voucher=${g.voucherNo} date=${g.beginDate} msg=${g.msgNo} "
+              "currency=${g.accTypeName} balance=${g.balance}",
+        );
+      }
+
       final rows = groups.map((g) {
         return PendingRow(
           voucherNo: g.voucherNo,
@@ -213,6 +261,13 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
         );
       }).toList();
 
+      debugPrint("🧾 [PendingPDF] mapped rows=${rows.length}");
+      final uniqueCurrencies = rows.map((e) => e.currency.trim()).toSet();
+      debugPrint(
+        "🧾 [PendingPDF] currencies=${uniqueCurrencies.length} "
+            "${uniqueCurrencies.toList()}",
+      );
+
       if (rows.isEmpty) {
         _error("No data available for export");
         return;
@@ -224,18 +279,35 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
         title: "Pending Amount (Grouped)",
       );
 
-      await OpenFilex.open(file.path);
+      final bytes = await file.length();
+      debugPrint(
+        "🧾 [PendingPDF] generated file path=${file.path} bytes=$bytes",
+      );
+
+      final open = await OpenFilex.open(file.path);
+      debugPrint(
+        "🧾 [PendingPDF] open result type=${open.type} message=${open.message}",
+      );
     } catch (e, s) {
       debugPrint("❌ ExportAll PDF error: $e");
       debugPrintStack(stackTrace: s);
       _error("Failed to generate PDF");
+    } finally {
+      if (mounted) setState(() => _isExportingPdf = false);
     }
   }
   // ============================================================
   // EXPORT SELECTED
   // ============================================================
   Future<void> _exportSelected() async {
+    if (_isExportingPdf) return;
     try {
+      setState(() => _isExportingPdf = true);
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      debugPrint(
+        "🧾 [PendingPDF] _exportSelected selected=${_selectedRows.length}",
+      );
+
       final rows = _selectedRows.map((g) {
         return PendingRow(
           voucherNo: g.voucherNo,
@@ -255,6 +327,8 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
         );
       }).toList();
 
+      debugPrint("🧾 [PendingPDF] selected mapped rows=${rows.length}");
+
       if (rows.isEmpty) {
         _error("No selected rows to export");
         return;
@@ -266,18 +340,76 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
         title: "Selected Pending Items",
       );
 
-      await OpenFilex.open(file.path);
+      final bytes = await file.length();
+      debugPrint(
+        "🧾 [PendingPDF] selected file path=${file.path} bytes=$bytes",
+      );
+
+      final open = await OpenFilex.open(file.path);
+      debugPrint(
+        "🧾 [PendingPDF] selected open type=${open.type} message=${open.message}",
+      );
     } catch (e, s) {
       debugPrint("❌ ExportSelected PDF error: $e");
       debugPrintStack(stackTrace: s);
       _error("Failed to generate PDF");
+    } finally {
+      if (mounted) setState(() => _isExportingPdf = false);
     }
+  }
+
+  List<PendingGroupRow> _applyFilters(List<PendingGroupRow> source) {
+    var rows = List<PendingGroupRow>.from(source);
+
+    if (widget.filterCurrency != null) {
+      rows = rows
+          .where((r) =>
+      (r.accTypeName ?? "").toLowerCase() ==
+          widget.filterCurrency!.toLowerCase())
+          .toList();
+    }
+
+    if (startDate != null && endDate != null) {
+      rows = rows.where((r) {
+        final date = DateTime.tryParse(r.beginDate);
+        if (date == null) return false;
+        return date.isAfter(startDate!.subtract(const Duration(days: 1))) &&
+            date.isBefore(endDate!.add(const Duration(days: 1)));
+      }).toList();
+    }
+
+    final q = query.trim().toLowerCase();
+    final isNumeric = double.tryParse(q) != null;
+
+    return rows.where((r) {
+      if (q.isEmpty) return true;
+
+      final sender = (r.sender ?? "").toLowerCase();
+      final receiver = (r.receiver ?? "").toLowerCase();
+      final msgNo = (r.msgNo ?? "").toLowerCase();
+      final accType = (r.accTypeName ?? "").toLowerCase();
+      final beginDate = r.beginDate.toLowerCase();
+      final balance = r.balance.toStringAsFixed(2);
+
+      if (isNumeric) {
+        return balance == q || balance.startsWith(q);
+      }
+
+      return sender.startsWith(q) ||
+          receiver.startsWith(q) ||
+          msgNo.startsWith(q) ||
+          accType.startsWith(q) ||
+          beginDate.startsWith(q);
+    }).toList();
   }
 
   // ============================================================
   // FILTER SHEET
   // ============================================================
   void _openFilterSheet() {
+    final vm = context.read<NotPaidViewModel>();
+    statusFilter = vm.statusFilter;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -373,10 +505,9 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
                         ),
                       ],
                       selected: {statusFilter},
-                      onSelectionChanged: (newSet) {
-                        sheetSetState(() => statusFilter = newSet.first);
-                        setState(() {});
-                      },
+                        onSelectionChanged: (newSet) {
+                          sheetSetState(() => statusFilter = newSet.first);
+                        },
                     ),
 
                     const SizedBox(height: 24),
@@ -453,7 +584,10 @@ class _NotPaidGroupedScreenState extends State<NotPaidGroupedScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          vm.loadRows(status: statusFilter);
+                        },
                         child: Text(
                           "Apply Filters",
                           style: TextStyle(

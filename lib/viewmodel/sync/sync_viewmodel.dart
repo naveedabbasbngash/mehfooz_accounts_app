@@ -7,7 +7,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../repository/sync/sync_repository.dart';
-import '../../services/device_identity_service.dart';
 import '../../services/sync/sync_service.dart';
 import '../../data/local/app_database.dart';
 import '../../model/SyncResult.dart';
@@ -41,6 +40,9 @@ class SyncViewModel extends ChangeNotifier {
   SyncRepository? syncRepo;
   String? _userEmail;
   String? _deviceId;
+  String? _referenceId;
+  bool isVerifyingReferenceId = false;
+  String? referenceIdError;
 
   bool isSyncing = false;
   bool isBackgroundSync = false;
@@ -72,6 +74,7 @@ class SyncViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
   static const _kLocalImportPrefix = "has_local_import_";
   static const _kAutoSyncKeyPrefix = "auto_sync_interval_";
+  static const _kReferenceIdPrefix = "reference_uuid_";
 
   // ─────────────────────────────────────────────
   // AUTO SYNC
@@ -91,18 +94,29 @@ class SyncViewModel extends ChangeNotifier {
     required bool adminCanSync,
   }) async {
     _userEmail = email.trim().toLowerCase();
-    _deviceId = await DeviceIdentityService.getDeviceId();
     _adminCanSync = adminCanSync;
-
-    _log.i("🔐 Admin sync permission = $_adminCanSync");
-    _log.i("📱 Sync device_id=$_deviceId");
 
     final prefs = await SharedPreferences.getInstance();
     _hasLocalImport = prefs.getBool("$_kLocalImportPrefix$_userEmail") ?? false;
+    _referenceId = prefs.getString("$_kReferenceIdPrefix$_userEmail")?.trim();
+    if (_referenceId != null && _referenceId!.isNotEmpty) {
+      _deviceId = _referenceId;
+    } else {
+      _referenceId = null;
+      _deviceId = null;
+    }
+
+    _log.i("🔐 Admin sync permission = $_adminCanSync");
+    _log.i("📱 Sync reference_id=${_referenceId ?? '(missing)'}");
 
     await _loadAutoSyncSetting();
     _restartAutoSync();
-    await refreshPendingBatches(silent: true);
+    if (hasReferenceId) {
+      await refreshPendingBatches(silent: true);
+    } else {
+      pendingBatches = const [];
+      pendingBatchesError = null;
+    }
     notifyListeners();
   }
 
@@ -118,6 +132,9 @@ class SyncViewModel extends ChangeNotifier {
 
   bool get isReady => syncRepo != null;
   int get pendingBatchCount => pendingBatches.length;
+  String? get referenceId => _referenceId;
+  bool get hasReferenceId =>
+      _referenceId != null && _referenceId!.trim().isNotEmpty;
 
   // ─────────────────────────────────────────────
   // SYNC GATE
@@ -125,6 +142,7 @@ class SyncViewModel extends ChangeNotifier {
   bool get canSync {
     if (!_adminCanSync) return false;
     if (!_hasLocalImport) return false;
+    if (!hasReferenceId) return false;
     if (!isReady) return false;
     return true;
   }
@@ -132,8 +150,60 @@ class SyncViewModel extends ChangeNotifier {
   String get syncBlockReason {
     if (!_adminCanSync) return "🔒 Sync disabled by admin";
     if (!_hasLocalImport) return "🟠 Import local database to enable sync";
+    if (!hasReferenceId) return "➕ Add Reference ID to enable sync";
     if (!isReady) return "⚠ Database not ready";
     return "";
+  }
+
+  Future<bool> verifyAndSaveReferenceId(String rawUuid) async {
+    if (_userEmail == null) {
+      referenceIdError = "User not ready";
+      notifyListeners();
+      return false;
+    }
+
+    final uuid = rawUuid.trim();
+    if (uuid.isEmpty) {
+      referenceIdError = "Please enter Reference ID";
+      notifyListeners();
+      return false;
+    }
+
+    isVerifyingReferenceId = true;
+    referenceIdError = null;
+    notifyListeners();
+
+    try {
+      final result = await syncService.verifyDeviceUuid(
+        email: _userEmail!,
+        uuid: uuid,
+      );
+
+      if (!result.isVerified) {
+        referenceIdError =
+            result.message.trim().isEmpty ? "Reference ID not verified" : result.message;
+        return false;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString("$_kReferenceIdPrefix$_userEmail", uuid);
+
+      _referenceId = uuid;
+      _deviceId = uuid;
+      referenceIdError = null;
+
+      _restartAutoSync();
+      await refreshPendingBatches(silent: true);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      referenceIdError = "Verification failed: $e";
+      notifyListeners();
+      return false;
+    } finally {
+      isVerifyingReferenceId = false;
+      notifyListeners();
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -248,8 +318,7 @@ class SyncViewModel extends ChangeNotifier {
     if (_deviceId != null && _deviceId!.trim().isNotEmpty) {
       return _deviceId!;
     }
-    _deviceId = await DeviceIdentityService.getDeviceId();
-    return _deviceId!;
+    throw Exception("Reference ID is missing");
   }
 
   Future<void> _runWithRetry(
@@ -364,6 +433,14 @@ class SyncViewModel extends ChangeNotifier {
 
   Future<void> refreshPendingBatches({bool silent = false}) async {
     if (_userEmail == null) return;
+    if (!hasReferenceId) {
+      pendingBatches = const [];
+      pendingBatchesError = null;
+      isPendingBatchesLoading = false;
+      notifyListeners();
+      return;
+    }
+
     final email = _userEmail!;
     final deviceId = await _ensureDeviceId();
 

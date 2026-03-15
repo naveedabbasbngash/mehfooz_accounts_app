@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:drift/drift.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 import '../../model/ledger_models.dart';
@@ -111,64 +111,105 @@ class LedgerFilterViewModel extends ChangeNotifier {
     required String accountName,
     required String currency,
     required String fromDate, // yyyy-MM-dd
-    required String toDate,   // yyyy-MM-dd
+    required String toDateExclusive, // yyyy-MM-dd (exclusive upper bound)
   }) async {
+    final totalSw = Stopwatch()..start();
+    debugPrint(
+      "[LedgerPerf][VM] load:start account='$accountName' currency='$currency' "
+      "from=$fromDate toExclusive=$toDateExclusive companyId=$_companyId",
+    );
+
     loading = true;
     notifyListeners();
 
+    final resolveSw = Stopwatch()..start();
     final accId = await resolveAccId(accountName);
     final accTypeId = await resolveAccTypeId(currency);
+    resolveSw.stop();
+    debugPrint(
+      "[LedgerPerf][VM] resolve:done accId=$accId accTypeId=$accTypeId "
+      "elapsedMs=${resolveSw.elapsedMilliseconds}",
+    );
 
     if (accId == null || accTypeId == null) {
       loading = false;
       notifyListeners();
+      totalSw.stop();
+      debugPrint(
+        "[LedgerPerf][VM] load:abort unresolved ids elapsedMs=${totalSw.elapsedMilliseconds}",
+      );
       return null;
     }
 
     // -------------------------
     // OPENING BALANCE (REAL)
     // -------------------------
+    final openingSw = Stopwatch()..start();
     final double opening = await _repo.ledgerOpeningBalance(
       companyId: _companyId,
       accId: accId,
       accTypeId: accTypeId,
       fromDate: fromDate,
     );
+    openingSw.stop();
+    debugPrint(
+      "[LedgerPerf][VM] opening:done opening=$opening elapsedMs=${openingSw.elapsedMilliseconds}",
+    );
 
     // -------------------------
     // LEDGER ROWS (REAL)
     // -------------------------
+    final rowsSw = Stopwatch()..start();
     final rowsRaw = await _repo.fetchLedgerRowsRaw(
       companyId: _companyId,
       accId: accId,
       accTypeId: accTypeId,
       fromDate: fromDate,
-      toDate: toDate,
+      toDateExclusive: toDateExclusive,
+    );
+    rowsSw.stop();
+    debugPrint(
+      "[LedgerPerf][VM] rowsRaw:done count=${rowsRaw.length} elapsedMs=${rowsSw.elapsedMilliseconds}",
     );
 
-    final dateParser = DateFormat('yyyy-MM-dd');
-
-    final rows = rowsRaw.map((e) {
-      final d = e['tDate'] as String;
-
-      final dr = (e['dr'] as num?)?.toDouble() ?? 0.0;
-      final cr = (e['cr'] as num?)?.toDouble() ?? 0.0;
-
-      return LedgerTxn(
-        voucherNo: "${e['voucherNo']}",
-        tDate: dateParser.parse(d),
-        description: e['description'] ?? '',
-        dr: dr.abs() < 0.005 ? 0.0 : dr,
-        cr: cr.abs() < 0.005 ? 0.0 : cr,
-      );
-    }).toList();
+    final mapSw = Stopwatch()..start();
+    final normalizedRows = rowsRaw
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
+    final rows = await compute(_mapLedgerRowsInIsolate, normalizedRows);
+    mapSw.stop();
+    debugPrint(
+      "[LedgerPerf][VM] mapIsolate:done count=${rows.length} elapsedMs=${mapSw.elapsedMilliseconds}",
+    );
 
     loading = false;
     notifyListeners();
+    totalSw.stop();
+    debugPrint(
+      "[LedgerPerf][VM] load:done totalRows=${rows.length} totalElapsedMs=${totalSw.elapsedMilliseconds}",
+    );
 
     return LedgerResult(
       openingBalance: opening.abs() < 0.005 ? 0.0 : opening,
       rows: rows,
     );
   }
+}
+
+List<LedgerTxn> _mapLedgerRowsInIsolate(List<Map<String, dynamic>> rowsRaw) {
+  final dateParser = DateFormat('yyyy-MM-dd');
+
+  return rowsRaw.map((e) {
+    final d = (e['tDate'] as String?) ?? '';
+    final dr = (e['dr'] as num?)?.toDouble() ?? 0.0;
+    final cr = (e['cr'] as num?)?.toDouble() ?? 0.0;
+
+    return LedgerTxn(
+      voucherNo: "${e['voucherNo']}",
+      tDate: DateTime.tryParse(d) ?? dateParser.parse(d),
+      description: (e['description'] as String?) ?? '',
+      dr: dr.abs() < 0.005 ? 0.0 : dr,
+      cr: cr.abs() < 0.005 ? 0.0 : cr,
+    );
+  }).toList(growable: false);
 }

@@ -9,7 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/database_manager.dart';
 import '../../model/user_model.dart';
-import '../../services/device_identity_service.dart';
 import '../../services/global_state.dart';
 import '../home/home_view_model.dart';
 import 'package:http/http.dart' as http;
@@ -46,8 +45,6 @@ class ProfileViewModel extends ChangeNotifier {
 
   /// When true, ONLY Profile tab is allowed (HomeWrapper checks this)
   bool isRestricted = false;
-
-  String deviceId = 'Loading...';
 
   // ─────────────────────────────────────────────────────────────
   // DERIVED GETTERS
@@ -194,12 +191,10 @@ class ProfileViewModel extends ChangeNotifier {
         isRestricted = false;
       }
 
-      deviceId = await DeviceIdentityService.getDeviceId();
     } catch (e, st) {
       debugPrint("❌ Error in ProfileViewModel._init: $e");
       debugPrintStack(stackTrace: st);
       isRestricted = true;
-      deviceId = 'Not available';
     } finally {
       isLoading = false;
       notifyListeners();
