@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:mehfooz_accounts_app/services/logging/logger_service.dart';
-import 'package:provider/provider.dart';
-import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 
 import '../../../data/local/database_manager.dart';
+import '../../../model/user_model.dart';
+import '../../../services/local_storage.dart';
 import '../../../viewmodel/home/home_view_model.dart';
-import '../../../viewmodel/sync/sync_viewmodel.dart';
-import 'google_sync_icon.dart';
+
+const _kHomeBrandBlue = Color(0xFF1862A3);
+const _kHomeBrandBlueDark = Color(0xFF0D4C81);
 
 class HomeHeader extends StatelessWidget {
   final HomeViewModel vm;
@@ -20,272 +20,188 @@ class HomeHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: _getCompanyName(),
+    return FutureBuilder<_HomeHeaderData>(
+      future: _loadHeaderData(),
       builder: (context, snapshot) {
-        final companyName = snapshot.data ?? "Mahfooz Accounts";
+        final data = snapshot.data;
+        final companyName = data?.companyName ?? "Mahfooz Accounts";
+        final displayName = companyName.trim().isEmpty
+            ? "Mahfooz Accounts MKB"
+            : companyName;
+        final email = data?.user?.email.trim() ?? '';
+        final roleLabel = _roleLabel(data?.user);
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _buildLeft(context, companyName)),
-                const SizedBox(width: 8),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    LoggerService.debug(
-                      "Header constraints → maxWidth=${constraints.maxWidth}",
-                    );
-                    return _buildSyncButton(context);
-                  },
-                ),              ],
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [_kHomeBrandBlue, _kHomeBrandBlueDark],
             ),
-
-            const SizedBox(height: 6),
-            _buildLastSynced(context),
-
-            // ✅ Auto Sync toggle
-          ],
-        );
-      },
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // LEFT SIDE (Welcome + Company)
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildLeft(BuildContext context, String companyName) {
-    final welcomeStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: Colors.grey.shade700,
-          fontWeight: FontWeight.w500,
-        );
-    final companyStyle = Theme.of(context).textTheme.headlineSmall?.copyWith(
-          fontWeight: FontWeight.bold,
-          letterSpacing: 0.3,
-          fontSize: 20,
-        );
-    final reportingStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
-          color: Colors.grey.shade700,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-          letterSpacing: 0.2,
-        );
-
-    final welcomeAnchor = _measureOffsetToLetter(
-      context,
-      "Welcome",
-      welcomeStyle,
-      "o",
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Welcome to",
-          style: welcomeStyle,
-        ),
-        const SizedBox(height: 4),
-        Row(
-          children: [
-            SizedBox(width: welcomeAnchor),
-            Flexible(
-              child: RichText(
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                text: TextSpan(
-                  children: [
-                    TextSpan(
-                      text: companyName,
-                      style: companyStyle,
-                    ),
-                    TextSpan(
-                      text: " Reporting",
-                      style: reportingStyle,
-                    ),
-                  ],
-                ),
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x261862A3),
+                blurRadius: 28,
+                offset: Offset(0, 16),
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        TextButton.icon(
-          onPressed: onChangeCompany,
-          icon: const Icon(
-            Icons.swap_horiz,
-            size: 18,
-            color: AppColors.primary,
+            ],
           ),
-          label: const Text(
-            "Change company",
-            style: TextStyle(
-              color: AppColors.primary,
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  double _measureTextWidth(BuildContext context, String text, TextStyle? style) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      maxLines: 1,
-      textDirection: Directionality.of(context),
-    )..layout();
-    return painter.width;
-  }
-
-  double _measureOffsetToLetter(
-    BuildContext context,
-    String text,
-    TextStyle? style,
-    String letter,
-  ) {
-    final idx = text.toLowerCase().indexOf(letter.toLowerCase());
-    if (idx <= 0) return 0;
-    return _measureTextWidth(context, text.substring(0, idx), style);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // MORPHING SYNC BUTTON (Google-style)
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildSyncButton(BuildContext context) {
-    return Consumer<SyncViewModel>(
-      builder: (context, svm, _) {
-        final syncing = svm.isSyncing;
-        final isError = svm.lastMessage.startsWith("❌");
-        final expanded = syncing || isError;
-
-        LoggerService.debug(
-          "SyncButton → syncing=$syncing | error=$isError | expanded=$expanded | "
-              "message='${svm.lastMessage}'",
-        );
-
-        String label = "Synced";
-        Color labelColor = Colors.green;
-
-        if (syncing) {
-          label = "Syncing…";
-          labelColor = Colors.blue;
-        } else if (isError) {
-          label = "Error";
-          labelColor = Colors.red;
-        }
-
-        LoggerService.debug(
-            "SyncButton label='$label' (len=${label.length})");
-
-        return GestureDetector(
-          onTap: syncing ? null : () {
-            LoggerService.debug(
-                "SyncButton tapped");
-            svm.syncNow();
-          },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 260),
-            curve: Curves.easeOutCubic,
-            width: expanded ? 140 : 42,
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: ClipRect(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: expanded
-                    ? Row(
-                  key: const ValueKey("expanded"),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GoogleStyleSyncIcon(
-                      syncing: syncing,
-                      success: !syncing && !isError,
-                      error: isError,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
+                      ),
                     ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.fade,
-                        softWrap: false,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: labelColor,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: Image.asset(
+                        'assets/icon/app_icon.png',
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Welcome back',
+                          style: TextStyle(
+                            color: Color(0xFFE3F0FB),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          displayName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                            height: 1.08,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Mahfooz Accounts MKB',
+                          style: TextStyle(
+                            color: Color(0xFFD8EAF9),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onChangeCompany,
+                      borderRadius: BorderRadius.circular(999),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.swap_horiz_rounded,
+                          color: Colors.white,
+                          size: 20,
                         ),
                       ),
                     ),
-                  ],
-                )
-                    : Center(
-                  key: const ValueKey("compact"),
-                  child: GoogleStyleSyncIcon(
-                    syncing: syncing,
-                    success: !syncing && !isError,
-                    error: isError,
+                  ),
+                ],
+              ),
+              if (email.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Logged in account',
+                              style: TextStyle(
+                                color: Color(0xFFD8EAF9),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          roleLabel,
+                          style: const TextStyle(
+                            color: _kHomeBrandBlue,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-  // ─────────────────────────────────────────────────────────────
-  // LAST SYNC / STATUS LINE
-  // ─────────────────────────────────────────────────────────────
-  Widget _buildLastSynced(BuildContext context) {
-    return Consumer<SyncViewModel>(
-      builder: (context, svm, _) {
-        String text;
-        Color color = Colors.grey.shade600;
-        IconData icon = Icons.access_time;
-
-        if (svm.isSyncing ||
-            (svm.lastMessage.isNotEmpty &&
-                !svm.lastMessage.startsWith("✔"))) {
-          text = svm.lastMessage;
-          color = Colors.blue.shade700;
-          icon = Icons.sync;
-        } else if (svm.lastMessage.startsWith("❌")) {
-          text = svm.lastMessage;
-          color = Colors.red.shade700;
-          icon = Icons.error;
-        } else if (svm.lastSyncedTime != null) {
-          final diff = DateTime.now().difference(svm.lastSyncedTime!);
-          text = "Last synced • ${_friendly(diff)}";
-        } else {
-          text = "Not synced yet";
-        }
-
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 400),
-          child: Row(
-            key: ValueKey(text),
-            children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  text,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: color,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
+              ],
             ],
           ),
         );
@@ -293,18 +209,10 @@ class HomeHeader extends StatelessWidget {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // AUTO SYNC TOGGLE
-  // ─────────────────────────────────────────────────────────────
-
-  // ─────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────
-  String _friendly(Duration d) {
-    if (d.inSeconds < 60) return "just now";
-    if (d.inMinutes < 60) return "${d.inMinutes} min ago";
-    if (d.inHours < 24) return "${d.inHours} hrs ago";
-    return "${d.inDays} days ago";
+  Future<_HomeHeaderData> _loadHeaderData() async {
+    final companyName = await _getCompanyName();
+    final user = await LocalStorageService.loadLastUsedUser();
+    return _HomeHeaderData(companyName: companyName, user: user);
   }
 
   Future<String?> _getCompanyName() async {
@@ -312,10 +220,31 @@ class HomeHeader extends StatelessWidget {
     if (id == null) return null;
 
     final db = DatabaseManager.instance.db;
-    final rows = await (db.select(db.companyTable)
-      ..where((tbl) => tbl.companyId.equals(id)))
-        .get();
+    final rows = await (db.select(
+      db.companyTable,
+    )..where((tbl) => tbl.companyId.equals(id))).get();
 
     return rows.isNotEmpty ? rows.first.companyName : "Your Company";
   }
+
+  String _roleLabel(UserModel? user) {
+    final roles = user?.roleCodes.map((e) => e.trim().toUpperCase()).toList() ??
+        const <String>[];
+    if (roles.contains('OWNER')) return 'Owner';
+    if (roles.contains('ADMIN')) return 'Administrator';
+    if (roles.contains('ACCOUNTANT')) return 'Accountant';
+    if (roles.contains('MANAGER')) return 'Manager';
+    if (roles.isNotEmpty) {
+      final raw = roles.first.toLowerCase();
+      return raw[0].toUpperCase() + raw.substring(1);
+    }
+    return 'Member';
+  }
+}
+
+class _HomeHeaderData {
+  final String? companyName;
+  final UserModel? user;
+
+  const _HomeHeaderData({required this.companyName, required this.user});
 }

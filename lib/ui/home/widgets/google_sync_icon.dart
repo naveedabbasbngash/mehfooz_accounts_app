@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:mehfooz_accounts_app/theme/app_colors.dart';
+
+const Color _kSyncBlue = Color(0xFF1862A3);
 
 class GoogleStyleSyncIcon extends StatefulWidget {
   final bool syncing;
@@ -84,8 +85,8 @@ class _GoogleStyleSyncIconState extends State<GoogleStyleSyncIcon>
     final Color color = widget.error
         ? Colors.red
         : widget.success
-        ? AppColors.darkgreen
-        : Colors.blue;
+        ? _kSyncBlue
+        : _kSyncBlue;
 
     return FadeTransition(
       opacity: _fade,
@@ -132,7 +133,7 @@ class _ArcPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final stroke = Paint()
-      ..color = color.withOpacity(0.85)
+      ..color = color.withValues(alpha: 0.85)
       ..strokeWidth = 2.4
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;

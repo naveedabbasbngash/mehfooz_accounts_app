@@ -1,5 +1,4 @@
 // ✅ UserModel that works with both API & Local Storage
-import 'dart:convert';
 
 class UserModel {
   final bool status;
@@ -12,12 +11,16 @@ class UserModel {
   final String fullName;
   final String imageUrl;
   final int isLogin;
+  final List<String> roleCodes;
+  final List<String> permissions;
 
   final PlanStatus? planStatus;
   final ExpiryInfo? expiry;
   final SubscriptionInfo? subscription;
 
   bool get isValidLoggedInUser => isLogin == 1 && email.isNotEmpty;
+  bool get isAdminOrOwner =>
+      roleCodes.any((code) => code == 'ADMIN' || code == 'OWNER');
 
   UserModel({
     required this.status,
@@ -29,6 +32,8 @@ class UserModel {
     required this.fullName,
     required this.imageUrl,
     required this.isLogin,
+    this.roleCodes = const [],
+    this.permissions = const [],
     this.planStatus,
     this.expiry,
     this.subscription,
@@ -54,12 +59,15 @@ class UserModel {
       email: data["email"] ?? "",
       firstName: data["first_name"] ?? "",
       lastName: data["last_name"] ?? "",
-      fullName: data["full_name"] ??
+      fullName:
+          data["full_name"] ??
           "${data['first_name'] ?? ''} ${data['last_name'] ?? ''}".trim(),
       imageUrl: data["image_url"] ?? "",
       isLogin: data["is_login"] is int
           ? data["is_login"]
           : int.tryParse(data["is_login"]?.toString() ?? "0") ?? 0,
+      roleCodes: _extractRoleCodes(data),
+      permissions: _extractStringList(data["permissions"]),
       planStatus: data["plan_status"] != null
           ? PlanStatus.fromJson(data["plan_status"])
           : null,
@@ -85,12 +93,15 @@ class UserModel {
       email: data["email"] ?? "",
       firstName: data["first_name"] ?? "",
       lastName: data["last_name"] ?? "",
-      fullName: data["full_name"] ??
+      fullName:
+          data["full_name"] ??
           "${data['first_name'] ?? ''} ${data['last_name'] ?? ''}".trim(),
       imageUrl: data["image_url"] ?? "",
       isLogin: data["is_login"] is int
           ? data["is_login"]
           : int.tryParse(data["is_login"]?.toString() ?? "0") ?? 0,
+      roleCodes: _extractRoleCodes(data),
+      permissions: _extractStringList(data["permissions"]),
       planStatus: data["plan_status"] != null
           ? PlanStatus.fromJson(data["plan_status"])
           : null,
@@ -114,6 +125,8 @@ class UserModel {
       fullName: "",
       imageUrl: "",
       isLogin: 0,
+      roleCodes: const [],
+      permissions: const [],
       planStatus: null,
       expiry: null,
       subscription: null,
@@ -133,16 +146,48 @@ class UserModel {
     "full_name": fullName,
     "image_url": imageUrl,
     "is_login": isLogin,
+    "roles": roleCodes,
+    "permissions": permissions,
     "plan_status": planStatus?.toJson(),
     "expiry": expiry?.toJson(),
     "subscription": subscription?.toJson(),
   };
 
+  static List<String> _extractRoleCodes(Map<String, dynamic> data) {
+    final rawRoles = data["roles"];
+    if (rawRoles is! List) return const [];
+    final out = <String>[];
+    for (final item in rawRoles) {
+      if (item is Map) {
+        final code = (item["RoleCode"] ?? item["role_code"] ?? "")
+            .toString()
+            .trim()
+            .toUpperCase();
+        if (code.isNotEmpty) out.add(code);
+      } else {
+        final code = item.toString().trim().toUpperCase();
+        if (code.isNotEmpty) out.add(code);
+      }
+    }
+    return out.toSet().toList(growable: false);
+  }
+
+  static List<String> _extractStringList(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <String>[];
+    for (final item in raw) {
+      final value = item.toString().trim();
+      if (value.isNotEmpty) out.add(value);
+    }
+    return out.toSet().toList(growable: false);
+  }
+
   /// ============================================================
   /// DEBUG
   /// ============================================================
   @override
-  String toString() => '''
+  String toString() =>
+      '''
 🧍‍♂️ UserModel:
 - fullName   : $fullName
 - email      : $email
@@ -259,6 +304,4 @@ class SubscriptionInfo {
     "start_date": startDate,
     "end_date": endDate,
   };
-
-
 }

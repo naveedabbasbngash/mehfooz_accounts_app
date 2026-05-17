@@ -33,7 +33,7 @@ class AccPersonal extends Table {
   Set<Column> get primaryKey => {accId};
 }
 
-/// ========================================================
+/// ======================================================== 
 /// ACC TYPE
 /// ========================================================
 class AccType extends Table {
@@ -68,6 +68,20 @@ class CompanyTable extends Table {
 }
 
 /// ========================================================
+/// ACCOUNTS HEADS
+/// ========================================================
+class AccountsHeads extends Table {
+  @override
+  String get tableName => 'Accounts_Heads';
+
+  IntColumn get accHeadId => integer().named('acc_head_id')();
+  TextColumn get accHeadName => text().named('acc_head_name').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {accHeadId};
+}
+
+/// ========================================================
 /// DB INFO
 /// ========================================================
 class DbInfoTable extends Table {
@@ -79,6 +93,21 @@ class DbInfoTable extends Table {
 }
 
 /// ========================================================
+/// ACCOUNT CURRENCY ASSIGNMENT
+/// ========================================================
+class AccountPCurrencyAssignment extends Table {
+  @override
+  String get tableName => 'Account_PCurrencyAssignment';
+
+  IntColumn get regId => integer().named('RegID')();
+  IntColumn get accId => integer().named('AccID').nullable()();
+  IntColumn get accountTypeId => integer().named('AccountTypeID').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {regId};
+}
+
+/// ========================================================
 /// TRANSACTIONS (SQLite: Transactions_P)
 /// ========================================================
 class TransactionsP extends Table {
@@ -86,11 +115,15 @@ class TransactionsP extends Table {
   String get tableName => 'Transactions_P';
 
   IntColumn get voucherNo => integer().named('VoucherNo')();
+  TextColumn get txGuid => text().named('TxGuid').nullable()();
 
   TextColumn get tDate => text().named('TDate').nullable()();
   IntColumn get accId => integer().named('AccID').nullable()();
   IntColumn get accTypeId => integer().named('AccTypeID').nullable()();
   TextColumn get description => text().named('Description').nullable()();
+  TextColumn get quality => text().named('Quality').nullable()();
+  RealColumn get rate => real().named('Rate').nullable()();
+  RealColumn get weight => real().named('Weight').nullable()();
 
   RealColumn get dr => real().named('Dr').nullable()();
   RealColumn get cr => real().named('Cr').nullable()();
@@ -118,6 +151,38 @@ class TransactionsP extends Table {
   TextColumn get msgNo2 => text().named('msgno2').nullable()();
   TextColumn get others => text().named('OTHERS').nullable()();
 
+  IntColumn get isSynced => integer().named('IsSynced').nullable()();
+  TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
+  IntColumn get isDeleted => integer().named('IsDeleted').nullable()();
+
+  @override
+  Set<Column> get primaryKey => {voucherNo};
+}
+
+/// ========================================================
+/// CASH TRANSACTIONS
+/// ========================================================
+class TblCashTrans extends Table {
+  @override
+  String get tableName => 'tblCashTrans';
+
+  IntColumn get voucherNo => integer().named('VoucherNo')();
+  TextColumn get tDate => text().named('TDate').nullable()();
+  IntColumn get accTypeId => integer().named('AccTypeID').nullable()();
+  TextColumn get description => text().named('Description').nullable()();
+  RealColumn get fcAmount => real().named('fcamount').nullable()();
+  RealColumn get lcAmount => real().named('lcamount').nullable()();
+  TextColumn get transType => text().named('transtype').nullable()();
+  RealColumn get exchangeRate => real().named('exchangerate').nullable()();
+  IntColumn get accTypeId1 => integer().named('AccTypeID1').nullable()();
+  TextColumn get statuss => text().named('statuss').nullable()();
+  TextColumn get statuss1 => text().named('statuss1').nullable()();
+  RealColumn get fcDr => real().named('fcdr').nullable()();
+  RealColumn get fcCr => real().named('fccr').nullable()();
+  RealColumn get lcDr => real().named('lcdr').nullable()();
+  RealColumn get lcCr => real().named('lccr').nullable()();
+  TextColumn get stc => text().named('stc').nullable()();
+  IntColumn get companyId => integer().named('CompanyID').nullable()();
   IntColumn get isSynced => integer().named('IsSynced').nullable()();
   TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
   IntColumn get isDeleted => integer().named('IsDeleted').nullable()();

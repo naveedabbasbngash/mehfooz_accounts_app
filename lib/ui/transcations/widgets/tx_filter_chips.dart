@@ -1,7 +1,8 @@
 // lib/ui/transactions/widgets/tx_filter_chips.dart
 import 'package:flutter/material.dart';
-import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../model/tx_filter.dart';
+
+const _kTxBrandBlue = Color(0xFF1862A3);
 
 class TxFilterChips extends StatelessWidget {
   final String search;
@@ -81,12 +82,12 @@ class TxFilterChips extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 42,
+      height: 36,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 4),
         scrollDirection: Axis.horizontal,
         itemCount: chips.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (_, i) => chips[i],
       ),
     );
@@ -105,32 +106,37 @@ class TxFilterChips extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
         decoration: BoxDecoration(
           color: selected
-              ? AppColors.primary                 // ← Full primary background
-              : AppColors.highlight,              // ← Soft background
+              ? _kTxBrandBlue
+              : Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: selected ? AppColors.primary : AppColors.divider,
+            color: selected
+                ? _kTxBrandBlue
+                : _kTxBrandBlue.withValues(alpha: 0.14),
             width: 1.2,
           ),
           boxShadow: selected
               ? [
-            BoxShadow(
-              color: AppColors.primary.withOpacity(0.25),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ]
+                  BoxShadow(
+                    color: _kTxBrandBlue.withValues(alpha: 0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
               : [],
         ),
         child: Text(
           label,
+          textAlign: TextAlign.center,
           style: TextStyle(
-            color: selected ? Colors.white : AppColors.textDark, // ← WHITE TEXT
-            fontWeight: selected ? FontWeight.bold : FontWeight.w600, // ← BOLD
-            fontSize: 13.5,
+            color: selected ? Colors.white : const Color(0xFF23415E),
+            fontWeight: selected ? FontWeight.bold : FontWeight.w600,
+            fontSize: 12.8,
+            height: 1.0,
           ),
         ),
       ),
@@ -150,7 +156,7 @@ class TxFilterChips extends StatelessWidget {
           onCurrencySelect(value);
         }
       },
-      color: AppColors.cardBackground,
+      color: Colors.white,
       elevation: 5,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
@@ -165,7 +171,7 @@ class TxFilterChips extends StatelessWidget {
               value: cur,
               child: Text(
                 cur,
-                style: TextStyle(fontSize: 14, color: AppColors.textDark),
+                style: const TextStyle(fontSize: 14, color: Color(0xFF16324B)),
               ),
             ),
           );
@@ -176,39 +182,45 @@ class TxFilterChips extends StatelessWidget {
             value: "Clear",
             child: Text(
               "Clear",
-              style: TextStyle(color: AppColors.error, fontSize: 14),
+              style: const TextStyle(color: Color(0xFFB42318), fontSize: 14),
             ),
           ),
         );
 
         return list;
       },
-      offset: const Offset(0, 40),
+      offset: const Offset(0, 34),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
         decoration: BoxDecoration(
-          color: AppColors.highlight,
+          color: active
+              ? _kTxBrandBlue.withValues(alpha: 0.08)
+              : Colors.white,
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: active ? AppColors.primary : AppColors.divider,
+            color: active
+                ? _kTxBrandBlue
+                : _kTxBrandBlue.withValues(alpha: 0.14),
             width: 1.3,
           ),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               selectedCurrency ?? "Currency",
               style: TextStyle(
-                color: active ? AppColors.primary : AppColors.textMuted,
+                color: active ? _kTxBrandBlue : const Color(0xFF71869B),
                 fontWeight: FontWeight.w600,
-                fontSize: 13.5,
+                fontSize: 12.8,
+                height: 1.0,
               ),
             ),
             const SizedBox(width: 3),
             Icon(
               Icons.arrow_drop_down,
               size: 20,
-              color: active ? AppColors.primary : AppColors.textMuted,
+              color: active ? _kTxBrandBlue : const Color(0xFF71869B),
             ),
           ],
         ),

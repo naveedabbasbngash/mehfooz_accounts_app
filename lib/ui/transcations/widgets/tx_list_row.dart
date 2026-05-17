@@ -2,14 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../../model/tx_item_ui.dart';
 
+const _kTxBrandBlue = Color(0xFF1862A3);
+
 class TxListRow extends StatelessWidget {
   final TxItemUi item;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool isSelected;
 
   const TxListRow({
     super.key,
     required this.item,
     required this.onTap,
+    this.onLongPress,
+    this.isSelected = false,
   });
 
   // ------------------------------------------------------------
@@ -30,19 +36,29 @@ class TxListRow extends StatelessWidget {
     final name = item.name.isNotEmpty ? item.name : "-";
     final date = item.date.isNotEmpty ? item.date : "-";
     final desc = item.description ?? "";
+    final hasDescription = desc.isNotEmpty;
     final currency = item.currency.isNotEmpty ? item.currency : "-";
 
     final Color amountColor = isCredit
-        ? const Color(0xFF2E7D32) // Google Green
-        : const Color(0xFFC62828); // Google Red
+        ? _kTxBrandBlue
+        : const Color(0xFFC62828);
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
+            if (isSelected) ...[
+              const Icon(
+                Icons.check_circle,
+                color: _kTxBrandBlue,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+            ],
             // =========================================================
             // LEFT — Avatar
             // =========================================================
@@ -54,9 +70,9 @@ class TxListRow extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: const [
                   BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
+                    color: Color(0x141862A3),
+                    blurRadius: 8,
+                    offset: Offset(0, 4),
                   ),
                 ],
               ),
@@ -65,7 +81,7 @@ class TxListRow extends StatelessWidget {
                 name.isNotEmpty ? name[0].toUpperCase() : "?",
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -83,9 +99,9 @@ class TxListRow extends StatelessWidget {
                   Text(
                     date,
                     style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 10.8,
+                      color: const Color(0xFF7A8DA3),
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -94,7 +110,7 @@ class TxListRow extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       color: Color(0xFF0B1E3A),
                       fontWeight: FontWeight.w700,
                       height: 1.1,
@@ -107,8 +123,8 @@ class TxListRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 13,
-                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                        color: const Color(0xFF6F8094),
                       ),
                     ),
                 ],
@@ -123,10 +139,11 @@ class TxListRow extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
+                SizedBox(height: hasDescription ? 4 : 9),
                 Text(
                   "${isCredit ? '+' : '-'}${_fmtDouble(amount)}",
                   style: TextStyle(
-                    fontSize: 17,
+                    fontSize: 15,
                     color: amountColor,
                     fontWeight: FontWeight.w800,
                   ),
@@ -135,9 +152,9 @@ class TxListRow extends StatelessWidget {
                 Text(
                   currency,
                   style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 11,
+                    color: const Color(0xFF73869D),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -152,17 +169,17 @@ class TxListRow extends StatelessWidget {
   // Avatar color (stable hash)
   // ------------------------------------------------------------
   Color _avatarColor(String name) {
-    if (name.trim().isEmpty) return const Color(0xFF6C5CE7);
+    if (name.trim().isEmpty) return _kTxBrandBlue;
 
     final palette = const [
-      Color(0xFF6C5CE7),
-      Color(0xFF00B894),
-      Color(0xFF0984E3),
-      Color(0xFFFF7675),
-      Color(0xFFFD79A8),
-      Color(0xFF00CEC9),
-      Color(0xFF74B9FF),
-      Color(0xFFA29BFE),
+      Color(0xFF1862A3),
+      Color(0xFF1E4F8C),
+      Color(0xFF2973B2),
+      Color(0xFF3B82C4),
+      Color(0xFF0D4C81),
+      Color(0xFF27667B),
+      Color(0xFF2C7DA0),
+      Color(0xFF457B9D),
     ];
 
     final idx = name.toLowerCase().hashCode.abs() % palette.length;

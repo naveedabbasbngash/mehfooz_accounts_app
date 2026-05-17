@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
-import 'package:country_flags/country_flags.dart';
 
 import 'package:mehfooz_accounts_app/data/local/database_manager.dart';
 import 'package:mehfooz_accounts_app/model/cash_in_hand_row.dart';
@@ -11,7 +10,10 @@ import 'package:mehfooz_accounts_app/services/exchange_rate_service.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../services/pdf/export_summary_pdf.dart';
 import '../../../viewmodel/home/home_view_model.dart';
+import '../../commons/currency_flag.dart';
 import '../../commons/fade_slide.dart';
+
+const _kHomeBrandBlue = Color(0xFF1862A3);
 
 class CashInHandCard extends StatefulWidget {
   final HomeViewModel vm;
@@ -48,121 +50,8 @@ class _CashInHandCardState extends State<CashInHandCard> {
   String _norm(String value) => value.trim().toUpperCase();
   bool _isZero(double v) => v.abs() < 0.005;
 
-  String _currencyToCountryCode(String currency) {
-    switch (_norm(currency)) {
-      case 'PKR':
-        return 'PK';
-      case 'USD':
-        return 'US';
-      case 'AED':
-        return 'AE';
-      case 'SAR':
-        return 'SA';
-      case 'EUR':
-        return 'EU';
-      case 'GBP':
-      case 'POUND':
-        return 'GB';
-      case 'INR':
-      case 'IND':
-        return 'IN';
-      case 'AFG':
-      case 'AFN':
-        return 'AF';
-      case 'CAD':
-        return 'CA';
-      case 'JPY':
-        return 'JP';
-      case 'RMB':
-      case 'CNY':
-        return 'CN';
-      case 'IRR':
-        return 'IR';
-      case 'BHD':
-        return 'BH';
-      case 'OMR':
-        return 'OM';
-      case 'QAR':
-        return 'QA';
-      case 'DKK':
-        return 'DK';
-      case 'SEK':
-        return 'SE';
-      case 'NOK':
-        return 'NO';
-      case 'MYR':
-        return 'MY';
-      case 'AUD':
-        return 'AU';
-      case 'HKD':
-        return 'HK';
-      case 'SGD':
-      case 'SGP':
-        return 'SG';
-      case 'RUB':
-        return 'RU';
-      default:
-        return 'UN';
-    }
-  }
-
-  String _countryNameForCurrency(String currency) {
-    switch (_norm(currency)) {
-      case 'PKR':
-        return 'Pakistan';
-      case 'USD':
-        return 'United States';
-      case 'AED':
-        return 'United Arab Emirates';
-      case 'SAR':
-        return 'Saudi Arabia';
-      case 'EUR':
-        return 'European Union';
-      case 'GBP':
-      case 'POUND':
-        return 'United Kingdom';
-      case 'INR':
-      case 'IND':
-        return 'India';
-      case 'AFG':
-      case 'AFN':
-        return 'Afghanistan';
-      case 'CAD':
-        return 'Canada';
-      case 'JPY':
-        return 'Japan';
-      case 'RMB':
-      case 'CNY':
-        return 'China';
-      case 'IRR':
-        return 'Iran';
-      case 'BHD':
-        return 'Bahrain';
-      case 'OMR':
-        return 'Oman';
-      case 'QAR':
-        return 'Qatar';
-      case 'DKK':
-        return 'Denmark';
-      case 'SEK':
-        return 'Sweden';
-      case 'NOK':
-        return 'Norway';
-      case 'MYR':
-        return 'Malaysia';
-      case 'AUD':
-        return 'Australia';
-      case 'HKD':
-        return 'Hong Kong';
-      case 'SGD':
-      case 'SGP':
-        return 'Singapore';
-      case 'RUB':
-        return 'Russia';
-      default:
-        return 'Unknown';
-    }
-  }
+  String _countryNameForCurrency(String currency) =>
+      currencyCountryName(currency);
 
   void _clearBaseCurrency() {
     setState(() {
@@ -187,9 +76,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
     return null;
   }
 
-  Future<void> _showEditRateDialog({
-    required String currency,
-  }) async {
+  Future<void> _showEditRateDialog({required String currency}) async {
     final base = _selectedBaseCurrency;
     if (base == null || base.trim().isEmpty) return;
 
@@ -206,9 +93,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
           content: TextField(
             controller: controller,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              hintText: '1 $base = ? $currency',
-            ),
+            decoration: InputDecoration(hintText: '1 $base = ? $currency'),
           ),
           actions: [
             TextButton(
@@ -244,9 +129,9 @@ class _CashInHandCardState extends State<CashInHandCard> {
       final items = await repo.getCompanyCurrencies(companyId: companyId);
       if (!mounted) return;
       setState(() {
-        _accTypeCurrencies = items.where((e) => e.trim().isNotEmpty).toList(
-              growable: false,
-            );
+        _accTypeCurrencies = items
+            .where((e) => e.trim().isNotEmpty)
+            .toList(growable: false);
       });
     } catch (_) {
       if (!mounted) return;
@@ -308,7 +193,10 @@ class _CashInHandCardState extends State<CashInHandCard> {
                       onChanged: (v) => setModalState(() => query = v),
                       decoration: InputDecoration(
                         hintText: 'Search currency...',
-                        prefixIcon: const Icon(Icons.search),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: _kHomeBrandBlue,
+                        ),
                         filled: true,
                         fillColor: const Color(0xFFF7F8FA),
                         border: OutlineInputBorder(
@@ -359,7 +247,8 @@ class _CashInHandCardState extends State<CashInHandCard> {
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final currency = filtered[index];
-                                final selected = _norm(_selectedBaseCurrency ?? '') ==
+                                final selected =
+                                    _norm(_selectedBaseCurrency ?? '') ==
                                     _norm(currency);
                                 return ListTile(
                                   dense: true,
@@ -462,10 +351,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
     });
   }
 
-  double? _amountByRate({
-    required String currency,
-    required double amount,
-  }) {
+  double? _amountByRate({required String currency, required double amount}) {
     final base = _selectedBaseCurrency;
     if (base == null || base.trim().isEmpty) return null;
 
@@ -487,17 +373,20 @@ class _CashInHandCardState extends State<CashInHandCard> {
     final jbRows = vm.cashInHandSummary
         .where((r) => !_isZero(r.amount.toDouble()))
         .map((r) {
-      final currency = r.currency.trim().isEmpty ? 'Unknown' : r.currency.trim();
-      final amount = r.amount.toDouble();
-      return <String, dynamic>{
-        'currency': currency,
-        'amount': amount,
-        'rate': hasBase ? _rateForCurrency(currency) : null,
-        'converted': hasBase
-            ? _amountByRate(currency: currency, amount: amount)
-            : null,
-      };
-    }).toList(growable: false);
+          final currency = r.currency.trim().isEmpty
+              ? 'Unknown'
+              : r.currency.trim();
+          final amount = r.amount.toDouble();
+          return <String, dynamic>{
+            'currency': currency,
+            'amount': amount,
+            'rate': hasBase ? _rateForCurrency(currency) : null,
+            'converted': hasBase
+                ? _amountByRate(currency: currency, amount: amount)
+                : null,
+          };
+        })
+        .toList(growable: false);
 
     final acc1Rows = vm.acc1CashSummary
         .where((r) => !_isZero(r.amount.toDouble()))
@@ -548,10 +437,9 @@ class _CashInHandCardState extends State<CashInHandCard> {
             Expanded(
               child: Text(
                 subtitle,
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppColors.textMuted),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ),
             if (hasBase)
@@ -564,9 +452,11 @@ class _CashInHandCardState extends State<CashInHandCard> {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
+                    color: _kHomeBrandBlue.withValues(alpha: 0.08),
                     borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFD1D5DB)),
+                    border: Border.all(
+                      color: _kHomeBrandBlue.withValues(alpha: 0.24),
+                    ),
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
@@ -574,7 +464,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
                       Icon(
                         Icons.restart_alt_rounded,
                         size: 13,
-                        color: Color(0xFF6B7280),
+                        color: _kHomeBrandBlue,
                       ),
                       SizedBox(width: 4),
                       Text(
@@ -582,7 +472,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFF4B5563),
+                          color: _kHomeBrandBlue,
                         ),
                       ),
                     ],
@@ -633,10 +523,10 @@ class _CashInHandCardState extends State<CashInHandCard> {
   Row _titleRow(BuildContext context, List<CashInHandRow> rows) {
     return Row(
       children: [
-        Icon(Icons.money, color: AppColors.primary, size: 22),
+        const Icon(Icons.money, color: _kHomeBrandBlue, size: 22),
         const SizedBox(width: 8),
         Text(
-          "JB Amount",
+          "DR/CR Amounts",
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -645,12 +535,12 @@ class _CashInHandCardState extends State<CashInHandCard> {
         ),
         const Spacer(),
         IconButton(
-          icon: Icon(Icons.picture_as_pdf, color: AppColors.primary),
+          icon: const Icon(Icons.picture_as_pdf, color: _kHomeBrandBlue),
           tooltip: "Share PDF",
           onPressed: () => _exportCombinedPdf(context),
         ),
         IconButton(
-          icon: Icon(Icons.more_vert, color: AppColors.primary),
+          icon: const Icon(Icons.more_vert, color: _kHomeBrandBlue),
           tooltip: "Select base currency",
           onPressed: () => _pickBaseCurrency(rows),
         ),
@@ -667,13 +557,12 @@ class _CashInHandCardState extends State<CashInHandCard> {
 
     return List.generate(visible, (i) {
       final row = rows[i];
-      final currency = row.currency.trim().isEmpty ? 'Unknown' : row.currency.trim();
+      final currency = row.currency.trim().isEmpty
+          ? 'Unknown'
+          : row.currency.trim();
       final countryName = _countryNameForCurrency(currency);
       final original = row.amount.toDouble();
-      final calculated = _amountByRate(
-        currency: currency,
-        amount: original,
-      );
+      final calculated = _amountByRate(currency: currency, amount: original);
       final rate = _rateForCurrency(currency);
       final showCalculated = hasBase && calculated != null;
       final isPositive = original >= 0;
@@ -688,14 +577,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
                 SizedBox(
                   width: 28,
                   height: 28,
-                  child: CountryFlag.fromCountryCode(
-                    _currencyToCountryCode(currency),
-                    theme: const ImageTheme(
-                      width: 26,
-                      height: 26,
-                      shape: Circle(),
-                    ),
-                  ),
+                  child: CurrencyFlagBadge(currency: currency, size: 26),
                 ),
                 const SizedBox(width: 8),
                 Column(
@@ -727,7 +609,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
                 _AnimatedMoneyText(
                   value: original,
                   fmt: _fmt,
-                  color: isPositive ? AppColors.primary : AppColors.error,
+                  color: isPositive ? _kHomeBrandBlue : AppColors.error,
                 ),
                 if (hasBase)
                   InkWell(
@@ -741,7 +623,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
                           const Icon(
                             Icons.edit_outlined,
                             size: 11,
-                            color: Color(0xFF6B7280),
+                            color: _kHomeBrandBlue,
                           ),
                           const SizedBox(width: 3),
                           Text(
@@ -750,7 +632,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
                                 : 'Rate ${rate.toStringAsFixed(4)}',
                             style: const TextStyle(
                               fontSize: 11,
-                              color: Color(0xFF4B5563),
+                              color: _kHomeBrandBlue,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -795,7 +677,7 @@ class _CashInHandCardState extends State<CashInHandCard> {
       }
     }
 
-    final color = total >= 0 ? AppColors.primary : AppColors.error;
+    final color = total >= 0 ? _kHomeBrandBlue : AppColors.error;
     final label = 'Total ($base)';
 
     return Padding(
@@ -837,14 +719,14 @@ class _CashInHandCardState extends State<CashInHandCard> {
                   ? Icons.keyboard_arrow_up
                   : Icons.keyboard_arrow_down,
               size: 18,
-              color: AppColors.primary,
+              color: _kHomeBrandBlue,
             ),
             const SizedBox(width: 5),
             Text(
               widget.isExpanded ? "Show less" : "+ $hiddenCount more",
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.primary,
+                color: _kHomeBrandBlue,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -856,19 +738,58 @@ class _CashInHandCardState extends State<CashInHandCard> {
 
   Widget _emptyState(BuildContext context) {
     return FadeSlide(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              _kHomeBrandBlue.withValues(alpha: 0.08),
+              Colors.white,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _kHomeBrandBlue.withValues(alpha: 0.14)),
+        ),
         child: Column(
           children: [
-            Icon(Icons.wallet_outlined,
-                size: 40, color: AppColors.primary.withValues(alpha: 0.35)),
-            const SizedBox(height: 12),
-            Text(
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _kHomeBrandBlue.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: _kHomeBrandBlue.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                Icons.wallet_outlined,
+                size: 28,
+                color: _kHomeBrandBlue.withValues(alpha: 0.92),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
               "No Summary Yet",
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF102132),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "DR/CR movement and converted totals will appear here once transactions are added to this workspace.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textMuted,
               ),
             ),
           ],
@@ -932,10 +853,7 @@ class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
       builder: (context, v, child) {
         return Text(
           widget.fmt.format(v),
-          style: TextStyle(
-            color: widget.color,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: widget.color, fontWeight: FontWeight.bold),
         );
       },
     );

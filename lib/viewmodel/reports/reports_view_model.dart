@@ -6,6 +6,7 @@ import '../../model/balance_row.dart';
 import '../../model/balance_matrix_result.dart';
 import '../../model/pending_row.dart';
 import '../../model/pending_group_row.dart';
+import '../../services/report_preferences_service.dart';
 
 // PDF services
 import '../../services/global_state.dart';
@@ -22,6 +23,7 @@ class ReportsUiState {
   final bool loading;
   final String? error;
   final String? activeReportKey;
+  final bool subgroupFiltersEnabled;
 
   final List<String> currencies;
   final List<BalanceRow> rows;
@@ -31,6 +33,7 @@ class ReportsUiState {
     this.loading = false, // ✅ idle by default
     this.error,
     this.activeReportKey,
+    this.subgroupFiltersEnabled = false,
     this.currencies = const [],
     this.rows = const [],
     this.pending = const [],
@@ -40,6 +43,7 @@ class ReportsUiState {
     bool? loading,
     String? error,
     String? activeReportKey,
+    bool? subgroupFiltersEnabled,
     List<String>? currencies,
     List<BalanceRow>? rows,
     List<PendingRow>? pending,
@@ -48,6 +52,8 @@ class ReportsUiState {
       loading: loading ?? this.loading,
       error: error,
       activeReportKey: activeReportKey,
+      subgroupFiltersEnabled:
+          subgroupFiltersEnabled ?? this.subgroupFiltersEnabled,
       currencies: currencies ?? this.currencies,
       rows: rows ?? this.rows,
       pending: pending ?? this.pending,
@@ -67,7 +73,21 @@ class ReportsViewModel extends ChangeNotifier {
 
   ReportsViewModel({
     required this.repo,
-  });
+  }) {
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final enabled = await ReportPreferencesService.getSubgroupFiltersEnabled();
+    _ui = _ui.copyWith(subgroupFiltersEnabled: enabled);
+    notifyListeners();
+  }
+
+  Future<void> setSubgroupFiltersEnabled(bool enabled) async {
+    _ui = _ui.copyWith(subgroupFiltersEnabled: enabled);
+    notifyListeners();
+    await ReportPreferencesService.setSubgroupFiltersEnabled(enabled);
+  }
 
   // =====================================================
   // INTERNAL LOADING HELPERS (simple & safe)
@@ -99,7 +119,7 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   Future<void> loadBalanceMatrix() async {
     final companyId = GlobalState.instance.companyId;
-    if (companyId == null) {
+    if (companyId <= 0) {
       _ui = _ui.copyWith(error: "Please select a company first");
       return;
     }
@@ -273,20 +293,39 @@ class ReportsViewModel extends ChangeNotifier {
   // =====================================================
   // SUBGROUP REPORT
   // =====================================================
-  Future<File?> generateSubgroupReport() async {
+  Future<File?> generateSubgroupReport({
+    int? accId,
+    int? accTypeId,
+    String? fromDate,
+    String? toDate,
+    String title = 'Trial Balance',
+    String? periodText,
+    String? filterSummary,
+  }) async {
     try {
       _startLoading('subgroup');
       await _yieldForLoaderFrame();
 
       final companyId = GlobalState.instance.companyId;
-      if (companyId == null) {
+      if (companyId <= 0) {
         return null;
       }
 
-      final rows = await repo.getSubgroupBalances(companyId: companyId);
+      final rows = await repo.getSubgroupBalances(
+        companyId: companyId,
+        accId: accId,
+        accTypeId: accTypeId,
+        fromDate: fromDate,
+        toDate: toDate,
+      );
       if (rows.isEmpty) return null;
 
-      return await SubgroupPdfService.instance.render(rows: rows);
+      return await SubgroupPdfService.instance.render(
+        rows: rows,
+        title: title,
+        periodText: periodText,
+        filterSummary: filterSummary,
+      );
     } catch (e, s) {
       debugPrint("❌ Subgroup report error: $e");
       debugPrintStack(stackTrace: s);

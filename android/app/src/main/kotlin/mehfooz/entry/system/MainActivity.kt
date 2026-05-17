@@ -1,4 +1,4 @@
-package www.mahfooz.account.app.mehfooz_accounts_app
+package mehfooz.entry.system
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

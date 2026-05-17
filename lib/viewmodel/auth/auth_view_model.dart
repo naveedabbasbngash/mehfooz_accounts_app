@@ -10,7 +10,22 @@ import '../../services/auth_service.dart';
 import '../../services/local_storage.dart';
 import '../../services/logging/logger_service.dart';
 
-enum AuthStep { chooser, email, password, setPassword, forgotPassword, contact }
+enum AuthStep {
+  chooser,
+  email,
+  register,
+  password,
+  setPassword,
+  forgotPassword,
+  contact,
+}
+
+class AuthRegisterUiResult {
+  final bool success;
+  final String message;
+
+  const AuthRegisterUiResult({required this.success, required this.message});
+}
 
 class AuthViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
@@ -112,6 +127,39 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // ─────────────────────────────────────────────
+  // SELECT ACCOUNT FROM CHOOSER
+  // ─────────────────────────────────────────────
+  void selectSavedAccount(String selectedEmail) {
+    email = selectedEmail.trim();
+    errorMessage = null;
+    infoMessage = null;
+    forgotPasswordSuccess = false;
+    step = AuthStep.password;
+    notifyListeners();
+  }
+
+  // ─────────────────────────────────────────────
+  // OPEN REGISTER
+  // ─────────────────────────────────────────────
+  void openRegister({String? prefillEmail}) {
+    email = (prefillEmail ?? email).trim();
+    errorMessage = null;
+    infoMessage = null;
+    forgotPasswordSuccess = false;
+    step = AuthStep.register;
+    notifyListeners();
+  }
+
+  void openEmailStep({String? prefillEmail}) {
+    email = (prefillEmail ?? email).trim();
+    errorMessage = null;
+    infoMessage = null;
+    forgotPasswordSuccess = false;
+    step = AuthStep.email;
+    notifyListeners();
+  }
+
+  // ─────────────────────────────────────────────
   // SUBMIT EMAIL
   // ─────────────────────────────────────────────
   Future<void> submitEmail(String value) async {
@@ -184,6 +232,96 @@ class AuthViewModel extends ChangeNotifier {
     } catch (_) {
       errorMessage = 'Login failed';
       return null;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // REGISTER
+  // ─────────────────────────────────────────────
+  Future<AuthRegisterUiResult> registerAccount({
+    required String firstName,
+    required String lastName,
+    required String emailValue,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    errorMessage = null;
+    infoMessage = null;
+    forgotPasswordSuccess = false;
+
+    final fName = firstName.trim();
+    final lName = lastName.trim();
+    final mail = emailValue.trim();
+    final p1 = password.trim();
+    final p2 = confirmPassword.trim();
+
+    if (fName.isEmpty) {
+      const msg = 'First name is required';
+      errorMessage = msg;
+      notifyListeners();
+      return const AuthRegisterUiResult(success: false, message: msg);
+    }
+    if (mail.isEmpty) {
+      const msg = 'Email is required';
+      errorMessage = msg;
+      notifyListeners();
+      return const AuthRegisterUiResult(success: false, message: msg);
+    }
+    if (p1.isEmpty || p2.isEmpty) {
+      const msg = 'Password fields cannot be empty';
+      errorMessage = msg;
+      notifyListeners();
+      return const AuthRegisterUiResult(success: false, message: msg);
+    }
+    if (p1.length < 6) {
+      const msg = 'Password must be at least 6 characters';
+      errorMessage = msg;
+      notifyListeners();
+      return const AuthRegisterUiResult(success: false, message: msg);
+    }
+    if (p1 != p2) {
+      const msg = 'Passwords do not match';
+      errorMessage = msg;
+      notifyListeners();
+      return const AuthRegisterUiResult(success: false, message: msg);
+    }
+
+    isLoading = true;
+    notifyListeners();
+
+    try {
+      final registerResult = await AuthService.registerAccount(
+        firstName: fName,
+        lastName: lName,
+        email: mail,
+        password: p1,
+        confirmPassword: p2,
+      );
+
+      if (!registerResult.success) {
+        final msg = registerResult.message.isNotEmpty
+            ? registerResult.message
+            : 'Registration failed';
+        errorMessage = msg;
+        return AuthRegisterUiResult(success: false, message: msg);
+      }
+
+      email = mail;
+      final successMsg = registerResult.message.isNotEmpty
+          ? registerResult.message
+          : 'Account created successfully';
+      infoMessage = successMsg;
+      return AuthRegisterUiResult(success: true, message: successMsg);
+    } on AuthStepException catch (e) {
+      errorMessage = e.message;
+      return AuthRegisterUiResult(success: false, message: e.message);
+    } catch (_) {
+      const msg = 'Registration failed';
+      errorMessage = msg;
+      return const AuthRegisterUiResult(success: false, message: msg);
     } finally {
       isLoading = false;
       notifyListeners();

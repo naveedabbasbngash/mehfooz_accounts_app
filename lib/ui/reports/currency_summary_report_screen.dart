@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -12,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../services/share/currency_summary_share_image_service.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodel/reports/currency_summary_report_view_model.dart';
+import '../commons/currency_flag.dart';
 import '../transcations/widgets/tx_search_bar.dart';
 
 class CurrencySummaryReportScreen extends StatelessWidget {
@@ -24,121 +24,8 @@ class CurrencySummaryReportScreen extends StatelessWidget {
     return _fmt.format(safe);
   }
 
-  String _currencyToCountryCode(String currency) {
-    switch (currency.toUpperCase().trim()) {
-      case 'PKR':
-        return 'PK';
-      case 'USD':
-        return 'US';
-      case 'AED':
-        return 'AE';
-      case 'SAR':
-        return 'SA';
-      case 'EUR':
-        return 'EU';
-      case 'GBP':
-      case 'POUND':
-        return 'GB';
-      case 'INR':
-      case 'IND':
-        return 'IN';
-      case 'AFG':
-      case 'AFN':
-        return 'AF';
-      case 'CAD':
-        return 'CA';
-      case 'JPY':
-        return 'JP';
-      case 'RMB':
-      case 'CNY':
-        return 'CN';
-      case 'IRR':
-        return 'IR';
-      case 'BHD':
-        return 'BH';
-      case 'OMR':
-        return 'OM';
-      case 'QAR':
-        return 'QA';
-      case 'DKK':
-        return 'DK';
-      case 'SEK':
-        return 'SE';
-      case 'NOK':
-        return 'NO';
-      case 'MYR':
-        return 'MY';
-      case 'AUD':
-        return 'AU';
-      case 'HKD':
-        return 'HK';
-      case 'SGD':
-      case 'SGP':
-        return 'SG';
-      case 'RUB':
-        return 'RU';
-      default:
-        return 'UN';
-    }
-  }
-
-  String _countryNameForCurrency(String currency) {
-    switch (currency.toUpperCase().trim()) {
-      case 'PKR':
-        return 'Pakistan';
-      case 'USD':
-        return 'United States';
-      case 'AED':
-        return 'United Arab Emirates';
-      case 'SAR':
-        return 'Saudi Arabia';
-      case 'EUR':
-        return 'European Union';
-      case 'GBP':
-      case 'POUND':
-        return 'United Kingdom';
-      case 'INR':
-      case 'IND':
-        return 'India';
-      case 'AFG':
-      case 'AFN':
-        return 'Afghanistan';
-      case 'CAD':
-        return 'Canada';
-      case 'JPY':
-        return 'Japan';
-      case 'RMB':
-      case 'CNY':
-        return 'China';
-      case 'IRR':
-        return 'Iran';
-      case 'BHD':
-        return 'Bahrain';
-      case 'OMR':
-        return 'Oman';
-      case 'QAR':
-        return 'Qatar';
-      case 'DKK':
-        return 'Denmark';
-      case 'SEK':
-        return 'Sweden';
-      case 'NOK':
-        return 'Norway';
-      case 'MYR':
-        return 'Malaysia';
-      case 'AUD':
-        return 'Australia';
-      case 'HKD':
-        return 'Hong Kong';
-      case 'SGD':
-      case 'SGP':
-        return 'Singapore';
-      case 'RUB':
-        return 'Russia';
-      default:
-        return 'Unknown';
-    }
-  }
+  String _countryNameForCurrency(String currency) =>
+      currencyCountryName(currency);
 
   bool _canExport(CurrencySummaryReportViewModel vm) {
     final base = vm.baseCurrency?.trim() ?? '';
@@ -149,28 +36,32 @@ class CurrencySummaryReportScreen extends StatelessWidget {
     return vm
         .rowsForDisplay()
         .map(
-          (row) => vm.convertedToBase(
-            currency: row.currency,
-            amount: row.balance,
-          ),
+          (row) =>
+              vm.convertedToBase(currency: row.currency, amount: row.balance),
         )
         .whereType<double>()
         .fold<double>(0, (sum, v) => sum + v);
   }
 
-  List<CurrencySummaryShareRow> _shareRows(
-    CurrencySummaryReportViewModel vm,
-  ) {
-    return vm.rowsForDisplay().map((row) {
-      final currency = row.currency.trim().isEmpty ? 'Unknown' : row.currency.trim();
-      return CurrencySummaryShareRow(
-        currency: currency,
-        countryName: _countryNameForCurrency(currency),
-        balance: row.balance,
-        rate: vm.rateForCurrency(currency),
-        converted: vm.convertedToBase(currency: currency, amount: row.balance),
-      );
-    }).toList(growable: false);
+  List<CurrencySummaryShareRow> _shareRows(CurrencySummaryReportViewModel vm) {
+    return vm
+        .rowsForDisplay()
+        .map((row) {
+          final currency = row.currency.trim().isEmpty
+              ? 'Unknown'
+              : row.currency.trim();
+          return CurrencySummaryShareRow(
+            currency: currency,
+            countryName: _countryNameForCurrency(currency),
+            balance: row.balance,
+            rate: vm.rateForCurrency(currency),
+            converted: vm.convertedToBase(
+              currency: currency,
+              amount: row.balance,
+            ),
+          );
+        })
+        .toList(growable: false);
   }
 
   Future<void> _shareAsImage(
@@ -180,7 +71,9 @@ class CurrencySummaryReportScreen extends StatelessWidget {
     final base = vm.baseCurrency?.trim() ?? '';
     if (base.isEmpty) return;
 
-    final accountName = vm.search.trim().isEmpty ? 'Unknown Account' : vm.search.trim();
+    final accountName = vm.search.trim().isEmpty
+        ? 'Unknown Account'
+        : vm.search.trim();
     final rows = _shareRows(vm);
     final total = _convertedTotal(vm);
 
@@ -198,16 +91,12 @@ class CurrencySummaryReportScreen extends StatelessWidget {
         total: total,
       );
       final title = 'Currency Summary • $accountName';
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: title,
-        subject: title,
-      );
+      await Share.shareXFiles([XFile(file.path)], text: title, subject: title);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Share failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Share failed: $e')));
       }
     } finally {
       if (context.mounted) {
@@ -224,12 +113,7 @@ class CurrencySummaryReportScreen extends StatelessWidget {
       pw.Page(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(10),
-        build: (_) => pw.Center(
-          child: pw.Image(
-            image,
-            fit: pw.BoxFit.contain,
-          ),
-        ),
+        build: (_) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
       ),
     );
     final file = File(
@@ -246,7 +130,9 @@ class CurrencySummaryReportScreen extends StatelessWidget {
     final base = vm.baseCurrency?.trim() ?? '';
     if (base.isEmpty) return;
 
-    final accountName = vm.search.trim().isEmpty ? 'Unknown Account' : vm.search.trim();
+    final accountName = vm.search.trim().isEmpty
+        ? 'Unknown Account'
+        : vm.search.trim();
     final rows = _shareRows(vm);
     final total = _convertedTotal(vm);
 
@@ -267,9 +153,9 @@ class CurrencySummaryReportScreen extends StatelessWidget {
       await OpenFilex.open(pdfFile.path);
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('PDF export failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('PDF export failed: $e')));
       }
     } finally {
       if (context.mounted) {
@@ -291,10 +177,8 @@ class CurrencySummaryReportScreen extends StatelessWidget {
 
     final convertedValues = rows
         .map(
-          (row) => vm.convertedToBase(
-            currency: row.currency,
-            amount: row.balance,
-          ),
+          (row) =>
+              vm.convertedToBase(currency: row.currency, amount: row.balance),
         )
         .toList(growable: false);
     if (convertedValues.isEmpty || convertedValues.any((v) => v == null)) {
@@ -437,8 +321,8 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                                   const Divider(height: 1),
                               itemBuilder: (context, index) {
                                 final currency = filtered[index];
-                                final selected = (selectedCurrency ?? '')
-                                        .toUpperCase() ==
+                                final selected =
+                                    (selectedCurrency ?? '').toUpperCase() ==
                                     currency.toUpperCase();
                                 return ListTile(
                                   dense: true,
@@ -573,10 +457,7 @@ class CurrencySummaryReportScreen extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 18),
             child: Text(
               'Select account name to view balance by currency',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 12.5,
-              ),
+              style: TextStyle(color: Color(0xFF6B7280), fontSize: 12.5),
             ),
           ),
           if (vm.hasSelectedAccount)
@@ -596,15 +477,15 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                InkWell(
-                  borderRadius: BorderRadius.circular(12),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
                     onTap: vm.loadingCurrencies
                         ? null
                         : () async {
                             FocusScope.of(context).unfocus();
-                          final selected = await _showCurrencySearchPicker(
-                            context,
-                            vm.allCurrencies,
+                            final selected = await _showCurrencySearchPicker(
+                              context,
+                              vm.allCurrencies,
                               vm.baseCurrency,
                             );
                             if (selected != null &&
@@ -628,9 +509,10 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                             child: Text(
                               vm.loadingCurrencies
                                   ? 'Loading currencies...'
-                                  : (vm.baseCurrency?.trim().isNotEmpty ?? false)
-                                      ? vm.baseCurrency!
-                                      : 'Search and select base currency',
+                                  : (vm.baseCurrency?.trim().isNotEmpty ??
+                                        false)
+                                  ? vm.baseCurrency!
+                                  : 'Search and select base currency',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: vm.loadingCurrencies
@@ -653,7 +535,9 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                 ],
               ),
             ),
-          if (vm.loadingSuggestions || vm.loadingCurrencies || vm.resolvingAccount)
+          if (vm.loadingSuggestions ||
+              vm.loadingCurrencies ||
+              vm.resolvingAccount)
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: LinearProgressIndicator(minHeight: 3),
@@ -779,13 +663,9 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                             SizedBox(
                               width: 36,
                               height: 36,
-                              child: CountryFlag.fromCountryCode(
-                                _currencyToCountryCode(currency),
-                                theme: const ImageTheme(
-                                  width: 32,
-                                  height: 32,
-                                  shape: Circle(),
-                                ),
+                              child: CurrencyFlagBadge(
+                                currency: currency,
+                                size: 32,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -822,11 +702,8 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                                 if (hasBaseCurrency)
                                   InkWell(
                                     borderRadius: BorderRadius.circular(999),
-                                    onTap: () => _editRateDialog(
-                                      context,
-                                      vm,
-                                      currency,
-                                    ),
+                                    onTap: () =>
+                                        _editRateDialog(context, vm, currency),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 8,
@@ -836,7 +713,9 @@ class CurrencySummaryReportScreen extends StatelessWidget {
                                         color: isOverridden
                                             ? const Color(0xFFFEF3C7)
                                             : const Color(0xFFF3F4F6),
-                                        borderRadius: BorderRadius.circular(999),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                         border: Border.all(
                                           color: isOverridden
                                               ? const Color(0xFFF59E0B)

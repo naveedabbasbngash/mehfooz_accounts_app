@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // 🍎 REQUIRED
 import 'package:logger/logger.dart';
@@ -14,8 +15,6 @@ import '../../services/global_state.dart';
 import '../../services/sqlite_import_service.dart';
 import '../../services/sqlite_validation_service.dart';
 
-import '../../ui/commons/confirm_action.dart';
-import '../../ui/commons/confirm_action_dialog.dart';
 import '../../viewmodel/sync/sync_viewmodel.dart';
 import '../../model/user_model.dart';
 import '../profile/profile_view_model.dart';
@@ -26,14 +25,10 @@ class HomeViewModel extends ChangeNotifier {
   final GlobalKey<NavigatorState> navigatorKey;
   final GlobalKey drawerKey;
 
-  HomeViewModel({
-    required this.navigatorKey,
-    required this.drawerKey,
-  });
+  HomeViewModel({required this.navigatorKey, required this.drawerKey});
 
   // 🍎 APPLE REVIEW ACCOUNT
-  static const String _appleReviewEmail =
-      'applereviewmehfooz@gmail.com';
+  static const String _appleReviewEmail = 'applereviewmehfooz@gmail.com';
 
   // ─────────────────────────────────────────────
   // STATE
@@ -65,7 +60,7 @@ class HomeViewModel extends ChangeNotifier {
   void registerSyncVM(SyncViewModel vm, UserModel user) {
     syncVM = vm;
 
-    final adminCanSync = user.planStatus?.canSync ?? false;
+    final adminCanSync = user.planStatus?.canSync ?? true;
 
     vm.configureForUser(
       email: DatabaseManager.instance.activeUserEmail ?? user.email,
@@ -105,15 +100,16 @@ class HomeViewModel extends ChangeNotifier {
       // 1️⃣ Try restore existing DB
       // --------------------------------------------------
       _log.i("[$trace] 📦 Calling restoreDatabaseForUser...");
-      final restored =
-      await DatabaseManager.instance.restoreDatabaseForUser(user.email);
+      final restored = await DatabaseManager.instance.restoreDatabaseForUser(
+        user.email,
+      );
 
       _log.i("[$trace] 📦 restoreDatabaseForUser result = $restored");
 
       // --------------------------------------------------
       // 🍎 Apple Review Auto Demo DB
       // --------------------------------------------------
-// 🍎 APPLE REVIEW — ALWAYS FORCE DEMO DB
+      // 🍎 APPLE REVIEW — ALWAYS FORCE DEMO DB
       if (user.email == _appleReviewEmail) {
         _log.w("🍎 Apple Review user — forcing demo DB");
 
@@ -167,17 +163,14 @@ class HomeViewModel extends ChangeNotifier {
         _log.w("[$trace] ⚠ No local DB restored AND not Apple demo");
       }
     } catch (e, st) {
-      _log.e(
-        "[$trace] 🔥 init FAILED",
-        error: e,
-        stackTrace: st,
-      );
+      _log.e("[$trace] 🔥 init FAILED", error: e, stackTrace: st);
     } finally {
       _hasRestored = true;
       _log.i("[$trace] 🔚 init EXIT (_hasRestored=true)");
       notifyListeners();
     }
   }
+
   // ─────────────────────────────────────────────
   // 🍎 APPLE REVIEW DEMO DB LOADER
   // ─────────────────────────────────────────────
@@ -193,7 +186,7 @@ class HomeViewModel extends ChangeNotifier {
 
       _log.i(
         "📦 Asset loaded: "
-            "bytes=${byteData.lengthInBytes}",
+        "bytes=${byteData.lengthInBytes}",
       );
 
       // --------------------------------------------------
@@ -217,10 +210,7 @@ class HomeViewModel extends ChangeNotifier {
       // --------------------------------------------------
       _log.i("🔄 Activating demo DB for user = $email");
 
-      await DatabaseManager.instance.useImportedDbForUser(
-        tempPath,
-        email,
-      );
+      await DatabaseManager.instance.useImportedDbForUser(tempPath, email);
 
       final activePath = DatabaseManager.instance.activeDbPath;
       _log.i("✅ Demo DB activated at: $activePath");
@@ -237,14 +227,11 @@ class HomeViewModel extends ChangeNotifier {
 
       return activePath;
     } catch (e, st) {
-      _log.e(
-        "❌ Apple Review demo DB FAILED",
-        error: e,
-        stackTrace: st,
-      );
+      _log.e("❌ Apple Review demo DB FAILED", error: e, stackTrace: st);
       return null;
     }
-  }  // ─────────────────────────────────────────────
+  } // ─────────────────────────────────────────────
+
   // IMPORT DATABASE (UNCHANGED)
   // ─────────────────────────────────────────────
   Future<void> importDatabase(String inputPath, UserModel user) async {
@@ -254,8 +241,7 @@ class HomeViewModel extends ChangeNotifier {
     try {
       _log.i("📥 Importing SQLite DB for ${user.email}");
 
-      final importedPath =
-      await SqliteImportService.importAndSaveDb(inputPath);
+      final importedPath = await SqliteImportService.importAndSaveDb(inputPath);
       if (importedPath == null) {
         throw Exception("Failed to import database");
       }
@@ -284,15 +270,41 @@ class HomeViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────
   Future<void> _restoreCompanySelection() async {
     final prefs = await SharedPreferences.getInstance();
-    selectedCompanyId = prefs.getInt("selected_company_id") ?? 1;
-
     final db = DatabaseManager.instance.db;
-    final rows = await (db.select(db.companyTable)
-      ..where((t) => t.companyId.equals(selectedCompanyId!)))
-        .get();
+    final storedId = prefs.getInt("selected_company_id");
 
-    selectedCompanyName =
-    rows.isNotEmpty ? rows.first.companyName : "Your Company";
+    final companies = await (db.select(
+      db.companyTable,
+    )..orderBy([(t) => OrderingTerm.asc(t.companyId)])).get();
+
+    if (companies.isEmpty) {
+      selectedCompanyId = 1;
+      selectedCompanyName = "Your Company";
+      GlobalState.instance.setCompany(id: 1, name: selectedCompanyName!);
+      return;
+    }
+
+    if (storedId != null) {
+      final stored = companies.where((c) => c.companyId == storedId);
+      if (stored.isNotEmpty) {
+        final selected = stored.first;
+        selectedCompanyId = selected.companyId;
+        selectedCompanyName = selected.companyName ?? "Your Company";
+        GlobalState.instance.setCompany(
+          id: selectedCompanyId!,
+          name: selectedCompanyName!,
+        );
+        return;
+      }
+      _log.w(
+        "⚠ selected_company_id=$storedId not found in DB; falling back to first company",
+      );
+    }
+
+    final fallback = companies.first;
+    selectedCompanyId = fallback.companyId;
+    selectedCompanyName = fallback.companyName ?? "Your Company";
+    await prefs.setInt("selected_company_id", selectedCompanyId!);
 
     GlobalState.instance.setCompany(
       id: selectedCompanyId!,
@@ -307,17 +319,15 @@ class HomeViewModel extends ChangeNotifier {
     await prefs.setInt("selected_company_id", id);
 
     final db = DatabaseManager.instance.db;
-    final rows = await (db.select(db.companyTable)
-      ..where((t) => t.companyId.equals(id)))
-        .get();
+    final rows = await (db.select(
+      db.companyTable,
+    )..where((t) => t.companyId.equals(id))).get();
 
-    selectedCompanyName =
-    rows.isNotEmpty ? rows.first.companyName : "Your Company";
+    selectedCompanyName = rows.isNotEmpty
+        ? rows.first.companyName
+        : "Your Company";
 
-    GlobalState.instance.setCompany(
-      id: id,
-      name: selectedCompanyName!,
-    );
+    GlobalState.instance.setCompany(id: id, name: selectedCompanyName!);
 
     _startDashboardStreams();
     notifyListeners();
@@ -335,23 +345,24 @@ class HomeViewModel extends ChangeNotifier {
     _acc1CashSub?.cancel();
     _pendingSub?.cancel();
 
-    _cashInHandSub =
-        repo.watchCashInHandSummary(selectedCompanyId!).listen((rows) {
-          cashInHandSummary = rows;
-          notifyListeners();
-        });
+    _cashInHandSub = repo.watchCashInHandSummary(selectedCompanyId!).listen((
+      rows,
+    ) {
+      cashInHandSummary = rows;
+      notifyListeners();
+    });
 
-    _acc1CashSub =
-        repo.watchAcc1CashSummary(selectedCompanyId!).listen((rows) {
-          acc1CashSummary = rows;
-          notifyListeners();
-        });
+    _acc1CashSub = repo.watchAcc1CashSummary(selectedCompanyId!).listen((rows) {
+      acc1CashSummary = rows;
+      notifyListeners();
+    });
 
-    _pendingSub =
-        repo.watchPendingAmountSummary(selectedCompanyId!).listen((rows) {
-          pendingAmounts = rows;
-          notifyListeners();
-        });
+    _pendingSub = repo.watchPendingAmountSummary(selectedCompanyId!).listen((
+      rows,
+    ) {
+      pendingAmounts = rows;
+      notifyListeners();
+    });
   }
 
   // ─────────────────────────────────────────────
@@ -408,7 +419,7 @@ class HomeViewModel extends ChangeNotifier {
         title: const Text("Import Database"),
         content: const Text(
           "This will replace your current local database.\n\n"
-              "Do you want to continue?",
+          "Do you want to continue?",
         ),
         actions: [
           TextButton(
@@ -453,8 +464,7 @@ class HomeViewModel extends ChangeNotifier {
           content: Text(e.toString()),
           actions: [
             TextButton(
-              onPressed: () =>
-                  Navigator.of(ctx, rootNavigator: true).pop(),
+              onPressed: () => Navigator.of(ctx, rootNavigator: true).pop(),
               child: const Text("OK"),
             ),
           ],

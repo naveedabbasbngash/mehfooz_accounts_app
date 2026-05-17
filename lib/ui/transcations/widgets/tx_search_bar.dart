@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+const _kTxBrandBlue = Color(0xFF1862A3);
+
 class TxSearchBar extends StatelessWidget {
   final String value;
   final ValueChanged<String> onChanged;
@@ -88,9 +90,26 @@ class _TxAutoSearchState extends State<_TxAutoSearch> {
           onChanged: widget.onChanged,
           decoration: InputDecoration(
             hintText: "Search person…",
-            prefixIcon: const Icon(Icons.search),
+            hintStyle: const TextStyle(
+              color: Color(0xFF7B91A8),
+              fontWeight: FontWeight.w500,
+            ),
+            prefixIcon: const Icon(Icons.search_rounded, color: _kTxBrandBlue),
+            suffixIcon: controller.text.trim().isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      controller.clear();
+                      widget.onChanged('');
+                    },
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: Color(0xFF6C7D90),
+                    ),
+                  ),
             filled: true,
-            fillColor: Colors.white,
+            fillColor: const Color(0xFFF8FBFF),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 14,
@@ -98,6 +117,16 @@ class _TxAutoSearchState extends State<_TxAutoSearch> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(28),
               borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(28),
+              borderSide: BorderSide(
+                color: _kTxBrandBlue.withValues(alpha: 0.12),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(28),
+              borderSide: const BorderSide(color: _kTxBrandBlue, width: 1.2),
             ),
           ),
         );
@@ -109,29 +138,46 @@ class _TxAutoSearchState extends State<_TxAutoSearch> {
         return Align(
           alignment: Alignment.topLeft,
           child: Material(
-            elevation: 4,
-            borderRadius: BorderRadius.circular(12),
+            color: Colors.transparent,
+            elevation: 8,
+            borderRadius: BorderRadius.circular(18),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 240),
-              child: ListView.builder(
-                padding: EdgeInsets.zero,
-                itemCount: options.length,
-                itemBuilder: (ctx, i) {
-                  final option = options.elementAt(i);
-
-                  return InkWell(
-                    onTap: () => onSelected(option),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      child: RichText(
-                        text: _highlight(option, query),
-                      ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: _kTxBrandBlue.withValues(alpha: 0.12),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x141862A3),
+                      blurRadius: 18,
+                      offset: Offset(0, 10),
                     ),
-                  );
-                },
+                  ],
+                ),
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  itemCount: options.length,
+                  itemBuilder: (ctx, i) {
+                    final option = options.elementAt(i);
+
+                    return InkWell(
+                      onTap: () => onSelected(option),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        child: RichText(
+                          text: _highlight(option, query),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),

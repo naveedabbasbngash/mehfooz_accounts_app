@@ -20,8 +20,11 @@ part 'app_database.g.dart';
     AccPersonal,
     AccType,
     CompanyTable,
+    AccountsHeads,
     DbInfoTable,
+    AccountPCurrencyAssignment,
     TransactionsP,
+    TblCashTrans,
   ],
 )
 class AppDatabase extends _$AppDatabase {

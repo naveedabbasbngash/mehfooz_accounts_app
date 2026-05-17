@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:flutter/cupertino.dart';
 import '../data/local/app_database.dart';
+import '../model/account_head_option.dart';
 import '../model/balance_currency_ui.dart';
 import '../model/balance_matrix_result.dart';
 import '../model/balance_row.dart';
@@ -8,15 +9,1771 @@ import '../model/last_credit_row.dart';
 import '../model/pending_currency_summary.dart';
 import '../model/pending_group_row.dart';
 import '../model/pending_status_summary.dart';
-import '../model/simple_currency_summary.dart';
 import '../model/subgroup_balance_row.dart';
 import '../model/tx_filter.dart';
 import '../model/tx_item_ui.dart';
+import '../services/device_identity_service.dart';
+import '../services/local_storage.dart';
+import '../utils/ulid.dart';
+
+class _ActorMeta {
+  final int? userId;
+  final String? userEmail;
+  final bool isAdminOrOwner;
+
+  const _ActorMeta({this.userId, this.userEmail, this.isAdminOrOwner = false});
+}
+
+class TransactionEditData {
+  final int sourceVoucherNo;
+  final int mainVoucherNo;
+  final bool isCash;
+  final int accId;
+  final int accTypeId;
+  final int? cashAccId;
+  final DateTime txDate;
+  final String description;
+  final String entryReference;
+  final double debit;
+  final double credit;
+  final String? quality;
+  final double? rate;
+  final double? weight;
+
+  const TransactionEditData({
+    required this.sourceVoucherNo,
+    required this.mainVoucherNo,
+    required this.isCash,
+    required this.accId,
+    required this.accTypeId,
+    required this.cashAccId,
+    required this.txDate,
+    required this.description,
+    required this.entryReference,
+    required this.debit,
+    required this.credit,
+    required this.quality,
+    required this.rate,
+    required this.weight,
+  });
+}
 
 class TransactionsRepository {
   final AppDatabase db;
+  static const String _cashPairLinkPrefix = 'cash_pair:';
+  static const int _maxSafeVoucherNo = 2147483640;
+  String? _cachedDeviceId;
 
   TransactionsRepository(this.db);
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is BigInt) return value.toInt();
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _toText(dynamic value) => (value ?? '').toString().trim();
+
+  int _stableHash(String value) {
+    var hash = 2166136261;
+    for (final unit in value.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 16777619) & 0x7fffffff;
+    }
+    return hash & 0x7fffffff;
+  }
+
+  String _generateTxGuid() {
+    return Ulid.generate();
+  }
+
+  Future<String?> _getCachedDeviceId() async {
+    if (_cachedDeviceId != null && _cachedDeviceId!.trim().isNotEmpty) {
+      return _cachedDeviceId;
+    }
+    try {
+      final id = await DeviceIdentityService.getDeviceId();
+      final trimmed = id.trim();
+      if (trimmed.isNotEmpty) {
+        _cachedDeviceId = trimmed;
+      }
+    } catch (_) {
+      // Best-effort only.
+    }
+    return _cachedDeviceId;
+  }
+
+  Future<bool> _intIdExists({
+    required String table,
+    required String column,
+    required int value,
+  }) async {
+    if (value <= 0) return false;
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT 1
+          FROM $table
+          WHERE $column = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(value)],
+        )
+        .get();
+    return rows.isNotEmpty;
+  }
+
+  Future<int> _nextDistributedIntId({
+    required String table,
+    required String column,
+    required int localNext,
+  }) async {
+    final safeLocalNext = localNext > 0 ? localNext : 1;
+    final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final deviceId = (await _getCachedDeviceId()) ?? '';
+    final jitterSeed = '$table|$column|$deviceId';
+    final jitter = (_stableHash(jitterSeed) % 997) + 3;
+
+    var candidate = nowSeconds + jitter;
+    if (candidate < safeLocalNext) {
+      candidate = safeLocalNext;
+    }
+    if (candidate > _maxSafeVoucherNo) {
+      candidate = safeLocalNext;
+    }
+
+    while (await _intIdExists(table: table, column: column, value: candidate)) {
+      candidate += 1;
+      if (candidate > _maxSafeVoucherNo) {
+        candidate = safeLocalNext;
+      }
+    }
+
+    return candidate;
+  }
+
+  bool _isCashLikeAccountName(String accountName) {
+    final compact = accountName
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+    if (compact.isEmpty) return false;
+    return compact.contains('cash');
+  }
+
+  String? normalizeHeadNameForAccount({
+    required String accountName,
+    String? requestedHeadName,
+  }) {
+    if (_isCashLikeAccountName(accountName)) {
+      return 'CASH';
+    }
+    final cleanHead = requestedHeadName?.trim();
+    if (cleanHead == null || cleanHead.isEmpty) return null;
+    return cleanHead;
+  }
+
+  Iterable<List<T>> _chunked<T>(List<T> items, {int size = 250}) sync* {
+    if (items.isEmpty) return;
+    for (var i = 0; i < items.length; i += size) {
+      final end = (i + size < items.length) ? i + size : items.length;
+      yield items.sublist(i, end);
+    }
+  }
+
+  int? _mainVoucherFromPairLink(String pairLink) {
+    if (!pairLink.startsWith(_cashPairLinkPrefix)) return null;
+    final payload = pairLink.substring(_cashPairLinkPrefix.length);
+    if (payload.isEmpty) return null;
+    final parts = payload.split(':');
+    if (parts.isEmpty) return null;
+    return int.tryParse(parts.first.trim());
+  }
+
+  int? _reverseVoucherFromPairLink(String pairLink) {
+    if (!pairLink.startsWith(_cashPairLinkPrefix)) return null;
+    final payload = pairLink.substring(_cashPairLinkPrefix.length);
+    if (payload.isEmpty) return null;
+    final parts = payload.split(':');
+    if (parts.length < 2) return null;
+    return int.tryParse(parts[1].trim());
+  }
+
+  Future<_ActorMeta> _resolveCurrentActor() async {
+    try {
+      final user = await LocalStorageService.loadLastUsedUser();
+      if (user == null) return const _ActorMeta();
+
+      final parsedId = int.tryParse(user.id.trim());
+      final cleanEmail = user.email.trim();
+      return _ActorMeta(
+        userId: parsedId,
+        userEmail: cleanEmail.isEmpty ? null : cleanEmail,
+        isAdminOrOwner: user.isAdminOrOwner,
+      );
+    } catch (_) {
+      return const _ActorMeta();
+    }
+  }
+
+  bool _canMutateTransactionRow(TransactionsPData row, _ActorMeta actor) {
+    if (actor.isAdminOrOwner) return true;
+    final actorId = actor.userId;
+    if (actorId == null || actorId <= 0) return false;
+    final ownerId = row.userId;
+    if (ownerId == null || ownerId <= 0) return false;
+    return ownerId == actorId;
+  }
+
+  void _assertCanMutateTransactionRows(
+    Iterable<TransactionsPData> rows,
+    _ActorMeta actor,
+    String action,
+  ) {
+    for (final row in rows) {
+      if (_canMutateTransactionRow(row, actor)) continue;
+      throw Exception(
+        'Only ADMIN/OWNER can $action other users\' transactions.',
+      );
+    }
+  }
+
+  Future<List<TransactionsPData>> _loadLinkedTransactionRowsForVoucher({
+    required int companyId,
+    required int voucherNo,
+    required bool includeDeleted,
+  }) async {
+    final target =
+        await (db.select(db.transactionsP)..where(
+              (t) =>
+                  t.companyId.equals(companyId) &
+                  t.voucherNo.equals(voucherNo) &
+                  (includeDeleted
+                      ? t.isDeleted.equals(1)
+                      : (t.isDeleted.isNull() | t.isDeleted.equals(0))),
+            ))
+            .getSingleOrNull();
+    if (target == null) return const <TransactionsPData>[];
+
+    final pairLink = (target.others ?? '').trim();
+    if (!pairLink.startsWith(_cashPairLinkPrefix)) {
+      return <TransactionsPData>[target];
+    }
+
+    final rows =
+        await (db.select(db.transactionsP)..where(
+              (t) =>
+                  t.companyId.equals(companyId) &
+                  t.others.equals(pairLink) &
+                  (includeDeleted
+                      ? t.isDeleted.equals(1)
+                      : (t.isDeleted.isNull() | t.isDeleted.equals(0))),
+            ))
+            .get();
+    if (rows.isEmpty) return <TransactionsPData>[target];
+    return rows;
+  }
+
+  // =========================================================
+  // ACCOUNT HEADS
+  // =========================================================
+  Future<List<AccountHeadOption>> getAllAccountHeads() async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT acc_head_id, acc_head_name
+          FROM Accounts_Heads
+          ORDER BY acc_head_name COLLATE NOCASE ASC, acc_head_id ASC
+          ''',
+          readsFrom: {db.accountsHeads},
+        )
+        .get();
+
+    return rows
+        .map((r) {
+          final id = _toInt(r.data['acc_head_id']);
+          final name = _toText(r.data['acc_head_name']);
+          if (id <= 0 || name.isEmpty) return null;
+          return AccountHeadOption(accHeadId: id, accHeadName: name);
+        })
+        .whereType<AccountHeadOption>()
+        .toList(growable: false);
+  }
+
+  Future<int> getNextAccountHeadId() async {
+    final row = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(MAX(CAST(acc_head_id AS INTEGER)), 0) + 1 AS next_id
+          FROM Accounts_Heads
+          ''',
+          readsFrom: {db.accountsHeads},
+        )
+        .getSingle();
+    final localNext = _toInt(row.data['next_id']);
+    return _nextDistributedIntId(
+      table: 'Accounts_Heads',
+      column: 'acc_head_id',
+      localNext: localNext,
+    );
+  }
+
+  Future<int?> findAccountHeadIdByNameLoose(String accHeadName) async {
+    final normalized = accHeadName.trim();
+    if (normalized.isEmpty) return null;
+
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT acc_head_id
+          FROM Accounts_Heads
+          WHERE LOWER(TRIM(COALESCE(acc_head_name, ''))) = LOWER(TRIM(?1))
+          LIMIT 1
+          ''',
+          variables: [Variable.withString(normalized)],
+          readsFrom: {db.accountsHeads},
+        )
+        .get();
+
+    if (rows.isEmpty) return null;
+    final id = _toInt(rows.first.data['acc_head_id']);
+    return id > 0 ? id : null;
+  }
+
+  Future<int> createAccountHead({required String accHeadName}) async {
+    final normalized = accHeadName.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('Head name cannot be empty.');
+    }
+
+    final existingId = await findAccountHeadIdByNameLoose(normalized);
+    if (existingId != null) return existingId;
+
+    final newId = await getNextAccountHeadId();
+    await db.customStatement(
+      '''
+      INSERT INTO Accounts_Heads (acc_head_id, acc_head_name)
+      VALUES (?1, ?2)
+      ''',
+      [newId, normalized],
+    );
+    return newId;
+  }
+
+  Future<void> updateAccountHead({
+    required int accHeadId,
+    required String accHeadName,
+  }) async {
+    final normalized = accHeadName.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('Head name cannot be empty.');
+    }
+
+    await db.customStatement(
+      '''
+      UPDATE Accounts_Heads
+      SET acc_head_name = ?1
+      WHERE acc_head_id = ?2
+      ''',
+      [normalized, accHeadId],
+    );
+  }
+
+  Future<void> deleteAccountHead({required int accHeadId}) async {
+    await db.customStatement(
+      '''
+      DELETE FROM Accounts_Heads
+      WHERE acc_head_id = ?1
+      ''',
+      [accHeadId],
+    );
+  }
+
+  // =========================================================
+  // TRANSACTION ENTRY HELPERS
+  // =========================================================
+  Future<List<AccPersonalData>> getAccountsForCompany({
+    required int companyId,
+  }) {
+    return (db.select(db.accPersonal)
+          ..where(
+            (tbl) =>
+                tbl.companyId.equals(companyId) &
+                (tbl.isDeleted.isNull() | tbl.isDeleted.equals(0)),
+          )
+          ..orderBy([(tbl) => OrderingTerm.asc(tbl.name)]))
+        .get();
+  }
+
+  Future<List<AccPersonalData>> searchAccountsForCompany({
+    required int companyId,
+    required String query,
+    int limit = 100,
+  }) {
+    final q = query.trim();
+    final select = db.select(db.accPersonal)
+      ..where(
+        (tbl) =>
+            tbl.companyId.equals(companyId) &
+            (tbl.isDeleted.isNull() | tbl.isDeleted.equals(0)),
+      );
+
+    if (q.isNotEmpty) {
+      select.where((tbl) => tbl.name.like('%$q%'));
+    }
+
+    select
+      ..orderBy([(tbl) => OrderingTerm.asc(tbl.name)])
+      ..limit(limit);
+
+    return select.get();
+  }
+
+  Future<List<AccTypeData>> getAssignedAccTypesForAccount({
+    required int accId,
+    int? companyId,
+  }) async {
+    AccTypeData mapRowToAccType(Map<String, dynamic> data) {
+      return AccTypeData(
+        accTypeId: _toInt(data['AccTypeID']),
+        accTypeName: data['AccTypeName'] as String?,
+        accTypeNameU: data['AccTypeNameu'] as String?,
+        flag: data['FLAG'] as String?,
+        isSynced: data['IsSynced'] as int?,
+        updatedAt: data['UpdatedAt'] as String?,
+      );
+    }
+
+    final rowsFromMap = await db
+        .customSelect(
+          companyId == null
+              ? '''
+      SELECT at.*
+      FROM AccountCurrencyMap acm
+      INNER JOIN AccType at ON at.AccTypeID = acm.AccTypeID
+      WHERE acm.AccID = ?1
+        AND COALESCE(acm.IsEnabled, 1) = 1
+      GROUP BY at.AccTypeID
+      ORDER BY at.AccTypeName COLLATE NOCASE ASC
+      '''
+              : '''
+      SELECT at.*
+      FROM AccountCurrencyMap acm
+      INNER JOIN AccType at ON at.AccTypeID = acm.AccTypeID
+      WHERE acm.AccID = ?1
+        AND acm.CompanyID = ?2
+        AND COALESCE(acm.IsEnabled, 1) = 1
+      GROUP BY at.AccTypeID
+      ORDER BY at.AccTypeName COLLATE NOCASE ASC
+      ''',
+          variables: [
+            Variable.withInt(accId),
+            if (companyId != null) Variable.withInt(companyId),
+          ],
+          readsFrom: {db.accType},
+        )
+        .get();
+
+    // Fallback to legacy assignment table for older databases.
+    final rowsFromLegacy = await db
+        .customSelect(
+          companyId == null
+              ? '''
+      SELECT at.*
+      FROM Account_PCurrencyAssignment apca
+      INNER JOIN AccType at ON at.AccTypeID = apca.AccountTypeID
+      WHERE apca.AccID = ?1
+        AND COALESCE(apca.IsDeleted, 0) = 0
+      GROUP BY at.AccTypeID
+      ORDER BY at.AccTypeName COLLATE NOCASE ASC
+      '''
+              : '''
+      SELECT at.*
+      FROM Account_PCurrencyAssignment apca
+      INNER JOIN AccType at ON at.AccTypeID = apca.AccountTypeID
+      WHERE apca.AccID = ?1
+        AND COALESCE(apca.IsDeleted, 0) = 0
+        AND COALESCE(apca.CompanyID, ?2) = ?2
+      GROUP BY at.AccTypeID
+      ORDER BY at.AccTypeName COLLATE NOCASE ASC
+      ''',
+          variables: [
+            Variable.withInt(accId),
+            if (companyId != null) Variable.withInt(companyId),
+          ],
+          readsFrom: {db.accountPCurrencyAssignment, db.accType},
+        )
+        .get();
+    final mergedById = <int, AccTypeData>{};
+    for (final row in rowsFromMap) {
+      final item = mapRowToAccType(row.data);
+      if (item.accTypeId > 0) mergedById[item.accTypeId] = item;
+    }
+    for (final row in rowsFromLegacy) {
+      final item = mapRowToAccType(row.data);
+      if (item.accTypeId <= 0) continue;
+      mergedById.putIfAbsent(item.accTypeId, () => item);
+    }
+
+    final result = mergedById.values.toList(growable: false);
+    result.sort(
+      (a, b) => (a.accTypeName ?? '').toLowerCase().compareTo(
+        (b.accTypeName ?? '').toLowerCase(),
+      ),
+    );
+    return result;
+  }
+
+  Future<List<AccTypeData>> getAllAccTypes() {
+    return (db.select(
+      db.accType,
+    )..orderBy([(tbl) => OrderingTerm.asc(tbl.accTypeName)])).get();
+  }
+
+  Future<int> getNextAccTypeId() async {
+    final row = await db
+        .customSelect(
+          '''
+      SELECT COALESCE(MAX(CAST(AccTypeID AS INTEGER)), 0) + 1 AS nextAccTypeId
+      FROM AccType
+      ''',
+          readsFrom: {db.accType},
+        )
+        .getSingle();
+    final localNext = _toInt(row.data['nextAccTypeId']);
+    return _nextDistributedIntId(
+      table: 'AccType',
+      column: 'AccTypeID',
+      localNext: localNext,
+    );
+  }
+
+  Future<int> getNextCurrencyAssignmentRegId() async {
+    final row = await db
+        .customSelect(
+          '''
+      SELECT COALESCE(MAX(CAST(RegID AS INTEGER)), 0) + 1 AS nextRegId
+      FROM Account_PCurrencyAssignment
+      ''',
+          readsFrom: {db.accountPCurrencyAssignment},
+        )
+        .getSingle();
+    final localNext = _toInt(row.data['nextRegId']);
+    return _nextDistributedIntId(
+      table: 'Account_PCurrencyAssignment',
+      column: 'RegID',
+      localNext: localNext,
+    );
+  }
+
+  Future<int?> findAccTypeIdByNameLoose(String currencyName) async {
+    final rows = await db
+        .customSelect(
+          '''
+      SELECT AccTypeID AS id
+      FROM AccType
+      WHERE LOWER(TRIM(COALESCE(AccTypeName, ''))) = LOWER(TRIM(?1))
+      LIMIT 1
+      ''',
+          variables: [Variable.withString(currencyName)],
+          readsFrom: {db.accType},
+        )
+        .get();
+
+    if (rows.isEmpty) return null;
+    final id = _toInt(rows.first.data['id']);
+    return id > 0 ? id : null;
+  }
+
+  Future<int> createCurrencyType({
+    required String currencyName,
+    String? flag,
+  }) async {
+    final cleanName = currencyName.trim();
+    if (cleanName.isEmpty) {
+      throw ArgumentError('Currency name cannot be empty');
+    }
+
+    final existingId = await findAccTypeIdByNameLoose(cleanName);
+    if (existingId != null) return existingId;
+
+    final accTypeId = await getNextAccTypeId();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final cleanFlag = (flag ?? '').trim();
+
+    await db
+        .into(db.accType)
+        .insert(
+          AccTypeCompanion(
+            accTypeId: Value(accTypeId),
+            accTypeName: Value(cleanName),
+            accTypeNameU: Value(cleanName),
+            flag: Value(cleanFlag.isEmpty ? cleanName : cleanFlag),
+            isSynced: const Value(0),
+            updatedAt: Value(nowIso),
+          ),
+        );
+
+    return accTypeId;
+  }
+
+  Future<void> assignCurrencyToAccount({
+    required int accId,
+    required int accTypeId,
+  }) async {
+    final resolvedCompanyId = await _resolveCompanyIdForAccount(accId);
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    final existing = await db
+        .customSelect(
+          '''
+      SELECT RegID
+      FROM Account_PCurrencyAssignment
+      WHERE AccID = ?1 AND AccountTypeID = ?2
+      ORDER BY RegID DESC
+      LIMIT 1
+      ''',
+          variables: [Variable.withInt(accId), Variable.withInt(accTypeId)],
+          readsFrom: {db.accountPCurrencyAssignment},
+        )
+        .get();
+
+    if (existing.isNotEmpty) {
+      final regId =
+          int.tryParse((existing.first.data['RegID'] ?? '0').toString()) ?? 0;
+      if (regId > 0) {
+        await db.customStatement(
+          '''
+          UPDATE Account_PCurrencyAssignment
+          SET IsDeleted = 0,
+              IsSynced = 0,
+              UpdatedAt = ?1,
+              CompanyID = COALESCE(CompanyID, ?2),
+              AccID = ?3,
+              AccountTypeID = ?4
+          WHERE RegID = ?5
+          ''',
+          [nowIso, resolvedCompanyId, accId, accTypeId, regId],
+        );
+      }
+      if (resolvedCompanyId != null && resolvedCompanyId > 0) {
+        await db.customStatement(
+          '''
+          INSERT OR REPLACE INTO AccountCurrencyMap
+            (AccID, AccTypeID, CompanyID, IsEnabled, UpdatedAt)
+          VALUES (?1, ?2, ?3, 1, ?4)
+          ''',
+          [accId, accTypeId, resolvedCompanyId, nowIso],
+        );
+      }
+      return;
+    }
+
+    final nextRegId = await getNextCurrencyAssignmentRegId();
+    await db.customStatement(
+      '''
+      INSERT INTO Account_PCurrencyAssignment
+        (RegID, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+      ''',
+      [nextRegId, accId, accTypeId, resolvedCompanyId, nowIso],
+    );
+
+    if (resolvedCompanyId != null && resolvedCompanyId > 0) {
+      await db.customStatement(
+        '''
+        INSERT OR REPLACE INTO AccountCurrencyMap
+          (AccID, AccTypeID, CompanyID, IsEnabled, UpdatedAt)
+        VALUES (?1, ?2, ?3, 1, ?4)
+        ''',
+        [accId, accTypeId, resolvedCompanyId, nowIso],
+      );
+    }
+  }
+
+  Future<int> createCurrencyAndAssignToAccount({
+    required int accId,
+    required String currencyName,
+    String? flag,
+  }) async {
+    final accTypeId = await createCurrencyType(
+      currencyName: currencyName,
+      flag: flag,
+    );
+
+    await assignCurrencyToAccount(accId: accId, accTypeId: accTypeId);
+    return accTypeId;
+  }
+
+  Future<double> getBalanceForAccountAndType({
+    required int companyId,
+    required int accId,
+    required int accTypeId,
+  }) async {
+    final row = await db
+        .customSelect(
+          '''
+      SELECT IFNULL(SUM(Cr), 0.0) - IFNULL(SUM(Dr), 0.0) AS balance
+      FROM Transactions_P
+      WHERE CompanyID = ?1 AND AccID = ?2 AND AccTypeID = ?3
+        AND COALESCE(IsDeleted, 0) = 0
+      ''',
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withInt(accId),
+            Variable.withInt(accTypeId),
+          ],
+          readsFrom: {db.transactionsP},
+        )
+        .getSingle();
+
+    final value = row.data['balance'];
+    return value is num ? value.toDouble() : 0.0;
+  }
+
+  Future<int> getNextVoucherNo() async {
+    final row = await db
+        .customSelect(
+          '''
+      SELECT COALESCE(MAX(CAST(VoucherNo AS INTEGER)), 0) + 1 AS nextVoucher
+      FROM Transactions_P
+      ''',
+          readsFrom: {db.transactionsP},
+        )
+        .getSingle();
+
+    return _toInt(row.data['nextVoucher']);
+  }
+
+  Future<bool> _voucherExists(int voucherNo) async {
+    final row = await db
+        .customSelect(
+          '''
+          SELECT 1
+          FROM Transactions_P
+          WHERE VoucherNo = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(voucherNo)],
+          readsFrom: {db.transactionsP},
+        )
+        .get();
+    return row.isNotEmpty;
+  }
+
+  Future<int> _reserveUniqueVoucherNo({int minValue = 0, int? userId}) async {
+    final localNext = await getNextVoucherNo();
+    final now = DateTime.now();
+    final deviceId = await _getCachedDeviceId();
+    final guid = _generateTxGuid();
+    final epochSeconds = now.millisecondsSinceEpoch ~/ 1000;
+    final guidJitter = _stableHash(guid) % 7919; // 0..7918
+    final actorJitter = ((userId ?? 0).abs() % 97) * 97; // 0..9312
+    final deviceJitter = deviceId == null
+        ? 0
+        : (_stableHash(deviceId) % 9973) * 11; // 0..109692
+
+    var candidate = epochSeconds + guidJitter + actorJitter + deviceJitter;
+
+    if (candidate < localNext) candidate = localNext;
+    if (candidate <= minValue) candidate = minValue + 1;
+
+    if (candidate > _maxSafeVoucherNo) {
+      candidate = localNext > minValue ? localNext : (minValue + 1);
+    }
+
+    while (await _voucherExists(candidate)) {
+      candidate += 1;
+      if (candidate > _maxSafeVoucherNo) {
+        final refreshedNext = await getNextVoucherNo();
+        candidate = refreshedNext > minValue ? refreshedNext : (minValue + 1);
+      }
+    }
+
+    return candidate;
+  }
+
+  Future<int> getNextAccId() async {
+    final row = await db
+        .customSelect(
+          '''
+      SELECT COALESCE(MAX(CAST(AccID AS INTEGER)), 0) + 1 AS nextAccId
+      FROM Acc_Personal
+      ''',
+          readsFrom: {db.accPersonal},
+        )
+        .getSingle();
+    final localNext = _toInt(row.data['nextAccId']);
+    return _nextDistributedIntId(
+      table: 'Acc_Personal',
+      column: 'AccID',
+      localNext: localNext,
+    );
+  }
+
+  Future<int> createAccountForCompany({
+    required int companyId,
+    required String name,
+    String? phone,
+    String? address,
+    String? statusg,
+  }) async {
+    final nextAccId = await getNextAccId();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final normalizedHead = normalizeHeadNameForAccount(
+      accountName: name,
+      requestedHeadName: statusg,
+    );
+
+    await db
+        .into(db.accPersonal)
+        .insert(
+          AccPersonalCompanion(
+            accId: Value(nextAccId),
+            rDate: Value(nowIso),
+            name: Value(name.trim()),
+            phone: Value(phone?.trim().isEmpty == true ? null : phone?.trim()),
+            address: Value(
+              address?.trim().isEmpty == true ? null : address?.trim(),
+            ),
+            statusg: Value(normalizedHead),
+            companyId: Value(companyId),
+            isSynced: const Value(0),
+            updatedAt: Value(nowIso),
+            isDeleted: const Value(0),
+          ),
+        );
+
+    return nextAccId;
+  }
+
+  Future<void> updateAccountBasic({
+    required int accId,
+    required String name,
+    String? phone,
+    String? address,
+    String? statusg,
+  }) async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final normalizedHead = normalizeHeadNameForAccount(
+      accountName: name,
+      requestedHeadName: statusg,
+    );
+
+    await (db.update(
+      db.accPersonal,
+    )..where((tbl) => tbl.accId.equals(accId))).write(
+      AccPersonalCompanion(
+        name: Value(name.trim()),
+        phone: Value(phone?.trim().isEmpty == true ? null : phone?.trim()),
+        address: Value(
+          address?.trim().isEmpty == true ? null : address?.trim(),
+        ),
+        statusg: Value(normalizedHead),
+        isSynced: const Value(0),
+        updatedAt: Value(nowIso),
+      ),
+    );
+  }
+
+  Future<void> replaceAccountCurrencies({
+    required int accId,
+    required List<int> accTypeIds,
+    int? companyId,
+  }) async {
+    final uniqueIds = <int>{...accTypeIds.where((id) => id > 0)};
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final resolvedCompanyId = companyId == null || companyId <= 0
+        ? await _resolveCompanyIdForAccount(accId)
+        : companyId;
+
+    final allCurrencyRows = await db
+        .customSelect(
+          '''
+          SELECT AccTypeID
+          FROM AccType
+          ORDER BY AccTypeID
+          ''',
+          readsFrom: {db.accType},
+        )
+        .get();
+    final allCurrencyIds =
+        allCurrencyRows
+            .map((r) => _toInt(r.data['AccTypeID']))
+            .where((v) => v > 0)
+            .toSet()
+          ..addAll(uniqueIds);
+
+    await db.transaction(() async {
+      // Soft-delete all current assignments first so removals are synced.
+      await db.customStatement(
+        '''
+        UPDATE Account_PCurrencyAssignment
+        SET IsDeleted = 1,
+            IsSynced = 0,
+            UpdatedAt = ?1,
+            CompanyID = COALESCE(CompanyID, ?2)
+        WHERE AccID = ?3
+        ''',
+        [nowIso, resolvedCompanyId, accId],
+      );
+
+      for (final accTypeId in uniqueIds) {
+        final existing = await db
+            .customSelect(
+              '''
+              SELECT RegID
+              FROM Account_PCurrencyAssignment
+              WHERE AccID = ?1
+                AND AccountTypeID = ?2
+              ORDER BY RegID DESC
+              LIMIT 1
+              ''',
+              variables: [Variable.withInt(accId), Variable.withInt(accTypeId)],
+              readsFrom: {db.accountPCurrencyAssignment},
+            )
+            .get();
+
+        if (existing.isNotEmpty) {
+          final regId =
+              int.tryParse((existing.first.data['RegID'] ?? '0').toString()) ??
+              0;
+          if (regId > 0) {
+            await db.customStatement(
+              '''
+              UPDATE Account_PCurrencyAssignment
+              SET IsDeleted = 0,
+                  IsSynced = 0,
+                  UpdatedAt = ?1,
+                  CompanyID = ?2,
+                  AccID = ?3,
+                  AccountTypeID = ?4
+              WHERE RegID = ?5
+              ''',
+              [nowIso, resolvedCompanyId, accId, accTypeId, regId],
+            );
+            continue;
+          }
+        }
+
+        final regId = await getNextCurrencyAssignmentRegId();
+        await db.customStatement(
+          '''
+          INSERT INTO Account_PCurrencyAssignment
+            (RegID, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
+          VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+          ''',
+          [regId, accId, accTypeId, resolvedCompanyId, nowIso],
+        );
+      }
+
+      if (resolvedCompanyId != null && resolvedCompanyId > 0) {
+        for (final accTypeId in allCurrencyIds) {
+          final enabled = uniqueIds.contains(accTypeId) ? 1 : 0;
+          await db.customStatement(
+            '''
+            INSERT OR REPLACE INTO AccountCurrencyMap
+              (AccID, AccTypeID, CompanyID, IsEnabled, UpdatedAt)
+            VALUES (?1, ?2, ?3, ?4, ?5)
+            ''',
+            [accId, accTypeId, resolvedCompanyId, enabled, nowIso],
+          );
+        }
+      }
+    });
+  }
+
+  Future<int?> _resolveCompanyIdForAccount(int accId) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT CompanyID
+          FROM Acc_Personal
+          WHERE AccID = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(accId)],
+          readsFrom: {db.accPersonal},
+        )
+        .get();
+    if (rows.isEmpty) return null;
+    final companyId = _toInt(rows.first.data['CompanyID']);
+    return companyId > 0 ? companyId : null;
+  }
+
+  Future<List<String>> searchQualitySuggestions({
+    required int companyId,
+    required String query,
+    int limit = 12,
+  }) async {
+    final normalized = query.trim();
+    if (normalized.isEmpty) return const <String>[];
+
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT DISTINCT TRIM(COALESCE(Quality, '')) AS quality
+          FROM Transactions_P
+          WHERE CompanyID = ?1
+            AND COALESCE(IsDeleted, 0) = 0
+            AND TRIM(COALESCE(Quality, '')) <> ''
+            AND LOWER(TRIM(COALESCE(Quality, ''))) LIKE '%' || LOWER(?2) || '%'
+          ORDER BY quality COLLATE NOCASE ASC
+          LIMIT ?3
+          ''',
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withString(normalized),
+            Variable.withInt(limit),
+          ],
+          readsFrom: {db.transactionsP},
+        )
+        .get();
+
+    return rows
+        .map((r) => (r.data['quality'] as String?)?.trim() ?? '')
+        .where((e) => e.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  Future<void> insertTransactionEntry({
+    required int companyId,
+    required int accId,
+    required int accTypeId,
+    required DateTime txDate,
+    required String description,
+    required String entryReference,
+    required double debit,
+    required double credit,
+    required bool isCash,
+    int? cashAccId,
+    String? quality,
+    double? rate,
+    double? weight,
+  }) async {
+    final actor = await _resolveCurrentActor();
+    final cleanDescription = description.trim();
+    final cleanReference = entryReference.trim();
+    final cleanQuality = quality?.trim();
+
+    if (isCash && cashAccId == null) {
+      throw Exception('Cash account is required for cash transaction');
+    }
+
+    if (isCash && cashAccId == accId) {
+      throw Exception('Cash account must be different from selected account');
+    }
+
+    final hasDebit = debit > 0;
+    final hasCredit = credit > 0;
+    final normalizedWeight = weight == null
+        ? null
+        : (hasCredit ? -weight.abs() : weight.abs());
+
+    if (hasDebit == hasCredit) {
+      throw Exception('Exactly one side must be greater than zero');
+    }
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final txDateIso =
+        '${txDate.year.toString().padLeft(4, '0')}-${txDate.month.toString().padLeft(2, '0')}-${txDate.day.toString().padLeft(2, '0')}';
+    final mainTxGuid = _generateTxGuid();
+
+    var mainVoucher = 0;
+    int? reverseVoucher;
+    String? reverseTxGuid;
+
+    await db.transaction(() async {
+      final nextVoucher = await _reserveUniqueVoucherNo(userId: actor.userId);
+      mainVoucher = nextVoucher;
+      final voucherReference = mainVoucher.toString();
+
+      String? pairLink;
+      if (isCash && cashAccId != null) {
+        reverseVoucher = await _reserveUniqueVoucherNo(
+          minValue: mainVoucher,
+          userId: actor.userId,
+        );
+        reverseTxGuid = _generateTxGuid();
+        pairLink = '$_cashPairLinkPrefix$mainVoucher:${reverseVoucher!}';
+      }
+
+      final isCredit = credit > 0;
+      await db
+          .into(db.transactionsP)
+          .insert(
+            TransactionsPCompanion(
+              voucherNo: Value(mainVoucher),
+              txGuid: Value(mainTxGuid),
+              tDate: Value(txDateIso),
+              accId: Value(accId),
+              accTypeId: Value(accTypeId),
+              description: Value(cleanDescription),
+              quality: Value(
+                cleanQuality == null || cleanQuality.isEmpty
+                    ? null
+                    : cleanQuality,
+              ),
+              rate: Value(rate),
+              weight: Value(normalizedWeight),
+              dr: Value(debit),
+              cr: Value(credit),
+              status: Value(isCredit ? 'jama' : 'banam'),
+              st: Value(isCredit ? 'jamakatha' : 'banamkatha'),
+              currencyStatus: const Value('csave'),
+              cashStatus: Value(isCash ? 'cash' : 'trans'),
+              companyId: Value(companyId),
+              userId: Value(actor.userId),
+              wName: Value(actor.userEmail),
+              msgNo: Value(cleanReference.isEmpty ? null : cleanReference),
+              msgNo2: Value(cleanReference.isEmpty ? null : cleanReference),
+              hwls: Value(voucherReference),
+              others: Value(pairLink),
+              isSynced: const Value(0),
+              updatedAt: Value(nowIso),
+              isDeleted: const Value(0),
+            ),
+            mode: InsertMode.insertOrReplace,
+          );
+
+      if (isCash && cashAccId != null && reverseVoucher != null) {
+        final reverseDebit = hasCredit ? credit : 0.0;
+        final reverseCredit = hasDebit ? debit : 0.0;
+        final reverseIsCredit = reverseCredit > 0;
+
+        await db
+            .into(db.transactionsP)
+            .insert(
+              TransactionsPCompanion(
+                voucherNo: Value(reverseVoucher!),
+                txGuid: Value(reverseTxGuid),
+                tDate: Value(txDateIso),
+                accId: Value(cashAccId),
+                accTypeId: Value(accTypeId),
+                description: Value(cleanDescription),
+                quality: Value(
+                  cleanQuality == null || cleanQuality.isEmpty
+                      ? null
+                      : cleanQuality,
+                ),
+                rate: Value(rate),
+                weight: Value(normalizedWeight),
+                dr: Value(reverseDebit),
+                cr: Value(reverseCredit),
+                status: Value(reverseIsCredit ? 'jama' : 'banam'),
+                st: Value(reverseIsCredit ? 'jamakatha' : 'banamkatha'),
+                currencyStatus: const Value('csave'),
+                cashStatus: const Value('cash'),
+                companyId: Value(companyId),
+                userId: Value(actor.userId),
+                wName: Value(actor.userEmail),
+                msgNo: Value(cleanReference.isEmpty ? null : cleanReference),
+                msgNo2: Value(cleanReference.isEmpty ? null : cleanReference),
+                hwls: Value(voucherReference),
+                others: Value(pairLink),
+                isSynced: const Value(0),
+                updatedAt: Value(nowIso),
+                isDeleted: const Value(0),
+              ),
+              mode: InsertMode.insertOrReplace,
+            );
+      }
+    });
+  }
+
+  Future<TransactionEditData?> getTransactionForEditing({
+    required int companyId,
+    required int voucherNo,
+  }) async {
+    final target =
+        await (db.select(db.transactionsP)..where(
+              (t) =>
+                  t.companyId.equals(companyId) &
+                  t.voucherNo.equals(voucherNo) &
+                  (t.isDeleted.isNull() | t.isDeleted.equals(0)),
+            ))
+            .getSingleOrNull();
+    if (target == null) return null;
+
+    final pairLink = (target.others ?? '').trim();
+    final isPair = pairLink.startsWith(_cashPairLinkPrefix);
+    final groupRows = isPair
+        ? await (db.select(db.transactionsP)..where(
+                (t) =>
+                    t.companyId.equals(companyId) &
+                    t.others.equals(pairLink) &
+                    (t.isDeleted.isNull() | t.isDeleted.equals(0)),
+              ))
+              .get()
+        : <TransactionsPData>[target];
+
+    if (groupRows.isEmpty) return null;
+
+    final parsedMain = _mainVoucherFromPairLink(pairLink);
+    final sortedRows = [...groupRows]
+      ..sort((a, b) => a.voucherNo - b.voucherNo);
+    final mainRow = sortedRows.firstWhere(
+      (row) => parsedMain != null && row.voucherNo == parsedMain,
+      orElse: () => sortedRows.first,
+    );
+    final cashRow = sortedRows.where(
+      (row) => row.voucherNo != mainRow.voucherNo,
+    );
+    final cashAccId = cashRow.isEmpty ? null : cashRow.first.accId;
+
+    final dateText = (mainRow.tDate ?? '').trim();
+    final txDate = DateTime.tryParse(dateText);
+    final fallback = DateTime.now();
+
+    return TransactionEditData(
+      sourceVoucherNo: voucherNo,
+      mainVoucherNo: mainRow.voucherNo,
+      isCash: isPair,
+      accId: mainRow.accId ?? 0,
+      accTypeId: mainRow.accTypeId ?? 0,
+      cashAccId: cashAccId,
+      txDate: txDate ?? fallback,
+      description: (mainRow.description ?? '').trim(),
+      entryReference: (mainRow.msgNo ?? mainRow.msgNo2 ?? '').trim(),
+      debit: mainRow.dr ?? 0.0,
+      credit: mainRow.cr ?? 0.0,
+      quality: (mainRow.quality ?? '').trim().isEmpty ? null : mainRow.quality,
+      rate: mainRow.rate,
+      weight: mainRow.weight,
+    );
+  }
+
+  Future<int> updateTransactionWithLinkedEntries({
+    required int companyId,
+    required int voucherNo,
+    required int accId,
+    required int accTypeId,
+    required DateTime txDate,
+    required String description,
+    required String entryReference,
+    required double debit,
+    required double credit,
+    required bool isCash,
+    int? cashAccId,
+    String? quality,
+    double? rate,
+    double? weight,
+  }) async {
+    final actor = await _resolveCurrentActor();
+    final cleanDescription = description.trim();
+    final cleanReference = entryReference.trim();
+    final cleanQuality = quality?.trim();
+    final hasDebit = debit > 0;
+    final hasCredit = credit > 0;
+    final normalizedWeight = weight == null
+        ? null
+        : (hasCredit ? -weight.abs() : weight.abs());
+
+    if (hasDebit == hasCredit) {
+      throw Exception('Exactly one side must be greater than zero');
+    }
+    if (isCash && cashAccId == null) {
+      throw Exception('Cash account is required for cash transaction');
+    }
+    if (isCash && cashAccId == accId) {
+      throw Exception('Cash account must be different from selected account');
+    }
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final txDateIso =
+        '${txDate.year.toString().padLeft(4, '0')}-${txDate.month.toString().padLeft(2, '0')}-${txDate.day.toString().padLeft(2, '0')}';
+
+    final target =
+        await (db.select(db.transactionsP)..where(
+              (t) =>
+                  t.companyId.equals(companyId) &
+                  t.voucherNo.equals(voucherNo) &
+                  (t.isDeleted.isNull() | t.isDeleted.equals(0)),
+            ))
+            .getSingleOrNull();
+    if (target == null) {
+      throw Exception('Transaction not found');
+    }
+
+    final existingPairLink = (target.others ?? '').trim();
+    final existingIsPair = existingPairLink.startsWith(_cashPairLinkPrefix);
+    final existingRows = existingIsPair
+        ? await (db.select(db.transactionsP)..where(
+                (t) =>
+                    t.companyId.equals(companyId) &
+                    t.others.equals(existingPairLink) &
+                    (t.isDeleted.isNull() | t.isDeleted.equals(0)),
+              ))
+              .get()
+        : <TransactionsPData>[target];
+
+    _assertCanMutateTransactionRows(existingRows, actor, 'update');
+
+    var mainVoucher =
+        _mainVoucherFromPairLink(existingPairLink) ?? target.voucherNo;
+    final existingReverse = _reverseVoucherFromPairLink(existingPairLink);
+
+    final existingVoucherNos = existingRows.map((row) => row.voucherNo).toSet();
+    if (!existingVoucherNos.contains(mainVoucher) &&
+        existingVoucherNos.isNotEmpty) {
+      mainVoucher = existingVoucherNos.reduce((a, b) => a < b ? a : b);
+    }
+    final mainExisting = existingRows.firstWhere(
+      (row) => row.voucherNo == mainVoucher,
+      orElse: () => target,
+    );
+    var mainTxGuid = (mainExisting.txGuid ?? '').trim();
+    if (mainTxGuid.isEmpty) {
+      mainTxGuid = 'legacy-$companyId-$mainVoucher';
+    }
+
+    var affected = 0;
+    await db.transaction(() async {
+      if (!isCash) {
+        final isCredit = credit > 0;
+        affected +=
+            await (db.update(db.transactionsP)..where(
+                  (t) =>
+                      t.companyId.equals(companyId) &
+                      t.voucherNo.equals(mainVoucher),
+                ))
+                .write(
+                  TransactionsPCompanion(
+                    txGuid: Value(mainTxGuid),
+                    tDate: Value(txDateIso),
+                    accId: Value(accId),
+                    accTypeId: Value(accTypeId),
+                    description: Value(cleanDescription),
+                    quality: Value(
+                      cleanQuality == null || cleanQuality.isEmpty
+                          ? null
+                          : cleanQuality,
+                    ),
+                    rate: Value(rate),
+                    weight: Value(normalizedWeight),
+                    dr: Value(debit),
+                    cr: Value(credit),
+                    status: Value(isCredit ? 'jama' : 'banam'),
+                    st: Value(isCredit ? 'jamakatha' : 'banamkatha'),
+                    currencyStatus: const Value('csave'),
+                    cashStatus: const Value('trans'),
+                    userId: Value(actor.userId),
+                    wName: Value(actor.userEmail),
+                    msgNo: Value(
+                      cleanReference.isEmpty ? null : cleanReference,
+                    ),
+                    msgNo2: Value(
+                      cleanReference.isEmpty ? null : cleanReference,
+                    ),
+                    hwls: Value(mainVoucher.toString()),
+                    others: const Value(null),
+                    isSynced: const Value(0),
+                    updatedAt: Value(nowIso),
+                    isDeleted: const Value(0),
+                  ),
+                );
+
+        final extraVoucherNos = existingVoucherNos
+            .where((v) => v != mainVoucher)
+            .toList(growable: false);
+        if (extraVoucherNos.isNotEmpty) {
+          affected +=
+              await (db.delete(db.transactionsP)..where(
+                    (t) =>
+                        t.companyId.equals(companyId) &
+                        t.voucherNo.isIn(extraVoucherNos),
+                  ))
+                  .go();
+        }
+        return;
+      }
+
+      var reverseVoucher = existingReverse;
+      final reverseExisting = existingRows
+          .where((r) {
+            return existingReverse != null && r.voucherNo == existingReverse;
+          })
+          .toList(growable: false);
+      var reverseTxGuid = reverseExisting.isEmpty
+          ? ''
+          : (reverseExisting.first.txGuid ?? '').trim();
+      if (reverseVoucher == null || reverseVoucher == mainVoucher) {
+        reverseVoucher = await _reserveUniqueVoucherNo(
+          minValue: mainVoucher,
+          userId: actor.userId,
+        );
+        reverseTxGuid = _generateTxGuid();
+      } else if (reverseTxGuid.isEmpty) {
+        reverseTxGuid = 'legacy-$companyId-$reverseVoucher';
+      }
+      final pairLink = '$_cashPairLinkPrefix$mainVoucher:$reverseVoucher';
+      final isCredit = credit > 0;
+
+      affected += await db
+          .into(db.transactionsP)
+          .insert(
+            TransactionsPCompanion(
+              voucherNo: Value(mainVoucher),
+              txGuid: Value(mainTxGuid),
+              tDate: Value(txDateIso),
+              accId: Value(accId),
+              accTypeId: Value(accTypeId),
+              description: Value(cleanDescription),
+              quality: Value(
+                cleanQuality == null || cleanQuality.isEmpty
+                    ? null
+                    : cleanQuality,
+              ),
+              rate: Value(rate),
+              weight: Value(normalizedWeight),
+              dr: Value(debit),
+              cr: Value(credit),
+              status: Value(isCredit ? 'jama' : 'banam'),
+              st: Value(isCredit ? 'jamakatha' : 'banamkatha'),
+              currencyStatus: const Value('csave'),
+              cashStatus: const Value('cash'),
+              companyId: Value(companyId),
+              userId: Value(actor.userId),
+              wName: Value(actor.userEmail),
+              msgNo: Value(cleanReference.isEmpty ? null : cleanReference),
+              msgNo2: Value(cleanReference.isEmpty ? null : cleanReference),
+              hwls: Value(mainVoucher.toString()),
+              others: Value(pairLink),
+              isSynced: const Value(0),
+              updatedAt: Value(nowIso),
+              isDeleted: const Value(0),
+            ),
+            mode: InsertMode.insertOrReplace,
+          );
+
+      final reverseDebit = hasCredit ? credit : 0.0;
+      final reverseCredit = hasDebit ? debit : 0.0;
+      final reverseIsCredit = reverseCredit > 0;
+
+      affected += await db
+          .into(db.transactionsP)
+          .insert(
+            TransactionsPCompanion(
+              voucherNo: Value(reverseVoucher),
+              txGuid: Value(reverseTxGuid),
+              tDate: Value(txDateIso),
+              accId: Value(cashAccId),
+              accTypeId: Value(accTypeId),
+              description: Value(cleanDescription),
+              quality: Value(
+                cleanQuality == null || cleanQuality.isEmpty
+                    ? null
+                    : cleanQuality,
+              ),
+              rate: Value(rate),
+              weight: Value(normalizedWeight),
+              dr: Value(reverseDebit),
+              cr: Value(reverseCredit),
+              status: Value(reverseIsCredit ? 'jama' : 'banam'),
+              st: Value(reverseIsCredit ? 'jamakatha' : 'banamkatha'),
+              currencyStatus: const Value('csave'),
+              cashStatus: const Value('cash'),
+              companyId: Value(companyId),
+              userId: Value(actor.userId),
+              wName: Value(actor.userEmail),
+              msgNo: Value(cleanReference.isEmpty ? null : cleanReference),
+              msgNo2: Value(cleanReference.isEmpty ? null : cleanReference),
+              hwls: Value(mainVoucher.toString()),
+              others: Value(pairLink),
+              isSynced: const Value(0),
+              updatedAt: Value(nowIso),
+              isDeleted: const Value(0),
+            ),
+            mode: InsertMode.insertOrReplace,
+          );
+
+      final keep = <int>{mainVoucher, reverseVoucher};
+      final extraVoucherNos = existingVoucherNos
+          .where((v) => !keep.contains(v))
+          .toList(growable: false);
+      if (extraVoucherNos.isNotEmpty) {
+        affected +=
+            await (db.delete(db.transactionsP)..where(
+                  (t) =>
+                      t.companyId.equals(companyId) &
+                      t.voucherNo.isIn(extraVoucherNos),
+                ))
+                .go();
+      }
+    });
+
+    return affected;
+  }
+
+  Future<int> deleteTransactionWithLinkedEntries({
+    required int companyId,
+    required int voucherNo,
+  }) async {
+    final actor = await _resolveCurrentActor();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final rows = await _loadLinkedTransactionRowsForVoucher(
+      companyId: companyId,
+      voucherNo: voucherNo,
+      includeDeleted: false,
+    );
+
+    if (rows.isEmpty) return 0;
+    _assertCanMutateTransactionRows(rows, actor, 'delete');
+
+    final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
+    return (db.update(db.transactionsP)..where(
+          (t) =>
+              t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
+        ))
+        .write(
+          TransactionsPCompanion(
+            isDeleted: const Value(1),
+            isSynced: const Value(0),
+            updatedAt: Value(nowIso),
+          ),
+        );
+  }
+
+  Future<int> restoreTransactionWithLinkedEntries({
+    required int companyId,
+    required int voucherNo,
+  }) async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final rows = await _loadLinkedTransactionRowsForVoucher(
+      companyId: companyId,
+      voucherNo: voucherNo,
+      includeDeleted: true,
+    );
+
+    if (rows.isEmpty) return 0;
+
+    final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
+    return (db.update(db.transactionsP)..where(
+          (t) =>
+              t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
+        ))
+        .write(
+          TransactionsPCompanion(
+            isDeleted: const Value(0),
+            isSynced: const Value(0),
+            updatedAt: Value(nowIso),
+          ),
+        );
+  }
+
+  Future<int> setAccountTransactionsDeletedState({
+    required int companyId,
+    required List<int> accIds,
+    required bool isDeleted,
+  }) async {
+    final normalizedIds = accIds.where((id) => id > 0).toSet().toList();
+    if (normalizedIds.isEmpty) return 0;
+
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final voucherRefs = <String>{};
+    final pairLinks = <String>{};
+    final pairVoucherNos = <int>{};
+
+    for (final idChunk in _chunked(normalizedIds)) {
+      final seedRows =
+          await (db.select(db.transactionsP)..where((t) {
+                final base =
+                    t.companyId.equals(companyId) & t.accId.isIn(idChunk);
+                if (isDeleted) {
+                  return base & (t.isDeleted.isNull() | t.isDeleted.equals(0));
+                }
+                return base & t.isDeleted.equals(1);
+              }))
+              .get();
+
+      for (final tx in seedRows) {
+        voucherRefs.add(tx.voucherNo.toString());
+        final hwls = (tx.hwls ?? '').trim();
+        if (hwls.isNotEmpty) voucherRefs.add(hwls);
+
+        final others = (tx.others ?? '').trim();
+        if (others.startsWith(_cashPairLinkPrefix)) {
+          final mainVoucher = _mainVoucherFromPairLink(others);
+          final reverseVoucher = _reverseVoucherFromPairLink(others);
+          if (mainVoucher != null && mainVoucher > 0) {
+            pairVoucherNos.add(mainVoucher);
+          }
+          if (reverseVoucher != null && reverseVoucher > 0) {
+            pairVoucherNos.add(reverseVoucher);
+          }
+          if (mainVoucher == null && reverseVoucher == null) {
+            pairLinks.add(others);
+          }
+        }
+      }
+    }
+
+    final companion = TransactionsPCompanion(
+      isDeleted: Value(isDeleted ? 1 : 0),
+      isSynced: const Value(0),
+      updatedAt: Value(nowIso),
+    );
+
+    var updatedRows = 0;
+    await db.transaction(() async {
+      for (final idChunk in _chunked(normalizedIds)) {
+        updatedRows +=
+            await (db.update(db.transactionsP)..where((t) {
+                  final base =
+                      t.companyId.equals(companyId) & t.accId.isIn(idChunk);
+                  if (isDeleted) {
+                    return base &
+                        (t.isDeleted.isNull() | t.isDeleted.equals(0));
+                  }
+                  return base & t.isDeleted.equals(1);
+                }))
+                .write(companion);
+      }
+
+      if (voucherRefs.isNotEmpty) {
+        final refs = voucherRefs.toList(growable: false);
+        for (final refsChunk in _chunked(refs)) {
+          updatedRows +=
+              await (db.update(db.transactionsP)..where((t) {
+                    final base =
+                        t.companyId.equals(companyId) & t.hwls.isIn(refsChunk);
+                    if (isDeleted) {
+                      return base &
+                          (t.isDeleted.isNull() | t.isDeleted.equals(0));
+                    }
+                    return base & t.isDeleted.equals(1);
+                  }))
+                  .write(companion);
+        }
+      }
+
+      if (pairVoucherNos.isNotEmpty) {
+        final vouchers = pairVoucherNos.toList(growable: false);
+        for (final voucherChunk in _chunked(vouchers)) {
+          updatedRows +=
+              await (db.update(db.transactionsP)..where((t) {
+                    final base =
+                        t.companyId.equals(companyId) &
+                        t.voucherNo.isIn(voucherChunk);
+                    if (isDeleted) {
+                      return base &
+                          (t.isDeleted.isNull() | t.isDeleted.equals(0));
+                    }
+                    return base & t.isDeleted.equals(1);
+                  }))
+                  .write(companion);
+        }
+      }
+
+      if (pairLinks.isNotEmpty) {
+        final links = pairLinks.toList(growable: false);
+        for (final linksChunk in _chunked(links)) {
+          updatedRows +=
+              await (db.update(db.transactionsP)..where((t) {
+                    final base =
+                        t.companyId.equals(companyId) &
+                        t.others.isIn(linksChunk);
+                    if (isDeleted) {
+                      return base &
+                          (t.isDeleted.isNull() | t.isDeleted.equals(0));
+                    }
+                    return base & t.isDeleted.equals(1);
+                  }))
+                  .write(companion);
+        }
+      }
+    });
+
+    return updatedRows;
+  }
+
+  Stream<List<TxItemUi>> watchDeletedTransactions({
+    required int companyId,
+    int limit = 200,
+    String? name,
+  }) {
+    const sql = r'''
+      SELECT 
+          t.VoucherNo                  AS voucherNo,
+          substr(t.TDate,1,10)         AS date,
+          COALESCE(p.Name, '')         AS name,
+          t.Description                AS description,
+          t.Quality                    AS quality,
+          t.Rate                       AS rate,
+          t.Weight                     AS weight,
+          COALESCE(t.Dr, 0)            AS drCents,
+          COALESCE(t.Cr, 0)            AS crCents,
+          COALESCE(t.UserID, p.UserID) AS UserID,
+          t.WName                      AS userEmail,
+          t.Status                     AS status,
+          COALESCE(at.AccTypeName, '') AS currency
+      FROM Transactions_P t
+      LEFT JOIN Acc_Personal p ON p.AccID = t.AccID
+      LEFT JOIN AccType at      ON at.AccTypeID = t.AccTypeID
+      WHERE t.CompanyID = ?1
+        AND COALESCE(t.IsDeleted, 0) = 1
+        AND (?2 IS NULL OR ?2 = '' OR p.Name LIKE '%' || ?2 || '%')
+      ORDER BY COALESCE(t.UpdatedAt, '') DESC, t.VoucherNo DESC
+      LIMIT ?3;
+    ''';
+
+    return db
+        .customSelect(
+          sql,
+          variables: [
+            Variable.withInt(companyId),
+            (name == null || name.trim().isEmpty)
+                ? const Variable(null)
+                : Variable.withString(name.trim()),
+            Variable.withInt(limit),
+          ],
+          readsFrom: {db.transactionsP, db.accPersonal, db.accType},
+        )
+        .watch()
+        .map((rows) => rows.map((r) => TxItemUi.fromRow(r.data)).toList());
+  }
+
+  Future<int> purgeDeletedTransactionWithLinkedEntries({
+    required int companyId,
+    required int voucherNo,
+  }) async {
+    final target =
+        await (db.select(db.transactionsP)..where(
+              (t) =>
+                  t.voucherNo.equals(voucherNo) &
+                  t.companyId.equals(companyId) &
+                  t.isDeleted.equals(1),
+            ))
+            .getSingleOrNull();
+
+    if (target == null) return 0;
+
+    final others = target.others?.trim() ?? '';
+    if (others.startsWith(_cashPairLinkPrefix)) {
+      return (db.delete(db.transactionsP)..where(
+            (t) =>
+                t.companyId.equals(companyId) &
+                t.others.equals(others) &
+                t.isDeleted.equals(1),
+          ))
+          .go();
+    }
+
+    return (db.delete(db.transactionsP)..where(
+          (t) =>
+              t.voucherNo.equals(voucherNo) &
+              t.companyId.equals(companyId) &
+              t.isDeleted.equals(1),
+        ))
+        .go();
+  }
+
+  Future<int> purgeAllDeletedTransactions({required int companyId}) {
+    return (db.delete(db.transactionsP)
+          ..where((t) => t.companyId.equals(companyId) & t.isDeleted.equals(1)))
+        .go();
+  }
 
   String _pendingStatusClause(String statusFilter) {
     switch (statusFilter.toUpperCase()) {
@@ -75,7 +1832,8 @@ class TransactionsRepository {
     final balanceExpr = _pendingBalanceExpr(statusFilter);
     final orderByClause = _pendingOrderByClause(statusFilter);
 
-    final query = """
+    final query =
+        """
 SELECT 
     tp.hwls AS VoucherReference, 
     MIN(tp.VoucherNo) AS FirstVoucherNo, 
@@ -131,9 +1889,7 @@ ORDER BY $orderByClause;
         )
         .get();
 
-    debugPrint(
-      "✅ getPendingByCurrencyClick returned rows=${result.length}",
-    );
+    debugPrint("✅ getPendingByCurrencyClick returned rows=${result.length}");
     for (int i = 0; i < result.length && i < 3; i++) {
       debugPrint("🔎 clickRow[$i] ${result[i].data}");
     }
@@ -154,7 +1910,8 @@ ORDER BY $orderByClause;
     final balanceExpr = _pendingBalanceExpr(statusFilter);
     final orderByClause = _pendingOrderByClause(statusFilter);
 
-    final query = """
+    final query =
+        """
 SELECT 
     tp.hwls AS VoucherReference, 
     MIN(tp.VoucherNo) AS FirstVoucherNo, 
@@ -209,10 +1966,7 @@ ORDER BY $orderByClause;
     final result = await db
         .customSelect(
           query,
-          variables: [
-            Variable.withInt(accId),
-            Variable.withInt(companyId),
-          ],
+          variables: [Variable.withInt(accId), Variable.withInt(companyId)],
           readsFrom: {db.transactionsP, db.accPersonal, db.accType},
         )
         .get();
@@ -261,7 +2015,8 @@ ORDER BY $orderByClause;
         ? "AND UPPER(at.AccTypeName) = UPPER(?3)"
         : "";
 
-    final query = """
+    final query =
+        """
 WITH grouped AS (
   SELECT
       SUM(tp.Cr) - SUM(tp.Dr) AS netBalance,
@@ -344,7 +2099,8 @@ FROM grouped;
   }) async {
     final allStatusClause = _pendingStatusClause('ALL');
 
-    final query = """
+    final query =
+        """
 WITH grouped AS (
   SELECT
       COALESCE(NULLIF(TRIM(at.AccTypeName), ''), 'Unknown') AS currency,
@@ -384,10 +2140,7 @@ ORDER BY currency COLLATE NOCASE ASC;
     final result = await db
         .customSelect(
           query,
-          variables: [
-            Variable.withInt(accId),
-            Variable.withInt(companyId),
-          ],
+          variables: [Variable.withInt(accId), Variable.withInt(companyId)],
           readsFrom: {db.transactionsP, db.accType},
         )
         .get();
@@ -410,8 +2163,36 @@ ORDER BY currency COLLATE NOCASE ASC;
   // =========================================================
   Future<List<SubgroupBalanceRow>> getSubgroupBalances({
     required int companyId,
+    int? accId,
+    int? accTypeId,
+    String? fromDate,
+    String? toDate,
   }) async {
-    const query = r"""
+    final variables = <Variable>[Variable.withInt(companyId)];
+    final filters = StringBuffer();
+    var index = 2;
+
+    if ((accId ?? 0) > 0) {
+      filters.writeln('   AND tp.AccID = ?$index');
+      variables.add(Variable.withInt(accId!));
+      index += 1;
+    }
+    if ((accTypeId ?? 0) > 0) {
+      filters.writeln('   AND tp.AccTypeID = ?$index');
+      variables.add(Variable.withInt(accTypeId!));
+      index += 1;
+    }
+    if ((fromDate ?? '').trim().isNotEmpty) {
+      filters.writeln('   AND substr(tp.TDate, 1, 10) >= ?$index');
+      variables.add(Variable.withString(fromDate!.trim()));
+      index += 1;
+    }
+    if ((toDate ?? '').trim().isNotEmpty) {
+      filters.writeln('   AND substr(tp.TDate, 1, 10) <= ?$index');
+      variables.add(Variable.withString(toDate!.trim()));
+    }
+
+    final query = """
 SELECT 
     ap.statusg AS Subgroup,
     ap.Name AS Name,
@@ -425,7 +2206,9 @@ INNER JOIN AccType AS at
 INNER JOIN Company AS c 
     ON ap.CompanyID = c.CompanyID
 WHERE  tp.CompanyID = ?1
+   AND COALESCE(tp.IsDeleted, 0) = 0
    AND ap.AccID NOT IN (1003, 1004, 1006)
+${filters.toString()}
 GROUP BY 
     ap.statusg,
     ap.Name,
@@ -438,7 +2221,7 @@ ORDER BY
     final result = await db
         .customSelect(
           query,
-          variables: [Variable.withInt(companyId)],
+          variables: variables,
           readsFrom: {
             db.transactionsP,
             db.accPersonal,
@@ -480,14 +2263,21 @@ ORDER BY
           substr(t.TDate,1,10)         AS date,
           COALESCE(p.Name, '')         AS name,
           t.Description                AS description,
+          t.Quality                    AS quality,
+          t.Rate                       AS rate,
+          t.Weight                     AS weight,
           COALESCE(t.Dr, 0)            AS drCents,
           COALESCE(t.Cr, 0)            AS crCents,
+          COALESCE(t.UserID, p.UserID) AS UserID,
+          t.WName                      AS userEmail,
           t.Status                     AS status,
           COALESCE(at.AccTypeName, '') AS currency
       FROM Transactions_P t
       INNER JOIN Acc_Personal p ON p.AccID = t.AccID
       INNER JOIN AccType at      ON at.AccTypeID = t.AccTypeID
       WHERE t.CompanyID = ?1
+        AND COALESCE(t.IsDeleted, 0) = 0
+        AND COALESCE(p.IsDeleted, 0) = 0
         AND (?2 IS NULL OR ?2 = '' OR p.Name LIKE '%' || ?2 || '%')
         AND (
               UPPER(?3) = 'ALL'
@@ -565,10 +2355,7 @@ ORDER BY
     ORDER BY Name COLLATE NOCASE
     LIMIT ?2
     ''',
-          variables: [
-            Variable.withInt(companyId),
-            Variable.withInt(limit),
-          ],
+          variables: [Variable.withInt(companyId), Variable.withInt(limit)],
           readsFrom: {db.accPersonal},
         )
         .get();
@@ -579,9 +2366,7 @@ ORDER BY
         .toList(growable: false);
   }
 
-  Future<List<String>> getCompanyCurrencies({
-    required int companyId,
-  }) async {
+  Future<List<String>> getCompanyCurrencies({required int companyId}) async {
     // Kept for API compatibility with callers; currencies are loaded from AccType.
     final _ = companyId;
     final rows = await db
@@ -620,6 +2405,7 @@ ORDER BY
         FROM Transactions_P t
         INNER JOIN AccType at ON at.AccTypeID = t.AccTypeID
         WHERE t.AccID = ?1
+          AND COALESCE(t.IsDeleted, 0) = 0
           AND (?2 IS NULL OR substr(t.TDate,1,10) >= ?2)
           AND (?3 IS NULL OR substr(t.TDate,1,10) <= ?3)
         GROUP BY at.AccTypeName
@@ -634,6 +2420,7 @@ ORDER BY
         INNER JOIN AccType at ON at.AccTypeID = t.AccTypeID
         WHERE t.CompanyID = ?1
           AND t.AccID = ?2
+          AND COALESCE(t.IsDeleted, 0) = 0
           AND (?3 IS NULL OR substr(t.TDate,1,10) >= ?3)
           AND (?4 IS NULL OR substr(t.TDate,1,10) <= ?4)
         GROUP BY at.AccTypeName
@@ -661,7 +2448,7 @@ ORDER BY
                 : Variable.withString(endDate),
           ];
 
-    double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
+    double fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
     return db
         .customSelect(
@@ -677,8 +2464,8 @@ ORDER BY
 
             return BalanceCurrencyUi(
               currency: (row.data['currency'] as String?) ?? '',
-              credit: _fixZero(cr),
-              debit: _fixZero(dr),
+              credit: fixZero(cr),
+              debit: fixZero(dr),
             );
           }).toList();
         });
@@ -807,7 +2594,7 @@ ORDER BY
         )
         .get();
 
-    double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
+    double fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
     // ===============================
     // STEP 3: PIVOT DATA (KEEP + & −)
@@ -817,7 +2604,7 @@ ORDER BY
     for (final row in rawRows) {
       final name = (row.data['name'] as String?)?.trim();
       final cur = (row.data['cur'] as String?)?.trim();
-      final net = _fixZero((row.data['net'] as num?)?.toDouble() ?? 0.0);
+      final net = fixZero((row.data['net'] as num?)?.toDouble() ?? 0.0);
 
       if (name == null || name.isEmpty) continue;
       if (cur == null || cur.isEmpty) continue;
@@ -931,7 +2718,7 @@ ORDER BY
         )
         .get();
 
-    double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
+    double fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
     final Map<String, Map<String, double>> pivot = {};
 
@@ -941,7 +2728,7 @@ ORDER BY
       final cr = (row.data['sumCr'] as num?)?.toDouble() ?? 0.0;
       final dr = (row.data['sumDr'] as num?)?.toDouble() ?? 0.0;
 
-      final net = _fixZero(cr - dr);
+      final net = fixZero(cr - dr);
       if (cur == null || cur.isEmpty || net <= 0) continue;
 
       pivot.putIfAbsent(name, () => {});
@@ -1110,6 +2897,9 @@ ORDER BY
               t.VoucherNo            AS voucherNo,
               t.TDate                AS tDate,
               t.Description          AS description,
+              t.Quality              AS quality,
+              t.Rate                 AS rate,
+              t.Weight               AS weight,
               IFNULL(t.Dr,0)         AS dr,
               IFNULL(t.Cr,0)         AS cr
           FROM Transactions_P t
@@ -1125,6 +2915,9 @@ ORDER BY
               t.VoucherNo            AS voucherNo,
               t.TDate                AS tDate,
               t.Description          AS description,
+              t.Quality              AS quality,
+              t.Rate                 AS rate,
+              t.Weight               AS weight,
               IFNULL(t.Dr,0)         AS dr,
               IFNULL(t.Cr,0)         AS cr
           FROM Transactions_P t
@@ -1210,6 +3003,7 @@ ORDER BY
           LEFT JOIN AccType AS A
               ON T.AccTypeID = A.AccTypeID
           WHERE T.AccTypeID = ?1
+            AND LOWER(TRIM(COALESCE(P.Name, ''))) <> 'cash in hand'
           GROUP BY
               A.AccTypeName,
               P.AccID,
@@ -1263,6 +3057,7 @@ ORDER BY
               ON T.AccTypeID = A.AccTypeID
           WHERE T.CompanyID = ?1
             AND T.AccTypeID = ?2
+            AND LOWER(TRIM(COALESCE(P.Name, ''))) <> 'cash in hand'
           GROUP BY
               A.AccTypeName,
               P.AccID,

@@ -45,7 +45,7 @@ class _LastCreditSummaryScreenState extends State<LastCreditSummaryScreen> {
         elevation: 0,
         iconTheme: const IconThemeData(color: deepBlue),
         title: const Text(
-          'Last Credit Summary',
+          'Recievable TimeLine Report',
           style: TextStyle(
             color: deepBlue,
             fontSize: 18,
@@ -59,117 +59,116 @@ class _LastCreditSummaryScreenState extends State<LastCreditSummaryScreen> {
         child: vm.isLoading && currencies.isEmpty
             ? const Center(child: CircularProgressIndicator())
             : Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Select currency to view its Credit Summary',
-              style: TextStyle(fontSize: 14),
-            ),
-            const SizedBox(height: 16),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Select currency to view Recievable TimeLine Report',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
 
-            // Currency dropdown
-            DropdownButtonFormField<String>(
-              decoration: const InputDecoration(
-                labelText: 'Currency',
-                border: OutlineInputBorder(),
-              ),
-              isExpanded: true,
-              value: _selectedCurrency,
-              items: currencies
-                  .map(
-                    (c) => DropdownMenuItem<String>(
-                  value: c,
-                  child: Text(c),
-                ),
-              )
-                  .toList(),
-              onChanged: (val) {
-                setState(() {
-                  _selectedCurrency = val;
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-
-            // Show button
-            ElevatedButton(
-              onPressed: _isGenerating
-                  ? null
-                  : () async {
-                final cur = _selectedCurrency;
-                if (cur == null || cur.trim().isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Please select a currency'),
+                  // Currency dropdown
+                  DropdownButtonFormField<String>(
+                    decoration: const InputDecoration(
+                      labelText: 'Currency',
+                      border: OutlineInputBorder(),
                     ),
-                  );
-                  return;
-                }
+                    isExpanded: true,
+                    value: _selectedCurrency,
+                    items: currencies
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c,
+                            child: Text(c),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (val) {
+                      setState(() {
+                        _selectedCurrency = val;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 24),
 
-                setState(() => _isGenerating = true);
-                try {
-                  final File? file = await vm.generatePdf(
-                    currencyName: cur.trim(),
-                  );
+                  // Show button
+                  ElevatedButton(
+                    onPressed: _isGenerating
+                        ? null
+                        : () async {
+                            final cur = _selectedCurrency;
+                            if (cur == null || cur.trim().isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Please select a currency'),
+                                ),
+                              );
+                              return;
+                            }
 
-                  if (file == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                            'No data found for this currency'),
+                            setState(() => _isGenerating = true);
+                            try {
+                              final File? file = await vm.generatePdf(
+                                currencyName: cur.trim(),
+                              );
+
+                              if (file == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'No data found for this currency',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              OpenFileService.openPdf(context, file);
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Error: $e')),
+                              );
+                            } finally {
+                              if (mounted) {
+                                setState(() => _isGenerating = false);
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    );
-                    return;
-                  }
-
-                  OpenFileService.openPdf(context, file);
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Error: $e'),
                     ),
-                  );
-                } finally {
-                  if (mounted) {
-                    setState(() => _isGenerating = false);
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              child: _isGenerating
-                  ? const SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-                  : const Text(
-                'Show',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+                    child: _isGenerating
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'Show',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                  ),
 
-            if (vm.error != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                '⚠ ${vm.error}',
-                style: const TextStyle(color: Colors.red, fontSize: 12),
+                  if (vm.error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '⚠ ${vm.error}',
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
+                    ),
+                  ],
+                ],
               ),
-            ],
-          ],
-        ),
       ),
     );
   }

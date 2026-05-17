@@ -29,6 +29,7 @@ class AccountRepository {
       INNER JOIN AccType at ON tp.AccTypeID = at.AccTypeID
       WHERE tp.CompanyID = ?1
         AND tp.AccID = ?2
+        AND COALESCE(tp.IsDeleted, 0) = 0
       GROUP BY
         tp.AccTypeID,
         at.AccTypeName,
@@ -46,31 +47,31 @@ class AccountRepository {
   /// SEARCH ACCOUNTS BY NAME (Urdu / Arabic / English supported)
   /// ============================================================
   Future<List<AccPersonalData>> searchAccountsByName(String keyword) async {
-    return (db.select(db.accPersonal)
-      ..where((tbl) => tbl.name.like('%$keyword%')))
-        .get();
+    return (db.select(
+      db.accPersonal,
+    )..where((tbl) => tbl.name.like('%$keyword%'))).get();
   }
 
   /// ============================================================
   /// GET ACCOUNTS BY COMPANY ID
   /// ============================================================
   Future<List<AccPersonalData>> getAccountsByCompany(int companyId) async {
-    return (db.select(db.accPersonal)
-      ..where((tbl) => tbl.companyId.equals(companyId)))
-        .get();
+    return (db.select(
+      db.accPersonal,
+    )..where((tbl) => tbl.companyId.equals(companyId))).get();
   }
 
   /// ============================================================
   /// SEARCH USING NAME + COMPANY ID
   /// ============================================================
   Future<List<AccPersonalData>> searchByNameAndCompany(
-      String keyword, int companyId) async {
-    return (db.select(db.accPersonal)
-      ..where(
-            (tbl) =>
-        tbl.name.like('%$keyword%') &
-        tbl.companyId.equals(companyId),
-      ))
+    String keyword,
+    int companyId,
+  ) async {
+    return (db.select(db.accPersonal)..where(
+          (tbl) =>
+              tbl.name.like('%$keyword%') & tbl.companyId.equals(companyId),
+        ))
         .get();
   }
 
@@ -78,18 +79,18 @@ class AccountRepository {
   /// GET ALL ACCOUNTS (with optional sorting)
   /// ============================================================
   Future<List<AccPersonalData>> getAllAccounts() async {
-    return (db.select(db.accPersonal)
-      ..orderBy([(tbl) => OrderingTerm.asc(tbl.name)]))
-        .get();
+    return (db.select(
+      db.accPersonal,
+    )..orderBy([(tbl) => OrderingTerm.asc(tbl.name)])).get();
   }
 
   /// ============================================================
   /// GET ACCOUNT BY ID
   /// ============================================================
   Future<AccPersonalData?> getAccountById(int id) {
-    return (db.select(db.accPersonal)
-      ..where((tbl) => tbl.accId.equals(id)))
-        .getSingleOrNull();
+    return (db.select(
+      db.accPersonal,
+    )..where((tbl) => tbl.accId.equals(id))).getSingleOrNull();
   }
 
   /// ============================================================
@@ -98,13 +99,12 @@ class AccountRepository {
   Future<List<PendingAmountRow>> getPendingAmountSummary({
     required int selectedCompanyId,
   }) async {
-    final result = await db.customSelect(
-      _pendingAmountSummaryQuery,
-      variables: [
-        Variable.withInt(selectedCompanyId),
-        Variable.withInt(3),
-      ],
-    ).get();
+    final result = await db
+        .customSelect(
+          _pendingAmountSummaryQuery,
+          variables: [Variable.withInt(selectedCompanyId), Variable.withInt(3)],
+        )
+        .get();
 
     return result.map((row) {
       return PendingAmountRow(
@@ -120,31 +120,28 @@ class AccountRepository {
   /// 🔴 WATCH PENDING AMOUNT SUMMARY (NEW)
   /// ============================================================
   Stream<List<PendingAmountRow>> watchPendingAmountSummary(
-      int selectedCompanyId,
-      ) {
-    return db.customSelect(
-      _pendingAmountSummaryQuery,
-      variables: [
-        Variable.withInt(selectedCompanyId),
-        Variable.withInt(3),
-      ],
-      // 🔴 THIS IS THE FIX
-      readsFrom: {
-        db.transactionsP,
-        db.accType,
-        db.accPersonal,
-      },
-    ).watch().map((rows) {
-      return rows.map((row) {
-        return PendingAmountRow(
-          currency: row.read<String?>('currency') ?? '',
-          totalCr: row.read<double?>('totalCr') ?? 0.0,
-          totalDr: row.read<double?>('totalDr') ?? 0.0,
-          balance: row.read<double?>('pendingUnits') ?? 0.0,
-        );
-      }).toList();
-    });
+    int selectedCompanyId,
+  ) {
+    return db
+        .customSelect(
+          _pendingAmountSummaryQuery,
+          variables: [Variable.withInt(selectedCompanyId), Variable.withInt(3)],
+          // 🔴 THIS IS THE FIX
+          readsFrom: {db.transactionsP, db.accType, db.accPersonal},
+        )
+        .watch()
+        .map((rows) {
+          return rows.map((row) {
+            return PendingAmountRow(
+              currency: row.read<String?>('currency') ?? '',
+              totalCr: row.read<double?>('totalCr') ?? 0.0,
+              totalDr: row.read<double?>('totalDr') ?? 0.0,
+              balance: row.read<double?>('pendingUnits') ?? 0.0,
+            );
+          }).toList();
+        });
   }
+
   /// ============================================================
   /// CASH IN HAND SUMMARY (SNAPSHOT)
   /// ============================================================
@@ -165,6 +162,8 @@ class AccountRepository {
     WHERE
           T.AccID NOT IN (1, 1003, 1004)
           AND AP.statusg <> 'SOLAR TRANS'
+          AND COALESCE(T.IsDeleted, 0) = 0
+          AND COALESCE(AP.IsDeleted, 0) = 0
           AND T.CompanyID = ?
     GROUP BY 
           T.AccTypeID,
@@ -172,10 +171,9 @@ class AccountRepository {
           T.CompanyID;
   """;
 
-    final result = await db.customSelect(
-      query,
-      variables: [Variable.withInt(selectedCompanyId)],
-    ).get();
+    final result = await db
+        .customSelect(query, variables: [Variable.withInt(selectedCompanyId)])
+        .get();
 
     return result.map((row) {
       return CashInHandRow(
@@ -203,6 +201,8 @@ class AccountRepository {
   WHERE
         T.AccID NOT IN (1, 1003, 1004)
         AND AP.statusg <> 'SOLAR TRANS'
+        AND COALESCE(T.IsDeleted, 0) = 0
+        AND COALESCE(AP.IsDeleted, 0) = 0
         AND T.CompanyID = ?
   GROUP BY 
         T.AccTypeID,
@@ -210,24 +210,24 @@ class AccountRepository {
         T.CompanyID;
   """;
 
-    return db.customSelect(
-      query,
-      variables: [Variable.withInt(companyId)],
-      // 🔴 THIS IS THE FIX
-      readsFrom: {
-        db.transactionsP,
-        db.accType,
-        db.accPersonal,
-      },
-    ).watch().map((rows) {
-      return rows.map((row) {
-        return CashInHandRow(
-          currency: row.read<String>('Currency'),
-          amount: row.read<double?>('CashInHand') ?? 0.0,
-        );
-      }).toList();
-    });
+    return db
+        .customSelect(
+          query,
+          variables: [Variable.withInt(companyId)],
+          // 🔴 THIS IS THE FIX
+          readsFrom: {db.transactionsP, db.accType, db.accPersonal},
+        )
+        .watch()
+        .map((rows) {
+          return rows.map((row) {
+            return CashInHandRow(
+              currency: row.read<String>('Currency'),
+              amount: row.read<double?>('CashInHand') ?? 0.0,
+            );
+          }).toList();
+        });
   }
+
   /// ============================================================
   /// ACCID = 1 CASH SUMMARY (SNAPSHOT)
   /// ============================================================
@@ -243,6 +243,8 @@ class AccountRepository {
     INNER JOIN Acc_Personal AP ON T.AccID = AP.AccID
     WHERE
         T.AccID = 1
+        AND COALESCE(T.IsDeleted, 0) = 0
+        AND COALESCE(AP.IsDeleted, 0) = 0
         AND T.CompanyID = ?
     GROUP BY 
         T.AccTypeID,
@@ -250,10 +252,9 @@ class AccountRepository {
         T.CompanyID;
   """;
 
-    final result = await db.customSelect(
-      query,
-      variables: [Variable.withInt(companyId)],
-    ).get();
+    final result = await db
+        .customSelect(query, variables: [Variable.withInt(companyId)])
+        .get();
 
     return result.map((row) {
       return CashSummaryRow(
@@ -278,6 +279,8 @@ class AccountRepository {
   INNER JOIN Acc_Personal AP ON T.AccID = AP.AccID
   WHERE
       T.AccID = 1
+      AND COALESCE(T.IsDeleted, 0) = 0
+      AND COALESCE(AP.IsDeleted, 0) = 0
       AND T.CompanyID = ?
   GROUP BY 
       T.AccTypeID,
@@ -285,21 +288,21 @@ class AccountRepository {
       T.CompanyID;
   """;
 
-    return db.customSelect(
-      query,
-      variables: [Variable.withInt(companyId)],
-      // 🔴 THIS IS THE FIX
-      readsFrom: {
-        db.transactionsP,
-        db.accType,
-        db.accPersonal,
-      },
-    ).watch().map((rows) {
-      return rows.map((row) {
-        return CashSummaryRow(
-          currency: row.read<String>('Currency'),
-          amount: row.read<double>('CashInHand'),
-        );
-      }).toList();
-    });
-  }}
+    return db
+        .customSelect(
+          query,
+          variables: [Variable.withInt(companyId)],
+          // 🔴 THIS IS THE FIX
+          readsFrom: {db.transactionsP, db.accType, db.accPersonal},
+        )
+        .watch()
+        .map((rows) {
+          return rows.map((row) {
+            return CashSummaryRow(
+              currency: row.read<String>('Currency'),
+              amount: row.read<double>('CashInHand'),
+            );
+          }).toList();
+        });
+  }
+}

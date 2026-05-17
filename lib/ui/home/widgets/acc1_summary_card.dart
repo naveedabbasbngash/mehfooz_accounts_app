@@ -1,10 +1,12 @@
 // lib/ui/home/widgets/acc1_summary_card.dart
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../viewmodel/home/home_view_model.dart';
+import '../../commons/currency_flag.dart';
 import '../../commons/fade_slide.dart';
+
+const _kHomeBrandBlue = Color(0xFF1862A3);
 
 class Acc1SummaryCard extends StatelessWidget {
   final HomeViewModel vm;
@@ -59,129 +61,17 @@ class Acc1SummaryCard extends StatelessWidget {
     );
   }
 
-  String _norm(String value) => value.trim().toUpperCase();
-
-  String _currencyToCountryCode(String currency) {
-    switch (_norm(currency)) {
-      case 'PKR':
-        return 'PK';
-      case 'USD':
-        return 'US';
-      case 'AED':
-        return 'AE';
-      case 'SAR':
-        return 'SA';
-      case 'EUR':
-        return 'EU';
-      case 'GBP':
-      case 'POUND':
-        return 'GB';
-      case 'INR':
-      case 'IND':
-        return 'IN';
-      case 'AFG':
-      case 'AFN':
-        return 'AF';
-      case 'CAD':
-        return 'CA';
-      case 'JPY':
-        return 'JP';
-      case 'RMB':
-      case 'CNY':
-        return 'CN';
-      case 'IRR':
-        return 'IR';
-      case 'BHD':
-        return 'BH';
-      case 'OMR':
-        return 'OM';
-      case 'QAR':
-        return 'QA';
-      case 'DKK':
-        return 'DK';
-      case 'SEK':
-        return 'SE';
-      case 'NOK':
-        return 'NO';
-      case 'MYR':
-        return 'MY';
-      case 'AUD':
-        return 'AU';
-      case 'HKD':
-        return 'HK';
-      case 'SGD':
-      case 'SGP':
-        return 'SG';
-      case 'RUB':
-        return 'RU';
-      default:
-        return 'UN';
-    }
-  }
-
-  String _countryNameForCurrency(String currency) {
-    switch (_norm(currency)) {
-      case 'PKR':
-        return 'Pakistan';
-      case 'USD':
-        return 'United States';
-      case 'AED':
-        return 'United Arab Emirates';
-      case 'SAR':
-        return 'Saudi Arabia';
-      case 'EUR':
-        return 'European Union';
-      case 'GBP':
-      case 'POUND':
-        return 'United Kingdom';
-      case 'INR':
-      case 'IND':
-        return 'India';
-      case 'AFG':
-      case 'AFN':
-        return 'Afghanistan';
-      case 'CAD':
-        return 'Canada';
-      case 'JPY':
-        return 'Japan';
-      case 'RMB':
-      case 'CNY':
-        return 'China';
-      case 'IRR':
-        return 'Iran';
-      case 'BHD':
-        return 'Bahrain';
-      case 'OMR':
-        return 'Oman';
-      case 'QAR':
-        return 'Qatar';
-      case 'DKK':
-        return 'Denmark';
-      case 'SEK':
-        return 'Sweden';
-      case 'NOK':
-        return 'Norway';
-      case 'MYR':
-        return 'Malaysia';
-      case 'AUD':
-        return 'Australia';
-      case 'HKD':
-        return 'Hong Kong';
-      case 'SGD':
-      case 'SGP':
-        return 'Singapore';
-      case 'RUB':
-        return 'Russia';
-      default:
-        return 'Unknown';
-    }
-  }
+  String _countryNameForCurrency(String currency) =>
+      currencyCountryName(currency);
 
   Row _titleRow() {
     return Row(
       children: [
-        Icon(Icons.account_balance_wallet_outlined,
-            color: AppColors.primary, size: 22),
+        Icon(
+          Icons.account_balance_wallet_outlined,
+          color: _kHomeBrandBlue,
+          size: 22,
+        ),
         const SizedBox(width: 8),
         Text(
           "Cash In Hand",
@@ -218,14 +108,7 @@ class Acc1SummaryCard extends StatelessWidget {
                 SizedBox(
                   width: 28,
                   height: 28,
-                  child: CountryFlag.fromCountryCode(
-                    _currencyToCountryCode(currency),
-                    theme: const ImageTheme(
-                      width: 26,
-                      height: 26,
-                      shape: Circle(),
-                    ),
-                  ),
+                  child: CurrencyFlagBadge(currency: currency, size: 26),
                 ),
                 const SizedBox(width: 8),
                 Column(
@@ -254,7 +137,7 @@ class Acc1SummaryCard extends StatelessWidget {
             _AnimatedMoneyText(
               value: row.amount.toDouble(),
               fmt: fmt,
-              color: isPositive ? AppColors.success : AppColors.error,
+              color: isPositive ? _kHomeBrandBlue : AppColors.error,
             ),
           ],
         ),
@@ -271,18 +154,16 @@ class Acc1SummaryCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isExpanded
-                  ? Icons.keyboard_arrow_up
-                  : Icons.keyboard_arrow_down,
+              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
               size: 18,
-              color: AppColors.primary,
+              color: _kHomeBrandBlue,
             ),
             const SizedBox(width: 5),
             Text(
               isExpanded ? "Show less" : "+ $hiddenCount more",
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.primary,
+                color: _kHomeBrandBlue,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -294,19 +175,58 @@ class Acc1SummaryCard extends StatelessWidget {
 
   Widget _emptyState() {
     return FadeSlide(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              _kHomeBrandBlue.withValues(alpha: 0.08),
+              Colors.white,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _kHomeBrandBlue.withValues(alpha: 0.14)),
+        ),
         child: Column(
           children: [
-            Icon(Icons.wallet_outlined,
-                size: 40, color: AppColors.primary.withValues(alpha: 0.35)),
-            const SizedBox(height: 12),
-            Text(
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _kHomeBrandBlue.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: _kHomeBrandBlue.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 28,
+                color: _kHomeBrandBlue.withValues(alpha: 0.92),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
               "No Cash Summary Yet",
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF102132),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Cash balances will appear here once account activity starts flowing into the selected company.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textMuted,
               ),
             ),
           ],
@@ -373,10 +293,7 @@ class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
       builder: (context, v, child) {
         return Text(
           widget.fmt.format(v),
-          style: TextStyle(
-            color: widget.color,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: widget.color, fontWeight: FontWeight.bold),
         );
       },
     );

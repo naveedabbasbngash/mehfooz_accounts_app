@@ -36,13 +36,19 @@ class SubgroupPdfService extends BasePdfService {
   Future<File> render({
     required List<SubgroupBalanceRow> rows,
     String title = 'Trial Balance',
+    String? periodText,
+    String? filterSummary,
   }) async {
     debugPrint("[SubgroupPdf] render:start rows=${rows.length}");
     final sw = Stopwatch()..start();
 
-    final fontData = await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+    final fontData = await rootBundle.load(
+      'assets/fonts/NotoSansArabic-Regular.ttf',
+    );
     final payload = <String, dynamic>{
       'title': title,
+      'periodText': periodText,
+      'filterSummary': filterSummary,
       'fontBytes': fontData.buffer.asUint8List(),
       'rows': rows
           .map(
@@ -72,6 +78,8 @@ class SubgroupPdfService extends BasePdfService {
   Future<Uint8List> _buildPdfBytes({
     required List<SubgroupBalanceRow> rows,
     required String title,
+    String? periodText,
+    String? filterSummary,
     required pw.Font font,
     required pw.Font fontBold,
   }) async {
@@ -100,16 +108,19 @@ class SubgroupPdfService extends BasePdfService {
           (grouped[r.subgroup]![r.name]![currency] ?? 0) + r.balance;
     }
 
-    final allCurrencies = grouped.values
-        .expand((byName) => byName.values)
-        .expand((byCur) => byCur.keys)
-        .toSet()
-        .toList()
-      ..sort((a, b) => a.toUpperCase().compareTo(b.toUpperCase()));
+    final allCurrencies =
+        grouped.values
+            .expand((byName) => byName.values)
+            .expand((byCur) => byCur.keys)
+            .toSet()
+            .toList()
+          ..sort((a, b) => a.toUpperCase().compareTo(b.toUpperCase()));
 
     // Totals
     final subgroupTotals = <String, Map<String, double>>{};
-    final grandTotalsAll = <String, double>{for (final c in allCurrencies) c: 0.0};
+    final grandTotalsAll = <String, double>{
+      for (final c in allCurrencies) c: 0.0,
+    };
     grouped.forEach((sg, names) {
       final totals = <String, double>{for (final c in allCurrencies) c: 0.0};
       names.forEach((_, byCur) {
@@ -121,10 +132,17 @@ class SubgroupPdfService extends BasePdfService {
       subgroupTotals[sg] = totals;
     });
 
-    // Skip currencies that are zero in all rows.
-    final currencies = allCurrencies
-        .where((c) => (grandTotalsAll[c] ?? 0.0).abs() > 0.000001)
-        .toList();
+    // Keep currency if any subgroup/name row has non-zero value for it.
+    final currencies = allCurrencies.where((currency) {
+      for (final byName in grouped.values) {
+        for (final byCur in byName.values) {
+          if ((byCur[currency] ?? 0.0).abs() > 0.000001) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }).toList();
 
     final visibleCurrencies = currencies.isEmpty ? allCurrencies : currencies;
     final grandTotals = <String, double>{
@@ -147,7 +165,12 @@ class SubgroupPdfService extends BasePdfService {
         margin: const pw.EdgeInsets.all(14),
         build: (_) {
           final widgets = <pw.Widget>[
-            _titleBar(title, fontBold),
+            _titleBar(
+              title,
+              fontBold,
+              periodText: periodText,
+              filterSummary: filterSummary,
+            ),
             pw.SizedBox(height: 6),
           ];
 
@@ -156,7 +179,14 @@ class SubgroupPdfService extends BasePdfService {
 
             if (i > 0) {
               widgets.add(pw.NewPage());
-              widgets.add(_titleBar(title, fontBold));
+              widgets.add(
+                _titleBar(
+                  title,
+                  fontBold,
+                  periodText: periodText,
+                  filterSummary: filterSummary,
+                ),
+              );
               widgets.add(pw.SizedBox(height: 6));
             }
 
@@ -229,16 +259,45 @@ class SubgroupPdfService extends BasePdfService {
 
   // ----- Layout builders -----
 
-  pw.Widget _titleBar(String title, pw.Font fontBold) {
+  pw.Widget _titleBar(
+    String title,
+    pw.Font fontBold, {
+    String? periodText,
+    String? filterSummary,
+  }) {
+    final metaLines = [
+      if ((periodText ?? '').trim().isNotEmpty) periodText!.trim(),
+      if ((filterSummary ?? '').trim().isNotEmpty) filterSummary!.trim(),
+    ];
+
     return pw.Container(
-      padding: const pw.EdgeInsets.only(bottom: 3, right: 40),
+      padding: const pw.EdgeInsets.only(bottom: 6, right: 40, top: 2),
       decoration: pw.BoxDecoration(
         border: pw.Border(
           bottom: pw.BorderSide(color: PdfColors.black, width: 2),
           right: pw.BorderSide(color: PdfColors.black, width: 2),
         ),
       ),
-      child: pw.Text(title, style: pw.TextStyle(font: fontBold, fontSize: 16)),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(title, style: pw.TextStyle(font: fontBold, fontSize: 16)),
+          if (metaLines.isNotEmpty) pw.SizedBox(height: 4),
+          ...metaLines.map(
+            (line) => pw.Padding(
+              padding: const pw.EdgeInsets.only(bottom: 2),
+              child: pw.Text(
+                line,
+                style: pw.TextStyle(
+                  font: fontBold,
+                  fontSize: 8.5,
+                  color: PdfColor.fromInt(0xFF556679),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -304,19 +363,15 @@ class SubgroupPdfService extends BasePdfService {
   }) {
     final tableWidth =
         _subgroupColWidth +
-            _nameColWidth +
-            (currencies.length * _currencyColWidth);
+        _nameColWidth +
+        (currencies.length * _currencyColWidth);
     final mahfoozLight = PdfColor.fromInt(0xFFC7CDD7);
     return pw.Container(
       width: tableWidth,
       alignment: pw.Alignment.centerRight,
       child: pw.Text(
         "Mahfooz Accounts",
-        style: pw.TextStyle(
-          font: fontBold,
-          fontSize: 8,
-          color: mahfoozLight,
-        ),
+        style: pw.TextStyle(font: fontBold, fontSize: 8, color: mahfoozLight),
       ),
     );
   }
@@ -815,18 +870,24 @@ Future<Uint8List> _buildSubgroupPdfBytesInIsolate(
   Map<String, dynamic> payload,
 ) async {
   final title = (payload['title'] as String?) ?? 'Trial Balance';
+  final periodText = (payload['periodText'] as String?)?.trim();
+  final filterSummary = (payload['filterSummary'] as String?)?.trim();
   final fontBytes = payload['fontBytes'] as Uint8List;
   final rawRows = (payload['rows'] as List?)?.cast<Map>() ?? const <Map>[];
 
-  final rows = rawRows.map((m) {
-    final row = Map<String, dynamic>.from(m.cast<String, dynamic>());
-    return SubgroupBalanceRow(
-      subgroup: (row['subgroup'] as String?) ?? '',
-      name: (row['name'] as String?) ?? '',
-      currency: (row['currency'] as String?) ?? '',
-      balance: (row['balance'] is num) ? (row['balance'] as num).toDouble() : 0.0,
-    );
-  }).toList(growable: false);
+  final rows = rawRows
+      .map((m) {
+        final row = Map<String, dynamic>.from(m.cast<String, dynamic>());
+        return SubgroupBalanceRow(
+          subgroup: (row['subgroup'] as String?) ?? '',
+          name: (row['name'] as String?) ?? '',
+          currency: (row['currency'] as String?) ?? '',
+          balance: (row['balance'] is num)
+              ? (row['balance'] as num).toDouble()
+              : 0.0,
+        );
+      })
+      .toList(growable: false);
 
   final service = SubgroupPdfService._();
   final fontData = fontBytes.buffer.asByteData(
@@ -838,6 +899,8 @@ Future<Uint8List> _buildSubgroupPdfBytesInIsolate(
   return service._buildPdfBytes(
     rows: rows,
     title: title,
+    periodText: periodText,
+    filterSummary: filterSummary,
     font: unicodeFont,
     fontBold: unicodeFont,
   );

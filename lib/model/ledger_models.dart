@@ -6,6 +6,9 @@ class LedgerTxn extends Equatable {
   final String voucherNo;
   final DateTime tDate;
   final String description;
+  final String quality;
+  final double? rate;
+  final double? weight;
 
   /// Debit amount (REAL)
   final double dr;
@@ -17,6 +20,9 @@ class LedgerTxn extends Equatable {
     required this.voucherNo,
     required this.tDate,
     required this.description,
+    this.quality = '',
+    this.rate,
+    this.weight,
     required this.dr,
     required this.cr,
   });
@@ -36,6 +42,9 @@ class LedgerTxn extends Equatable {
     voucherNo,
     tDate,
     description,
+    quality,
+    rate,
+    weight,
     cleanDr,
     cleanCr,
   ];
@@ -49,10 +58,7 @@ class LedgerResult {
 
   final List<LedgerTxn> rows;
 
-  const LedgerResult({
-    required this.openingBalance,
-    required this.rows,
-  });
+  const LedgerResult({required this.openingBalance, required this.rows});
 
   /// Running balance after each transaction
   /// Formula: previous + Cr - Dr

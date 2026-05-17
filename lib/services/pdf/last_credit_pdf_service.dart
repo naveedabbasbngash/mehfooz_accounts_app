@@ -44,7 +44,7 @@ class LastCreditPdfService extends BasePdfService {
             // --------------------------------------------------
             pw.Center(
               child: pw.Text(
-                'Last Credit Summary',
+                'Recievable TimeLine Report',
                 textAlign: pw.TextAlign.center,
                 style: pw.TextStyle(
                   font: latinBold,
@@ -58,20 +58,14 @@ class LastCreditPdfService extends BasePdfService {
               children: [
                 pw.Text(
                   'Currency:',
-                  style: pw.TextStyle(
-                    font: latin,
-                    fontSize: 11,
-                  ),
+                  style: pw.TextStyle(font: latin, fontSize: 11),
                 ),
                 pw.SizedBox(width: 6),
                 pw.Expanded(
                   child: pw.Text(
                     currencyName,
                     textDirection: _dir(currencyName),
-                    style: pw.TextStyle(
-                      font: latin,
-                      fontSize: 11,
-                    ),
+                    style: pw.TextStyle(font: latin, fontSize: 11),
                   ),
                 ),
               ],
@@ -89,7 +83,7 @@ class LastCreditPdfService extends BasePdfService {
                   ),
                 ),
                 pw.Text(
-                  'Mehfooz Acounts',
+                  'Mahfooz Account',
                   style: pw.TextStyle(
                     font: latin,
                     fontSize: 9,
@@ -104,10 +98,7 @@ class LastCreditPdfService extends BasePdfService {
             // TABLE
             // --------------------------------------------------
             pw.Table(
-              border: pw.TableBorder.all(
-                color: PdfColors.grey300,
-                width: 0.4,
-              ),
+              border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.4),
               columnWidths: const {
                 0: pw.FlexColumnWidth(3), // Customer
                 1: pw.FlexColumnWidth(2), // Balance
@@ -118,13 +109,9 @@ class LastCreditPdfService extends BasePdfService {
               children: [
                 // ---------------- HEADER ROW ----------------
                 pw.TableRow(
-                  decoration:
-                  const pw.BoxDecoration(color: PdfColors.grey300),
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey300),
                   children: [
-                    _headerCell(
-                      'Customer',
-                      font: latinBold,
-                    ),
+                    _headerCell('Customer', font: latinBold),
                     _headerCell(
                       'Balance',
                       font: latinBold,
@@ -151,15 +138,16 @@ class LastCreditPdfService extends BasePdfService {
                 // ---------------- DATA ROWS ----------------
                 ...rows.map((row) {
                   // ---------------- SAFE DOUBLE NORMALIZATION ----------------
-                  final double balance =
-                  (row.netBalance as num).toDouble();
-                  final double lastCr =
-                  (row.lastCreditAmount as num).toDouble();
+                  final double balance = (row.netBalance as num).toDouble();
+                  final double lastCr = (row.lastCreditAmount as num)
+                      .toDouble();
 
-                  final balanceFormatted =
-                  nf.format(balance.abs() < 0.005 ? 0.0 : balance);
-                  final crFormatted =
-                  nf.format(lastCr.abs() < 0.005 ? 0.0 : lastCr);
+                  final balanceFormatted = nf.format(
+                    balance.abs() < 0.005 ? 0.0 : balance,
+                  );
+                  final crFormatted = nf.format(
+                    lastCr.abs() < 0.005 ? 0.0 : lastCr,
+                  );
 
                   // ---------------- DATE ----------------
                   String cleanDate;
@@ -171,8 +159,7 @@ class LastCreditPdfService extends BasePdfService {
                   }
 
                   // ---------------- DAYS (INT ONLY) ----------------
-                  final int days =
-                  (row.daysSinceLastCredit as num).round();
+                  final int days = (row.daysSinceLastCredit as num).round();
                   final double months = days / 30.0;
 
                   PdfColor bg;
@@ -254,19 +241,19 @@ class LastCreditPdfService extends BasePdfService {
   // HEADER CELL
   // ==========================================================
   pw.Widget _headerCell(
-      String text, {
-        required pw.Font font,
-        pw.TextAlign align = pw.TextAlign.left,
-      }) {
+    String text, {
+    required pw.Font font,
+    pw.TextAlign align = pw.TextAlign.left,
+  }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
         text,
         textAlign: align,
-          style: pw.TextStyle(
-            font: font,
-            fontSize: 9,
-            fontWeight: pw.FontWeight.bold,
+        style: pw.TextStyle(
+          font: font,
+          fontSize: 9,
+          fontWeight: pw.FontWeight.bold,
         ),
         textDirection: _dir(text),
       ),
@@ -277,21 +264,17 @@ class LastCreditPdfService extends BasePdfService {
   // BODY CELL
   // ==========================================================
   pw.Widget _bodyCell(
-      String text, {
-        required pw.Font font,
-        pw.TextAlign align = pw.TextAlign.left,
-        PdfColor color = PdfColors.black,
-      }) {
+    String text, {
+    required pw.Font font,
+    pw.TextAlign align = pw.TextAlign.left,
+    PdfColor color = PdfColors.black,
+  }) {
     return pw.Padding(
       padding: const pw.EdgeInsets.all(4),
       child: pw.Text(
         text,
         textAlign: align,
-        style: pw.TextStyle(
-          font: font,
-          fontSize: 9,
-          color: color,
-        ),
+        style: pw.TextStyle(font: font, fontSize: 9, color: color),
         textDirection: _dir(text),
       ),
     );

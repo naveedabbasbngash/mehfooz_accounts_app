@@ -1528,6 +1528,219 @@ class CompanyTableCompanion extends UpdateCompanion<CompanyTableData> {
   }
 }
 
+class $AccountsHeadsTable extends AccountsHeads
+    with TableInfo<$AccountsHeadsTable, AccountsHead> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AccountsHeadsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accHeadIdMeta = const VerificationMeta(
+    'accHeadId',
+  );
+  @override
+  late final GeneratedColumn<int> accHeadId = GeneratedColumn<int>(
+    'acc_head_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accHeadNameMeta = const VerificationMeta(
+    'accHeadName',
+  );
+  @override
+  late final GeneratedColumn<String> accHeadName = GeneratedColumn<String>(
+    'acc_head_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [accHeadId, accHeadName];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'Accounts_Heads';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AccountsHead> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('acc_head_id')) {
+      context.handle(
+        _accHeadIdMeta,
+        accHeadId.isAcceptableOrUnknown(data['acc_head_id']!, _accHeadIdMeta),
+      );
+    }
+    if (data.containsKey('acc_head_name')) {
+      context.handle(
+        _accHeadNameMeta,
+        accHeadName.isAcceptableOrUnknown(
+          data['acc_head_name']!,
+          _accHeadNameMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accHeadId};
+  @override
+  AccountsHead map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AccountsHead(
+      accHeadId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}acc_head_id'],
+      )!,
+      accHeadName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}acc_head_name'],
+      ),
+    );
+  }
+
+  @override
+  $AccountsHeadsTable createAlias(String alias) {
+    return $AccountsHeadsTable(attachedDatabase, alias);
+  }
+}
+
+class AccountsHead extends DataClass implements Insertable<AccountsHead> {
+  final int accHeadId;
+  final String? accHeadName;
+  const AccountsHead({required this.accHeadId, this.accHeadName});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['acc_head_id'] = Variable<int>(accHeadId);
+    if (!nullToAbsent || accHeadName != null) {
+      map['acc_head_name'] = Variable<String>(accHeadName);
+    }
+    return map;
+  }
+
+  AccountsHeadsCompanion toCompanion(bool nullToAbsent) {
+    return AccountsHeadsCompanion(
+      accHeadId: Value(accHeadId),
+      accHeadName: accHeadName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accHeadName),
+    );
+  }
+
+  factory AccountsHead.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AccountsHead(
+      accHeadId: serializer.fromJson<int>(json['accHeadId']),
+      accHeadName: serializer.fromJson<String?>(json['accHeadName']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accHeadId': serializer.toJson<int>(accHeadId),
+      'accHeadName': serializer.toJson<String?>(accHeadName),
+    };
+  }
+
+  AccountsHead copyWith({
+    int? accHeadId,
+    Value<String?> accHeadName = const Value.absent(),
+  }) => AccountsHead(
+    accHeadId: accHeadId ?? this.accHeadId,
+    accHeadName: accHeadName.present ? accHeadName.value : this.accHeadName,
+  );
+  AccountsHead copyWithCompanion(AccountsHeadsCompanion data) {
+    return AccountsHead(
+      accHeadId: data.accHeadId.present ? data.accHeadId.value : this.accHeadId,
+      accHeadName: data.accHeadName.present
+          ? data.accHeadName.value
+          : this.accHeadName,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountsHead(')
+          ..write('accHeadId: $accHeadId, ')
+          ..write('accHeadName: $accHeadName')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(accHeadId, accHeadName);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AccountsHead &&
+          other.accHeadId == this.accHeadId &&
+          other.accHeadName == this.accHeadName);
+}
+
+class AccountsHeadsCompanion extends UpdateCompanion<AccountsHead> {
+  final Value<int> accHeadId;
+  final Value<String?> accHeadName;
+  const AccountsHeadsCompanion({
+    this.accHeadId = const Value.absent(),
+    this.accHeadName = const Value.absent(),
+  });
+  AccountsHeadsCompanion.insert({
+    this.accHeadId = const Value.absent(),
+    this.accHeadName = const Value.absent(),
+  });
+  static Insertable<AccountsHead> custom({
+    Expression<int>? accHeadId,
+    Expression<String>? accHeadName,
+  }) {
+    return RawValuesInsertable({
+      if (accHeadId != null) 'acc_head_id': accHeadId,
+      if (accHeadName != null) 'acc_head_name': accHeadName,
+    });
+  }
+
+  AccountsHeadsCompanion copyWith({
+    Value<int>? accHeadId,
+    Value<String?>? accHeadName,
+  }) {
+    return AccountsHeadsCompanion(
+      accHeadId: accHeadId ?? this.accHeadId,
+      accHeadName: accHeadName ?? this.accHeadName,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accHeadId.present) {
+      map['acc_head_id'] = Variable<int>(accHeadId.value);
+    }
+    if (accHeadName.present) {
+      map['acc_head_name'] = Variable<String>(accHeadName.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountsHeadsCompanion(')
+          ..write('accHeadId: $accHeadId, ')
+          ..write('accHeadName: $accHeadName')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $DbInfoTableTable extends DbInfoTable
     with TableInfo<$DbInfoTableTable, DbInfoTableData> {
   @override
@@ -1761,6 +1974,278 @@ class DbInfoTableCompanion extends UpdateCompanion<DbInfoTableData> {
   }
 }
 
+class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
+    with
+        TableInfo<
+          $AccountPCurrencyAssignmentTable,
+          AccountPCurrencyAssignmentData
+        > {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AccountPCurrencyAssignmentTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _regIdMeta = const VerificationMeta('regId');
+  @override
+  late final GeneratedColumn<int> regId = GeneratedColumn<int>(
+    'RegID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accIdMeta = const VerificationMeta('accId');
+  @override
+  late final GeneratedColumn<int> accId = GeneratedColumn<int>(
+    'AccID',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accountTypeIdMeta = const VerificationMeta(
+    'accountTypeId',
+  );
+  @override
+  late final GeneratedColumn<int> accountTypeId = GeneratedColumn<int>(
+    'AccountTypeID',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [regId, accId, accountTypeId];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'Account_PCurrencyAssignment';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AccountPCurrencyAssignmentData> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('RegID')) {
+      context.handle(
+        _regIdMeta,
+        regId.isAcceptableOrUnknown(data['RegID']!, _regIdMeta),
+      );
+    }
+    if (data.containsKey('AccID')) {
+      context.handle(
+        _accIdMeta,
+        accId.isAcceptableOrUnknown(data['AccID']!, _accIdMeta),
+      );
+    }
+    if (data.containsKey('AccountTypeID')) {
+      context.handle(
+        _accountTypeIdMeta,
+        accountTypeId.isAcceptableOrUnknown(
+          data['AccountTypeID']!,
+          _accountTypeIdMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {regId};
+  @override
+  AccountPCurrencyAssignmentData map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AccountPCurrencyAssignmentData(
+      regId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}RegID'],
+      )!,
+      accId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccID'],
+      ),
+      accountTypeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccountTypeID'],
+      ),
+    );
+  }
+
+  @override
+  $AccountPCurrencyAssignmentTable createAlias(String alias) {
+    return $AccountPCurrencyAssignmentTable(attachedDatabase, alias);
+  }
+}
+
+class AccountPCurrencyAssignmentData extends DataClass
+    implements Insertable<AccountPCurrencyAssignmentData> {
+  final int regId;
+  final int? accId;
+  final int? accountTypeId;
+  const AccountPCurrencyAssignmentData({
+    required this.regId,
+    this.accId,
+    this.accountTypeId,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['RegID'] = Variable<int>(regId);
+    if (!nullToAbsent || accId != null) {
+      map['AccID'] = Variable<int>(accId);
+    }
+    if (!nullToAbsent || accountTypeId != null) {
+      map['AccountTypeID'] = Variable<int>(accountTypeId);
+    }
+    return map;
+  }
+
+  AccountPCurrencyAssignmentCompanion toCompanion(bool nullToAbsent) {
+    return AccountPCurrencyAssignmentCompanion(
+      regId: Value(regId),
+      accId: accId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accId),
+      accountTypeId: accountTypeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accountTypeId),
+    );
+  }
+
+  factory AccountPCurrencyAssignmentData.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AccountPCurrencyAssignmentData(
+      regId: serializer.fromJson<int>(json['regId']),
+      accId: serializer.fromJson<int?>(json['accId']),
+      accountTypeId: serializer.fromJson<int?>(json['accountTypeId']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'regId': serializer.toJson<int>(regId),
+      'accId': serializer.toJson<int?>(accId),
+      'accountTypeId': serializer.toJson<int?>(accountTypeId),
+    };
+  }
+
+  AccountPCurrencyAssignmentData copyWith({
+    int? regId,
+    Value<int?> accId = const Value.absent(),
+    Value<int?> accountTypeId = const Value.absent(),
+  }) => AccountPCurrencyAssignmentData(
+    regId: regId ?? this.regId,
+    accId: accId.present ? accId.value : this.accId,
+    accountTypeId: accountTypeId.present
+        ? accountTypeId.value
+        : this.accountTypeId,
+  );
+  AccountPCurrencyAssignmentData copyWithCompanion(
+    AccountPCurrencyAssignmentCompanion data,
+  ) {
+    return AccountPCurrencyAssignmentData(
+      regId: data.regId.present ? data.regId.value : this.regId,
+      accId: data.accId.present ? data.accId.value : this.accId,
+      accountTypeId: data.accountTypeId.present
+          ? data.accountTypeId.value
+          : this.accountTypeId,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountPCurrencyAssignmentData(')
+          ..write('regId: $regId, ')
+          ..write('accId: $accId, ')
+          ..write('accountTypeId: $accountTypeId')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(regId, accId, accountTypeId);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AccountPCurrencyAssignmentData &&
+          other.regId == this.regId &&
+          other.accId == this.accId &&
+          other.accountTypeId == this.accountTypeId);
+}
+
+class AccountPCurrencyAssignmentCompanion
+    extends UpdateCompanion<AccountPCurrencyAssignmentData> {
+  final Value<int> regId;
+  final Value<int?> accId;
+  final Value<int?> accountTypeId;
+  const AccountPCurrencyAssignmentCompanion({
+    this.regId = const Value.absent(),
+    this.accId = const Value.absent(),
+    this.accountTypeId = const Value.absent(),
+  });
+  AccountPCurrencyAssignmentCompanion.insert({
+    this.regId = const Value.absent(),
+    this.accId = const Value.absent(),
+    this.accountTypeId = const Value.absent(),
+  });
+  static Insertable<AccountPCurrencyAssignmentData> custom({
+    Expression<int>? regId,
+    Expression<int>? accId,
+    Expression<int>? accountTypeId,
+  }) {
+    return RawValuesInsertable({
+      if (regId != null) 'RegID': regId,
+      if (accId != null) 'AccID': accId,
+      if (accountTypeId != null) 'AccountTypeID': accountTypeId,
+    });
+  }
+
+  AccountPCurrencyAssignmentCompanion copyWith({
+    Value<int>? regId,
+    Value<int?>? accId,
+    Value<int?>? accountTypeId,
+  }) {
+    return AccountPCurrencyAssignmentCompanion(
+      regId: regId ?? this.regId,
+      accId: accId ?? this.accId,
+      accountTypeId: accountTypeId ?? this.accountTypeId,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (regId.present) {
+      map['RegID'] = Variable<int>(regId.value);
+    }
+    if (accId.present) {
+      map['AccID'] = Variable<int>(accId.value);
+    }
+    if (accountTypeId.present) {
+      map['AccountTypeID'] = Variable<int>(accountTypeId.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountPCurrencyAssignmentCompanion(')
+          ..write('regId: $regId, ')
+          ..write('accId: $accId, ')
+          ..write('accountTypeId: $accountTypeId')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $TransactionsPTable extends TransactionsP
     with TableInfo<$TransactionsPTable, TransactionsPData> {
   @override
@@ -1776,6 +2261,15 @@ class $TransactionsPTable extends TransactionsP
     aliasedName,
     false,
     type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _txGuidMeta = const VerificationMeta('txGuid');
+  @override
+  late final GeneratedColumn<String> txGuid = GeneratedColumn<String>(
+    'TxGuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
   static const VerificationMeta _tDateMeta = const VerificationMeta('tDate');
@@ -1816,6 +2310,35 @@ class $TransactionsPTable extends TransactionsP
     aliasedName,
     true,
     type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _qualityMeta = const VerificationMeta(
+    'quality',
+  );
+  @override
+  late final GeneratedColumn<String> quality = GeneratedColumn<String>(
+    'Quality',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _rateMeta = const VerificationMeta('rate');
+  @override
+  late final GeneratedColumn<double> rate = GeneratedColumn<double>(
+    'Rate',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _weightMeta = const VerificationMeta('weight');
+  @override
+  late final GeneratedColumn<double> weight = GeneratedColumn<double>(
+    'Weight',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
     requiredDuringInsert: false,
   );
   static const VerificationMeta _drMeta = const VerificationMeta('dr');
@@ -2044,10 +2567,14 @@ class $TransactionsPTable extends TransactionsP
   @override
   List<GeneratedColumn> get $columns => [
     voucherNo,
+    txGuid,
     tDate,
     accId,
     accTypeId,
     description,
+    quality,
+    rate,
+    weight,
     dr,
     cr,
     status,
@@ -2090,6 +2617,12 @@ class $TransactionsPTable extends TransactionsP
         voucherNo.isAcceptableOrUnknown(data['VoucherNo']!, _voucherNoMeta),
       );
     }
+    if (data.containsKey('TxGuid')) {
+      context.handle(
+        _txGuidMeta,
+        txGuid.isAcceptableOrUnknown(data['TxGuid']!, _txGuidMeta),
+      );
+    }
     if (data.containsKey('TDate')) {
       context.handle(
         _tDateMeta,
@@ -2115,6 +2648,24 @@ class $TransactionsPTable extends TransactionsP
           data['Description']!,
           _descriptionMeta,
         ),
+      );
+    }
+    if (data.containsKey('Quality')) {
+      context.handle(
+        _qualityMeta,
+        quality.isAcceptableOrUnknown(data['Quality']!, _qualityMeta),
+      );
+    }
+    if (data.containsKey('Rate')) {
+      context.handle(
+        _rateMeta,
+        rate.isAcceptableOrUnknown(data['Rate']!, _rateMeta),
+      );
+    }
+    if (data.containsKey('Weight')) {
+      context.handle(
+        _weightMeta,
+        weight.isAcceptableOrUnknown(data['Weight']!, _weightMeta),
       );
     }
     if (data.containsKey('Dr')) {
@@ -2265,6 +2816,10 @@ class $TransactionsPTable extends TransactionsP
         DriftSqlType.int,
         data['${effectivePrefix}VoucherNo'],
       )!,
+      txGuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}TxGuid'],
+      ),
       tDate: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}TDate'],
@@ -2280,6 +2835,18 @@ class $TransactionsPTable extends TransactionsP
       description: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}Description'],
+      ),
+      quality: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Quality'],
+      ),
+      rate: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}Rate'],
+      ),
+      weight: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}Weight'],
       ),
       dr: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
@@ -2385,10 +2952,14 @@ class $TransactionsPTable extends TransactionsP
 class TransactionsPData extends DataClass
     implements Insertable<TransactionsPData> {
   final int voucherNo;
+  final String? txGuid;
   final String? tDate;
   final int? accId;
   final int? accTypeId;
   final String? description;
+  final String? quality;
+  final double? rate;
+  final double? weight;
   final double? dr;
   final double? cr;
   final String? status;
@@ -2414,10 +2985,14 @@ class TransactionsPData extends DataClass
   final int? isDeleted;
   const TransactionsPData({
     required this.voucherNo,
+    this.txGuid,
     this.tDate,
     this.accId,
     this.accTypeId,
     this.description,
+    this.quality,
+    this.rate,
+    this.weight,
     this.dr,
     this.cr,
     this.status,
@@ -2446,6 +3021,9 @@ class TransactionsPData extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['VoucherNo'] = Variable<int>(voucherNo);
+    if (!nullToAbsent || txGuid != null) {
+      map['TxGuid'] = Variable<String>(txGuid);
+    }
     if (!nullToAbsent || tDate != null) {
       map['TDate'] = Variable<String>(tDate);
     }
@@ -2457,6 +3035,15 @@ class TransactionsPData extends DataClass
     }
     if (!nullToAbsent || description != null) {
       map['Description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || quality != null) {
+      map['Quality'] = Variable<String>(quality);
+    }
+    if (!nullToAbsent || rate != null) {
+      map['Rate'] = Variable<double>(rate);
+    }
+    if (!nullToAbsent || weight != null) {
+      map['Weight'] = Variable<double>(weight);
     }
     if (!nullToAbsent || dr != null) {
       map['Dr'] = Variable<double>(dr);
@@ -2533,6 +3120,9 @@ class TransactionsPData extends DataClass
   TransactionsPCompanion toCompanion(bool nullToAbsent) {
     return TransactionsPCompanion(
       voucherNo: Value(voucherNo),
+      txGuid: txGuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(txGuid),
       tDate: tDate == null && nullToAbsent
           ? const Value.absent()
           : Value(tDate),
@@ -2545,6 +3135,13 @@ class TransactionsPData extends DataClass
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
+      quality: quality == null && nullToAbsent
+          ? const Value.absent()
+          : Value(quality),
+      rate: rate == null && nullToAbsent ? const Value.absent() : Value(rate),
+      weight: weight == null && nullToAbsent
+          ? const Value.absent()
+          : Value(weight),
       dr: dr == null && nullToAbsent ? const Value.absent() : Value(dr),
       cr: cr == null && nullToAbsent ? const Value.absent() : Value(cr),
       status: status == null && nullToAbsent
@@ -2612,10 +3209,14 @@ class TransactionsPData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return TransactionsPData(
       voucherNo: serializer.fromJson<int>(json['voucherNo']),
+      txGuid: serializer.fromJson<String?>(json['txGuid']),
       tDate: serializer.fromJson<String?>(json['tDate']),
       accId: serializer.fromJson<int?>(json['accId']),
       accTypeId: serializer.fromJson<int?>(json['accTypeId']),
       description: serializer.fromJson<String?>(json['description']),
+      quality: serializer.fromJson<String?>(json['quality']),
+      rate: serializer.fromJson<double?>(json['rate']),
+      weight: serializer.fromJson<double?>(json['weight']),
       dr: serializer.fromJson<double?>(json['dr']),
       cr: serializer.fromJson<double?>(json['cr']),
       status: serializer.fromJson<String?>(json['status']),
@@ -2646,10 +3247,14 @@ class TransactionsPData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'voucherNo': serializer.toJson<int>(voucherNo),
+      'txGuid': serializer.toJson<String?>(txGuid),
       'tDate': serializer.toJson<String?>(tDate),
       'accId': serializer.toJson<int?>(accId),
       'accTypeId': serializer.toJson<int?>(accTypeId),
       'description': serializer.toJson<String?>(description),
+      'quality': serializer.toJson<String?>(quality),
+      'rate': serializer.toJson<double?>(rate),
+      'weight': serializer.toJson<double?>(weight),
       'dr': serializer.toJson<double?>(dr),
       'cr': serializer.toJson<double?>(cr),
       'status': serializer.toJson<String?>(status),
@@ -2678,10 +3283,14 @@ class TransactionsPData extends DataClass
 
   TransactionsPData copyWith({
     int? voucherNo,
+    Value<String?> txGuid = const Value.absent(),
     Value<String?> tDate = const Value.absent(),
     Value<int?> accId = const Value.absent(),
     Value<int?> accTypeId = const Value.absent(),
     Value<String?> description = const Value.absent(),
+    Value<String?> quality = const Value.absent(),
+    Value<double?> rate = const Value.absent(),
+    Value<double?> weight = const Value.absent(),
     Value<double?> dr = const Value.absent(),
     Value<double?> cr = const Value.absent(),
     Value<String?> status = const Value.absent(),
@@ -2707,10 +3316,14 @@ class TransactionsPData extends DataClass
     Value<int?> isDeleted = const Value.absent(),
   }) => TransactionsPData(
     voucherNo: voucherNo ?? this.voucherNo,
+    txGuid: txGuid.present ? txGuid.value : this.txGuid,
     tDate: tDate.present ? tDate.value : this.tDate,
     accId: accId.present ? accId.value : this.accId,
     accTypeId: accTypeId.present ? accTypeId.value : this.accTypeId,
     description: description.present ? description.value : this.description,
+    quality: quality.present ? quality.value : this.quality,
+    rate: rate.present ? rate.value : this.rate,
+    weight: weight.present ? weight.value : this.weight,
     dr: dr.present ? dr.value : this.dr,
     cr: cr.present ? cr.value : this.cr,
     status: status.present ? status.value : this.status,
@@ -2740,12 +3353,16 @@ class TransactionsPData extends DataClass
   TransactionsPData copyWithCompanion(TransactionsPCompanion data) {
     return TransactionsPData(
       voucherNo: data.voucherNo.present ? data.voucherNo.value : this.voucherNo,
+      txGuid: data.txGuid.present ? data.txGuid.value : this.txGuid,
       tDate: data.tDate.present ? data.tDate.value : this.tDate,
       accId: data.accId.present ? data.accId.value : this.accId,
       accTypeId: data.accTypeId.present ? data.accTypeId.value : this.accTypeId,
       description: data.description.present
           ? data.description.value
           : this.description,
+      quality: data.quality.present ? data.quality.value : this.quality,
+      rate: data.rate.present ? data.rate.value : this.rate,
+      weight: data.weight.present ? data.weight.value : this.weight,
       dr: data.dr.present ? data.dr.value : this.dr,
       cr: data.cr.present ? data.cr.value : this.cr,
       status: data.status.present ? data.status.value : this.status,
@@ -2784,10 +3401,14 @@ class TransactionsPData extends DataClass
   String toString() {
     return (StringBuffer('TransactionsPData(')
           ..write('voucherNo: $voucherNo, ')
+          ..write('txGuid: $txGuid, ')
           ..write('tDate: $tDate, ')
           ..write('accId: $accId, ')
           ..write('accTypeId: $accTypeId, ')
           ..write('description: $description, ')
+          ..write('quality: $quality, ')
+          ..write('rate: $rate, ')
+          ..write('weight: $weight, ')
           ..write('dr: $dr, ')
           ..write('cr: $cr, ')
           ..write('status: $status, ')
@@ -2818,10 +3439,14 @@ class TransactionsPData extends DataClass
   @override
   int get hashCode => Object.hashAll([
     voucherNo,
+    txGuid,
     tDate,
     accId,
     accTypeId,
     description,
+    quality,
+    rate,
+    weight,
     dr,
     cr,
     status,
@@ -2851,10 +3476,14 @@ class TransactionsPData extends DataClass
       identical(this, other) ||
       (other is TransactionsPData &&
           other.voucherNo == this.voucherNo &&
+          other.txGuid == this.txGuid &&
           other.tDate == this.tDate &&
           other.accId == this.accId &&
           other.accTypeId == this.accTypeId &&
           other.description == this.description &&
+          other.quality == this.quality &&
+          other.rate == this.rate &&
+          other.weight == this.weight &&
           other.dr == this.dr &&
           other.cr == this.cr &&
           other.status == this.status &&
@@ -2882,10 +3511,14 @@ class TransactionsPData extends DataClass
 
 class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   final Value<int> voucherNo;
+  final Value<String?> txGuid;
   final Value<String?> tDate;
   final Value<int?> accId;
   final Value<int?> accTypeId;
   final Value<String?> description;
+  final Value<String?> quality;
+  final Value<double?> rate;
+  final Value<double?> weight;
   final Value<double?> dr;
   final Value<double?> cr;
   final Value<String?> status;
@@ -2911,10 +3544,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   final Value<int?> isDeleted;
   const TransactionsPCompanion({
     this.voucherNo = const Value.absent(),
+    this.txGuid = const Value.absent(),
     this.tDate = const Value.absent(),
     this.accId = const Value.absent(),
     this.accTypeId = const Value.absent(),
     this.description = const Value.absent(),
+    this.quality = const Value.absent(),
+    this.rate = const Value.absent(),
+    this.weight = const Value.absent(),
     this.dr = const Value.absent(),
     this.cr = const Value.absent(),
     this.status = const Value.absent(),
@@ -2941,10 +3578,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   });
   TransactionsPCompanion.insert({
     this.voucherNo = const Value.absent(),
+    this.txGuid = const Value.absent(),
     this.tDate = const Value.absent(),
     this.accId = const Value.absent(),
     this.accTypeId = const Value.absent(),
     this.description = const Value.absent(),
+    this.quality = const Value.absent(),
+    this.rate = const Value.absent(),
+    this.weight = const Value.absent(),
     this.dr = const Value.absent(),
     this.cr = const Value.absent(),
     this.status = const Value.absent(),
@@ -2971,10 +3612,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   });
   static Insertable<TransactionsPData> custom({
     Expression<int>? voucherNo,
+    Expression<String>? txGuid,
     Expression<String>? tDate,
     Expression<int>? accId,
     Expression<int>? accTypeId,
     Expression<String>? description,
+    Expression<String>? quality,
+    Expression<double>? rate,
+    Expression<double>? weight,
     Expression<double>? dr,
     Expression<double>? cr,
     Expression<String>? status,
@@ -3001,10 +3646,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   }) {
     return RawValuesInsertable({
       if (voucherNo != null) 'VoucherNo': voucherNo,
+      if (txGuid != null) 'TxGuid': txGuid,
       if (tDate != null) 'TDate': tDate,
       if (accId != null) 'AccID': accId,
       if (accTypeId != null) 'AccTypeID': accTypeId,
       if (description != null) 'Description': description,
+      if (quality != null) 'Quality': quality,
+      if (rate != null) 'Rate': rate,
+      if (weight != null) 'Weight': weight,
       if (dr != null) 'Dr': dr,
       if (cr != null) 'Cr': cr,
       if (status != null) 'Status': status,
@@ -3033,10 +3682,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
 
   TransactionsPCompanion copyWith({
     Value<int>? voucherNo,
+    Value<String?>? txGuid,
     Value<String?>? tDate,
     Value<int?>? accId,
     Value<int?>? accTypeId,
     Value<String?>? description,
+    Value<String?>? quality,
+    Value<double?>? rate,
+    Value<double?>? weight,
     Value<double?>? dr,
     Value<double?>? cr,
     Value<String?>? status,
@@ -3063,10 +3716,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   }) {
     return TransactionsPCompanion(
       voucherNo: voucherNo ?? this.voucherNo,
+      txGuid: txGuid ?? this.txGuid,
       tDate: tDate ?? this.tDate,
       accId: accId ?? this.accId,
       accTypeId: accTypeId ?? this.accTypeId,
       description: description ?? this.description,
+      quality: quality ?? this.quality,
+      rate: rate ?? this.rate,
+      weight: weight ?? this.weight,
       dr: dr ?? this.dr,
       cr: cr ?? this.cr,
       status: status ?? this.status,
@@ -3099,6 +3756,9 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     if (voucherNo.present) {
       map['VoucherNo'] = Variable<int>(voucherNo.value);
     }
+    if (txGuid.present) {
+      map['TxGuid'] = Variable<String>(txGuid.value);
+    }
     if (tDate.present) {
       map['TDate'] = Variable<String>(tDate.value);
     }
@@ -3110,6 +3770,15 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
     }
     if (description.present) {
       map['Description'] = Variable<String>(description.value);
+    }
+    if (quality.present) {
+      map['Quality'] = Variable<String>(quality.value);
+    }
+    if (rate.present) {
+      map['Rate'] = Variable<double>(rate.value);
+    }
+    if (weight.present) {
+      map['Weight'] = Variable<double>(weight.value);
     }
     if (dr.present) {
       map['Dr'] = Variable<double>(dr.value);
@@ -3187,10 +3856,14 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   String toString() {
     return (StringBuffer('TransactionsPCompanion(')
           ..write('voucherNo: $voucherNo, ')
+          ..write('txGuid: $txGuid, ')
           ..write('tDate: $tDate, ')
           ..write('accId: $accId, ')
           ..write('accTypeId: $accTypeId, ')
           ..write('description: $description, ')
+          ..write('quality: $quality, ')
+          ..write('rate: $rate, ')
+          ..write('weight: $weight, ')
           ..write('dr: $dr, ')
           ..write('cr: $cr, ')
           ..write('status: $status, ')
@@ -3219,14 +3892,1107 @@ class TransactionsPCompanion extends UpdateCompanion<TransactionsPData> {
   }
 }
 
+class $TblCashTransTable extends TblCashTrans
+    with TableInfo<$TblCashTransTable, TblCashTran> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $TblCashTransTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _voucherNoMeta = const VerificationMeta(
+    'voucherNo',
+  );
+  @override
+  late final GeneratedColumn<int> voucherNo = GeneratedColumn<int>(
+    'VoucherNo',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _tDateMeta = const VerificationMeta('tDate');
+  @override
+  late final GeneratedColumn<String> tDate = GeneratedColumn<String>(
+    'TDate',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accTypeIdMeta = const VerificationMeta(
+    'accTypeId',
+  );
+  @override
+  late final GeneratedColumn<int> accTypeId = GeneratedColumn<int>(
+    'AccTypeID',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'Description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fcAmountMeta = const VerificationMeta(
+    'fcAmount',
+  );
+  @override
+  late final GeneratedColumn<double> fcAmount = GeneratedColumn<double>(
+    'fcamount',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lcAmountMeta = const VerificationMeta(
+    'lcAmount',
+  );
+  @override
+  late final GeneratedColumn<double> lcAmount = GeneratedColumn<double>(
+    'lcamount',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _transTypeMeta = const VerificationMeta(
+    'transType',
+  );
+  @override
+  late final GeneratedColumn<String> transType = GeneratedColumn<String>(
+    'transtype',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _exchangeRateMeta = const VerificationMeta(
+    'exchangeRate',
+  );
+  @override
+  late final GeneratedColumn<double> exchangeRate = GeneratedColumn<double>(
+    'exchangerate',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accTypeId1Meta = const VerificationMeta(
+    'accTypeId1',
+  );
+  @override
+  late final GeneratedColumn<int> accTypeId1 = GeneratedColumn<int>(
+    'AccTypeID1',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statussMeta = const VerificationMeta(
+    'statuss',
+  );
+  @override
+  late final GeneratedColumn<String> statuss = GeneratedColumn<String>(
+    'statuss',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statuss1Meta = const VerificationMeta(
+    'statuss1',
+  );
+  @override
+  late final GeneratedColumn<String> statuss1 = GeneratedColumn<String>(
+    'statuss1',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fcDrMeta = const VerificationMeta('fcDr');
+  @override
+  late final GeneratedColumn<double> fcDr = GeneratedColumn<double>(
+    'fcdr',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _fcCrMeta = const VerificationMeta('fcCr');
+  @override
+  late final GeneratedColumn<double> fcCr = GeneratedColumn<double>(
+    'fccr',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lcDrMeta = const VerificationMeta('lcDr');
+  @override
+  late final GeneratedColumn<double> lcDr = GeneratedColumn<double>(
+    'lcdr',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lcCrMeta = const VerificationMeta('lcCr');
+  @override
+  late final GeneratedColumn<double> lcCr = GeneratedColumn<double>(
+    'lccr',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _stcMeta = const VerificationMeta('stc');
+  @override
+  late final GeneratedColumn<String> stc = GeneratedColumn<String>(
+    'stc',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _companyIdMeta = const VerificationMeta(
+    'companyId',
+  );
+  @override
+  late final GeneratedColumn<int> companyId = GeneratedColumn<int>(
+    'CompanyID',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<int> isSynced = GeneratedColumn<int>(
+    'IsSynced',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+    'UpdatedAt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
+    'IsDeleted',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    voucherNo,
+    tDate,
+    accTypeId,
+    description,
+    fcAmount,
+    lcAmount,
+    transType,
+    exchangeRate,
+    accTypeId1,
+    statuss,
+    statuss1,
+    fcDr,
+    fcCr,
+    lcDr,
+    lcCr,
+    stc,
+    companyId,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'tblCashTrans';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<TblCashTran> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('VoucherNo')) {
+      context.handle(
+        _voucherNoMeta,
+        voucherNo.isAcceptableOrUnknown(data['VoucherNo']!, _voucherNoMeta),
+      );
+    }
+    if (data.containsKey('TDate')) {
+      context.handle(
+        _tDateMeta,
+        tDate.isAcceptableOrUnknown(data['TDate']!, _tDateMeta),
+      );
+    }
+    if (data.containsKey('AccTypeID')) {
+      context.handle(
+        _accTypeIdMeta,
+        accTypeId.isAcceptableOrUnknown(data['AccTypeID']!, _accTypeIdMeta),
+      );
+    }
+    if (data.containsKey('Description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['Description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('fcamount')) {
+      context.handle(
+        _fcAmountMeta,
+        fcAmount.isAcceptableOrUnknown(data['fcamount']!, _fcAmountMeta),
+      );
+    }
+    if (data.containsKey('lcamount')) {
+      context.handle(
+        _lcAmountMeta,
+        lcAmount.isAcceptableOrUnknown(data['lcamount']!, _lcAmountMeta),
+      );
+    }
+    if (data.containsKey('transtype')) {
+      context.handle(
+        _transTypeMeta,
+        transType.isAcceptableOrUnknown(data['transtype']!, _transTypeMeta),
+      );
+    }
+    if (data.containsKey('exchangerate')) {
+      context.handle(
+        _exchangeRateMeta,
+        exchangeRate.isAcceptableOrUnknown(
+          data['exchangerate']!,
+          _exchangeRateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('AccTypeID1')) {
+      context.handle(
+        _accTypeId1Meta,
+        accTypeId1.isAcceptableOrUnknown(data['AccTypeID1']!, _accTypeId1Meta),
+      );
+    }
+    if (data.containsKey('statuss')) {
+      context.handle(
+        _statussMeta,
+        statuss.isAcceptableOrUnknown(data['statuss']!, _statussMeta),
+      );
+    }
+    if (data.containsKey('statuss1')) {
+      context.handle(
+        _statuss1Meta,
+        statuss1.isAcceptableOrUnknown(data['statuss1']!, _statuss1Meta),
+      );
+    }
+    if (data.containsKey('fcdr')) {
+      context.handle(
+        _fcDrMeta,
+        fcDr.isAcceptableOrUnknown(data['fcdr']!, _fcDrMeta),
+      );
+    }
+    if (data.containsKey('fccr')) {
+      context.handle(
+        _fcCrMeta,
+        fcCr.isAcceptableOrUnknown(data['fccr']!, _fcCrMeta),
+      );
+    }
+    if (data.containsKey('lcdr')) {
+      context.handle(
+        _lcDrMeta,
+        lcDr.isAcceptableOrUnknown(data['lcdr']!, _lcDrMeta),
+      );
+    }
+    if (data.containsKey('lccr')) {
+      context.handle(
+        _lcCrMeta,
+        lcCr.isAcceptableOrUnknown(data['lccr']!, _lcCrMeta),
+      );
+    }
+    if (data.containsKey('stc')) {
+      context.handle(
+        _stcMeta,
+        stc.isAcceptableOrUnknown(data['stc']!, _stcMeta),
+      );
+    }
+    if (data.containsKey('CompanyID')) {
+      context.handle(
+        _companyIdMeta,
+        companyId.isAcceptableOrUnknown(data['CompanyID']!, _companyIdMeta),
+      );
+    }
+    if (data.containsKey('IsSynced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['IsSynced']!, _isSyncedMeta),
+      );
+    }
+    if (data.containsKey('UpdatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['UpdatedAt']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('IsDeleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['IsDeleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {voucherNo};
+  @override
+  TblCashTran map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return TblCashTran(
+      voucherNo: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}VoucherNo'],
+      )!,
+      tDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}TDate'],
+      ),
+      accTypeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccTypeID'],
+      ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Description'],
+      ),
+      fcAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}fcamount'],
+      ),
+      lcAmount: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}lcamount'],
+      ),
+      transType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}transtype'],
+      ),
+      exchangeRate: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}exchangerate'],
+      ),
+      accTypeId1: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccTypeID1'],
+      ),
+      statuss: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}statuss'],
+      ),
+      statuss1: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}statuss1'],
+      ),
+      fcDr: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}fcdr'],
+      ),
+      fcCr: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}fccr'],
+      ),
+      lcDr: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}lcdr'],
+      ),
+      lcCr: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}lccr'],
+      ),
+      stc: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}stc'],
+      ),
+      companyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}CompanyID'],
+      ),
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsSynced'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}UpdatedAt'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsDeleted'],
+      ),
+    );
+  }
+
+  @override
+  $TblCashTransTable createAlias(String alias) {
+    return $TblCashTransTable(attachedDatabase, alias);
+  }
+}
+
+class TblCashTran extends DataClass implements Insertable<TblCashTran> {
+  final int voucherNo;
+  final String? tDate;
+  final int? accTypeId;
+  final String? description;
+  final double? fcAmount;
+  final double? lcAmount;
+  final String? transType;
+  final double? exchangeRate;
+  final int? accTypeId1;
+  final String? statuss;
+  final String? statuss1;
+  final double? fcDr;
+  final double? fcCr;
+  final double? lcDr;
+  final double? lcCr;
+  final String? stc;
+  final int? companyId;
+  final int? isSynced;
+  final String? updatedAt;
+  final int? isDeleted;
+  const TblCashTran({
+    required this.voucherNo,
+    this.tDate,
+    this.accTypeId,
+    this.description,
+    this.fcAmount,
+    this.lcAmount,
+    this.transType,
+    this.exchangeRate,
+    this.accTypeId1,
+    this.statuss,
+    this.statuss1,
+    this.fcDr,
+    this.fcCr,
+    this.lcDr,
+    this.lcCr,
+    this.stc,
+    this.companyId,
+    this.isSynced,
+    this.updatedAt,
+    this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['VoucherNo'] = Variable<int>(voucherNo);
+    if (!nullToAbsent || tDate != null) {
+      map['TDate'] = Variable<String>(tDate);
+    }
+    if (!nullToAbsent || accTypeId != null) {
+      map['AccTypeID'] = Variable<int>(accTypeId);
+    }
+    if (!nullToAbsent || description != null) {
+      map['Description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || fcAmount != null) {
+      map['fcamount'] = Variable<double>(fcAmount);
+    }
+    if (!nullToAbsent || lcAmount != null) {
+      map['lcamount'] = Variable<double>(lcAmount);
+    }
+    if (!nullToAbsent || transType != null) {
+      map['transtype'] = Variable<String>(transType);
+    }
+    if (!nullToAbsent || exchangeRate != null) {
+      map['exchangerate'] = Variable<double>(exchangeRate);
+    }
+    if (!nullToAbsent || accTypeId1 != null) {
+      map['AccTypeID1'] = Variable<int>(accTypeId1);
+    }
+    if (!nullToAbsent || statuss != null) {
+      map['statuss'] = Variable<String>(statuss);
+    }
+    if (!nullToAbsent || statuss1 != null) {
+      map['statuss1'] = Variable<String>(statuss1);
+    }
+    if (!nullToAbsent || fcDr != null) {
+      map['fcdr'] = Variable<double>(fcDr);
+    }
+    if (!nullToAbsent || fcCr != null) {
+      map['fccr'] = Variable<double>(fcCr);
+    }
+    if (!nullToAbsent || lcDr != null) {
+      map['lcdr'] = Variable<double>(lcDr);
+    }
+    if (!nullToAbsent || lcCr != null) {
+      map['lccr'] = Variable<double>(lcCr);
+    }
+    if (!nullToAbsent || stc != null) {
+      map['stc'] = Variable<String>(stc);
+    }
+    if (!nullToAbsent || companyId != null) {
+      map['CompanyID'] = Variable<int>(companyId);
+    }
+    if (!nullToAbsent || isSynced != null) {
+      map['IsSynced'] = Variable<int>(isSynced);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['UpdatedAt'] = Variable<String>(updatedAt);
+    }
+    if (!nullToAbsent || isDeleted != null) {
+      map['IsDeleted'] = Variable<int>(isDeleted);
+    }
+    return map;
+  }
+
+  TblCashTransCompanion toCompanion(bool nullToAbsent) {
+    return TblCashTransCompanion(
+      voucherNo: Value(voucherNo),
+      tDate: tDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(tDate),
+      accTypeId: accTypeId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accTypeId),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      fcAmount: fcAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(fcAmount),
+      lcAmount: lcAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lcAmount),
+      transType: transType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(transType),
+      exchangeRate: exchangeRate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(exchangeRate),
+      accTypeId1: accTypeId1 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accTypeId1),
+      statuss: statuss == null && nullToAbsent
+          ? const Value.absent()
+          : Value(statuss),
+      statuss1: statuss1 == null && nullToAbsent
+          ? const Value.absent()
+          : Value(statuss1),
+      fcDr: fcDr == null && nullToAbsent ? const Value.absent() : Value(fcDr),
+      fcCr: fcCr == null && nullToAbsent ? const Value.absent() : Value(fcCr),
+      lcDr: lcDr == null && nullToAbsent ? const Value.absent() : Value(lcDr),
+      lcCr: lcCr == null && nullToAbsent ? const Value.absent() : Value(lcCr),
+      stc: stc == null && nullToAbsent ? const Value.absent() : Value(stc),
+      companyId: companyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(companyId),
+      isSynced: isSynced == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isSynced),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      isDeleted: isDeleted == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isDeleted),
+    );
+  }
+
+  factory TblCashTran.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return TblCashTran(
+      voucherNo: serializer.fromJson<int>(json['voucherNo']),
+      tDate: serializer.fromJson<String?>(json['tDate']),
+      accTypeId: serializer.fromJson<int?>(json['accTypeId']),
+      description: serializer.fromJson<String?>(json['description']),
+      fcAmount: serializer.fromJson<double?>(json['fcAmount']),
+      lcAmount: serializer.fromJson<double?>(json['lcAmount']),
+      transType: serializer.fromJson<String?>(json['transType']),
+      exchangeRate: serializer.fromJson<double?>(json['exchangeRate']),
+      accTypeId1: serializer.fromJson<int?>(json['accTypeId1']),
+      statuss: serializer.fromJson<String?>(json['statuss']),
+      statuss1: serializer.fromJson<String?>(json['statuss1']),
+      fcDr: serializer.fromJson<double?>(json['fcDr']),
+      fcCr: serializer.fromJson<double?>(json['fcCr']),
+      lcDr: serializer.fromJson<double?>(json['lcDr']),
+      lcCr: serializer.fromJson<double?>(json['lcCr']),
+      stc: serializer.fromJson<String?>(json['stc']),
+      companyId: serializer.fromJson<int?>(json['companyId']),
+      isSynced: serializer.fromJson<int?>(json['isSynced']),
+      updatedAt: serializer.fromJson<String?>(json['updatedAt']),
+      isDeleted: serializer.fromJson<int?>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'voucherNo': serializer.toJson<int>(voucherNo),
+      'tDate': serializer.toJson<String?>(tDate),
+      'accTypeId': serializer.toJson<int?>(accTypeId),
+      'description': serializer.toJson<String?>(description),
+      'fcAmount': serializer.toJson<double?>(fcAmount),
+      'lcAmount': serializer.toJson<double?>(lcAmount),
+      'transType': serializer.toJson<String?>(transType),
+      'exchangeRate': serializer.toJson<double?>(exchangeRate),
+      'accTypeId1': serializer.toJson<int?>(accTypeId1),
+      'statuss': serializer.toJson<String?>(statuss),
+      'statuss1': serializer.toJson<String?>(statuss1),
+      'fcDr': serializer.toJson<double?>(fcDr),
+      'fcCr': serializer.toJson<double?>(fcCr),
+      'lcDr': serializer.toJson<double?>(lcDr),
+      'lcCr': serializer.toJson<double?>(lcCr),
+      'stc': serializer.toJson<String?>(stc),
+      'companyId': serializer.toJson<int?>(companyId),
+      'isSynced': serializer.toJson<int?>(isSynced),
+      'updatedAt': serializer.toJson<String?>(updatedAt),
+      'isDeleted': serializer.toJson<int?>(isDeleted),
+    };
+  }
+
+  TblCashTran copyWith({
+    int? voucherNo,
+    Value<String?> tDate = const Value.absent(),
+    Value<int?> accTypeId = const Value.absent(),
+    Value<String?> description = const Value.absent(),
+    Value<double?> fcAmount = const Value.absent(),
+    Value<double?> lcAmount = const Value.absent(),
+    Value<String?> transType = const Value.absent(),
+    Value<double?> exchangeRate = const Value.absent(),
+    Value<int?> accTypeId1 = const Value.absent(),
+    Value<String?> statuss = const Value.absent(),
+    Value<String?> statuss1 = const Value.absent(),
+    Value<double?> fcDr = const Value.absent(),
+    Value<double?> fcCr = const Value.absent(),
+    Value<double?> lcDr = const Value.absent(),
+    Value<double?> lcCr = const Value.absent(),
+    Value<String?> stc = const Value.absent(),
+    Value<int?> companyId = const Value.absent(),
+    Value<int?> isSynced = const Value.absent(),
+    Value<String?> updatedAt = const Value.absent(),
+    Value<int?> isDeleted = const Value.absent(),
+  }) => TblCashTran(
+    voucherNo: voucherNo ?? this.voucherNo,
+    tDate: tDate.present ? tDate.value : this.tDate,
+    accTypeId: accTypeId.present ? accTypeId.value : this.accTypeId,
+    description: description.present ? description.value : this.description,
+    fcAmount: fcAmount.present ? fcAmount.value : this.fcAmount,
+    lcAmount: lcAmount.present ? lcAmount.value : this.lcAmount,
+    transType: transType.present ? transType.value : this.transType,
+    exchangeRate: exchangeRate.present ? exchangeRate.value : this.exchangeRate,
+    accTypeId1: accTypeId1.present ? accTypeId1.value : this.accTypeId1,
+    statuss: statuss.present ? statuss.value : this.statuss,
+    statuss1: statuss1.present ? statuss1.value : this.statuss1,
+    fcDr: fcDr.present ? fcDr.value : this.fcDr,
+    fcCr: fcCr.present ? fcCr.value : this.fcCr,
+    lcDr: lcDr.present ? lcDr.value : this.lcDr,
+    lcCr: lcCr.present ? lcCr.value : this.lcCr,
+    stc: stc.present ? stc.value : this.stc,
+    companyId: companyId.present ? companyId.value : this.companyId,
+    isSynced: isSynced.present ? isSynced.value : this.isSynced,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    isDeleted: isDeleted.present ? isDeleted.value : this.isDeleted,
+  );
+  TblCashTran copyWithCompanion(TblCashTransCompanion data) {
+    return TblCashTran(
+      voucherNo: data.voucherNo.present ? data.voucherNo.value : this.voucherNo,
+      tDate: data.tDate.present ? data.tDate.value : this.tDate,
+      accTypeId: data.accTypeId.present ? data.accTypeId.value : this.accTypeId,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      fcAmount: data.fcAmount.present ? data.fcAmount.value : this.fcAmount,
+      lcAmount: data.lcAmount.present ? data.lcAmount.value : this.lcAmount,
+      transType: data.transType.present ? data.transType.value : this.transType,
+      exchangeRate: data.exchangeRate.present
+          ? data.exchangeRate.value
+          : this.exchangeRate,
+      accTypeId1: data.accTypeId1.present
+          ? data.accTypeId1.value
+          : this.accTypeId1,
+      statuss: data.statuss.present ? data.statuss.value : this.statuss,
+      statuss1: data.statuss1.present ? data.statuss1.value : this.statuss1,
+      fcDr: data.fcDr.present ? data.fcDr.value : this.fcDr,
+      fcCr: data.fcCr.present ? data.fcCr.value : this.fcCr,
+      lcDr: data.lcDr.present ? data.lcDr.value : this.lcDr,
+      lcCr: data.lcCr.present ? data.lcCr.value : this.lcCr,
+      stc: data.stc.present ? data.stc.value : this.stc,
+      companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TblCashTran(')
+          ..write('voucherNo: $voucherNo, ')
+          ..write('tDate: $tDate, ')
+          ..write('accTypeId: $accTypeId, ')
+          ..write('description: $description, ')
+          ..write('fcAmount: $fcAmount, ')
+          ..write('lcAmount: $lcAmount, ')
+          ..write('transType: $transType, ')
+          ..write('exchangeRate: $exchangeRate, ')
+          ..write('accTypeId1: $accTypeId1, ')
+          ..write('statuss: $statuss, ')
+          ..write('statuss1: $statuss1, ')
+          ..write('fcDr: $fcDr, ')
+          ..write('fcCr: $fcCr, ')
+          ..write('lcDr: $lcDr, ')
+          ..write('lcCr: $lcCr, ')
+          ..write('stc: $stc, ')
+          ..write('companyId: $companyId, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    voucherNo,
+    tDate,
+    accTypeId,
+    description,
+    fcAmount,
+    lcAmount,
+    transType,
+    exchangeRate,
+    accTypeId1,
+    statuss,
+    statuss1,
+    fcDr,
+    fcCr,
+    lcDr,
+    lcCr,
+    stc,
+    companyId,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is TblCashTran &&
+          other.voucherNo == this.voucherNo &&
+          other.tDate == this.tDate &&
+          other.accTypeId == this.accTypeId &&
+          other.description == this.description &&
+          other.fcAmount == this.fcAmount &&
+          other.lcAmount == this.lcAmount &&
+          other.transType == this.transType &&
+          other.exchangeRate == this.exchangeRate &&
+          other.accTypeId1 == this.accTypeId1 &&
+          other.statuss == this.statuss &&
+          other.statuss1 == this.statuss1 &&
+          other.fcDr == this.fcDr &&
+          other.fcCr == this.fcCr &&
+          other.lcDr == this.lcDr &&
+          other.lcCr == this.lcCr &&
+          other.stc == this.stc &&
+          other.companyId == this.companyId &&
+          other.isSynced == this.isSynced &&
+          other.updatedAt == this.updatedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class TblCashTransCompanion extends UpdateCompanion<TblCashTran> {
+  final Value<int> voucherNo;
+  final Value<String?> tDate;
+  final Value<int?> accTypeId;
+  final Value<String?> description;
+  final Value<double?> fcAmount;
+  final Value<double?> lcAmount;
+  final Value<String?> transType;
+  final Value<double?> exchangeRate;
+  final Value<int?> accTypeId1;
+  final Value<String?> statuss;
+  final Value<String?> statuss1;
+  final Value<double?> fcDr;
+  final Value<double?> fcCr;
+  final Value<double?> lcDr;
+  final Value<double?> lcCr;
+  final Value<String?> stc;
+  final Value<int?> companyId;
+  final Value<int?> isSynced;
+  final Value<String?> updatedAt;
+  final Value<int?> isDeleted;
+  const TblCashTransCompanion({
+    this.voucherNo = const Value.absent(),
+    this.tDate = const Value.absent(),
+    this.accTypeId = const Value.absent(),
+    this.description = const Value.absent(),
+    this.fcAmount = const Value.absent(),
+    this.lcAmount = const Value.absent(),
+    this.transType = const Value.absent(),
+    this.exchangeRate = const Value.absent(),
+    this.accTypeId1 = const Value.absent(),
+    this.statuss = const Value.absent(),
+    this.statuss1 = const Value.absent(),
+    this.fcDr = const Value.absent(),
+    this.fcCr = const Value.absent(),
+    this.lcDr = const Value.absent(),
+    this.lcCr = const Value.absent(),
+    this.stc = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  });
+  TblCashTransCompanion.insert({
+    this.voucherNo = const Value.absent(),
+    this.tDate = const Value.absent(),
+    this.accTypeId = const Value.absent(),
+    this.description = const Value.absent(),
+    this.fcAmount = const Value.absent(),
+    this.lcAmount = const Value.absent(),
+    this.transType = const Value.absent(),
+    this.exchangeRate = const Value.absent(),
+    this.accTypeId1 = const Value.absent(),
+    this.statuss = const Value.absent(),
+    this.statuss1 = const Value.absent(),
+    this.fcDr = const Value.absent(),
+    this.fcCr = const Value.absent(),
+    this.lcDr = const Value.absent(),
+    this.lcCr = const Value.absent(),
+    this.stc = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  });
+  static Insertable<TblCashTran> custom({
+    Expression<int>? voucherNo,
+    Expression<String>? tDate,
+    Expression<int>? accTypeId,
+    Expression<String>? description,
+    Expression<double>? fcAmount,
+    Expression<double>? lcAmount,
+    Expression<String>? transType,
+    Expression<double>? exchangeRate,
+    Expression<int>? accTypeId1,
+    Expression<String>? statuss,
+    Expression<String>? statuss1,
+    Expression<double>? fcDr,
+    Expression<double>? fcCr,
+    Expression<double>? lcDr,
+    Expression<double>? lcCr,
+    Expression<String>? stc,
+    Expression<int>? companyId,
+    Expression<int>? isSynced,
+    Expression<String>? updatedAt,
+    Expression<int>? isDeleted,
+  }) {
+    return RawValuesInsertable({
+      if (voucherNo != null) 'VoucherNo': voucherNo,
+      if (tDate != null) 'TDate': tDate,
+      if (accTypeId != null) 'AccTypeID': accTypeId,
+      if (description != null) 'Description': description,
+      if (fcAmount != null) 'fcamount': fcAmount,
+      if (lcAmount != null) 'lcamount': lcAmount,
+      if (transType != null) 'transtype': transType,
+      if (exchangeRate != null) 'exchangerate': exchangeRate,
+      if (accTypeId1 != null) 'AccTypeID1': accTypeId1,
+      if (statuss != null) 'statuss': statuss,
+      if (statuss1 != null) 'statuss1': statuss1,
+      if (fcDr != null) 'fcdr': fcDr,
+      if (fcCr != null) 'fccr': fcCr,
+      if (lcDr != null) 'lcdr': lcDr,
+      if (lcCr != null) 'lccr': lcCr,
+      if (stc != null) 'stc': stc,
+      if (companyId != null) 'CompanyID': companyId,
+      if (isSynced != null) 'IsSynced': isSynced,
+      if (updatedAt != null) 'UpdatedAt': updatedAt,
+      if (isDeleted != null) 'IsDeleted': isDeleted,
+    });
+  }
+
+  TblCashTransCompanion copyWith({
+    Value<int>? voucherNo,
+    Value<String?>? tDate,
+    Value<int?>? accTypeId,
+    Value<String?>? description,
+    Value<double?>? fcAmount,
+    Value<double?>? lcAmount,
+    Value<String?>? transType,
+    Value<double?>? exchangeRate,
+    Value<int?>? accTypeId1,
+    Value<String?>? statuss,
+    Value<String?>? statuss1,
+    Value<double?>? fcDr,
+    Value<double?>? fcCr,
+    Value<double?>? lcDr,
+    Value<double?>? lcCr,
+    Value<String?>? stc,
+    Value<int?>? companyId,
+    Value<int?>? isSynced,
+    Value<String?>? updatedAt,
+    Value<int?>? isDeleted,
+  }) {
+    return TblCashTransCompanion(
+      voucherNo: voucherNo ?? this.voucherNo,
+      tDate: tDate ?? this.tDate,
+      accTypeId: accTypeId ?? this.accTypeId,
+      description: description ?? this.description,
+      fcAmount: fcAmount ?? this.fcAmount,
+      lcAmount: lcAmount ?? this.lcAmount,
+      transType: transType ?? this.transType,
+      exchangeRate: exchangeRate ?? this.exchangeRate,
+      accTypeId1: accTypeId1 ?? this.accTypeId1,
+      statuss: statuss ?? this.statuss,
+      statuss1: statuss1 ?? this.statuss1,
+      fcDr: fcDr ?? this.fcDr,
+      fcCr: fcCr ?? this.fcCr,
+      lcDr: lcDr ?? this.lcDr,
+      lcCr: lcCr ?? this.lcCr,
+      stc: stc ?? this.stc,
+      companyId: companyId ?? this.companyId,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (voucherNo.present) {
+      map['VoucherNo'] = Variable<int>(voucherNo.value);
+    }
+    if (tDate.present) {
+      map['TDate'] = Variable<String>(tDate.value);
+    }
+    if (accTypeId.present) {
+      map['AccTypeID'] = Variable<int>(accTypeId.value);
+    }
+    if (description.present) {
+      map['Description'] = Variable<String>(description.value);
+    }
+    if (fcAmount.present) {
+      map['fcamount'] = Variable<double>(fcAmount.value);
+    }
+    if (lcAmount.present) {
+      map['lcamount'] = Variable<double>(lcAmount.value);
+    }
+    if (transType.present) {
+      map['transtype'] = Variable<String>(transType.value);
+    }
+    if (exchangeRate.present) {
+      map['exchangerate'] = Variable<double>(exchangeRate.value);
+    }
+    if (accTypeId1.present) {
+      map['AccTypeID1'] = Variable<int>(accTypeId1.value);
+    }
+    if (statuss.present) {
+      map['statuss'] = Variable<String>(statuss.value);
+    }
+    if (statuss1.present) {
+      map['statuss1'] = Variable<String>(statuss1.value);
+    }
+    if (fcDr.present) {
+      map['fcdr'] = Variable<double>(fcDr.value);
+    }
+    if (fcCr.present) {
+      map['fccr'] = Variable<double>(fcCr.value);
+    }
+    if (lcDr.present) {
+      map['lcdr'] = Variable<double>(lcDr.value);
+    }
+    if (lcCr.present) {
+      map['lccr'] = Variable<double>(lcCr.value);
+    }
+    if (stc.present) {
+      map['stc'] = Variable<String>(stc.value);
+    }
+    if (companyId.present) {
+      map['CompanyID'] = Variable<int>(companyId.value);
+    }
+    if (isSynced.present) {
+      map['IsSynced'] = Variable<int>(isSynced.value);
+    }
+    if (updatedAt.present) {
+      map['UpdatedAt'] = Variable<String>(updatedAt.value);
+    }
+    if (isDeleted.present) {
+      map['IsDeleted'] = Variable<int>(isDeleted.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('TblCashTransCompanion(')
+          ..write('voucherNo: $voucherNo, ')
+          ..write('tDate: $tDate, ')
+          ..write('accTypeId: $accTypeId, ')
+          ..write('description: $description, ')
+          ..write('fcAmount: $fcAmount, ')
+          ..write('lcAmount: $lcAmount, ')
+          ..write('transType: $transType, ')
+          ..write('exchangeRate: $exchangeRate, ')
+          ..write('accTypeId1: $accTypeId1, ')
+          ..write('statuss: $statuss, ')
+          ..write('statuss1: $statuss1, ')
+          ..write('fcDr: $fcDr, ')
+          ..write('fcCr: $fcCr, ')
+          ..write('lcDr: $lcDr, ')
+          ..write('lcCr: $lcCr, ')
+          ..write('stc: $stc, ')
+          ..write('companyId: $companyId, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $AccPersonalTable accPersonal = $AccPersonalTable(this);
   late final $AccTypeTable accType = $AccTypeTable(this);
   late final $CompanyTableTable companyTable = $CompanyTableTable(this);
+  late final $AccountsHeadsTable accountsHeads = $AccountsHeadsTable(this);
   late final $DbInfoTableTable dbInfoTable = $DbInfoTableTable(this);
+  late final $AccountPCurrencyAssignmentTable accountPCurrencyAssignment =
+      $AccountPCurrencyAssignmentTable(this);
   late final $TransactionsPTable transactionsP = $TransactionsPTable(this);
+  late final $TblCashTransTable tblCashTrans = $TblCashTransTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3235,8 +5001,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     accPersonal,
     accType,
     companyTable,
+    accountsHeads,
     dbInfoTable,
+    accountPCurrencyAssignment,
     transactionsP,
+    tblCashTrans,
   ];
 }
 
@@ -3998,6 +5767,145 @@ typedef $$CompanyTableTableProcessedTableManager =
       CompanyTableData,
       PrefetchHooks Function()
     >;
+typedef $$AccountsHeadsTableCreateCompanionBuilder =
+    AccountsHeadsCompanion Function({
+      Value<int> accHeadId,
+      Value<String?> accHeadName,
+    });
+typedef $$AccountsHeadsTableUpdateCompanionBuilder =
+    AccountsHeadsCompanion Function({
+      Value<int> accHeadId,
+      Value<String?> accHeadName,
+    });
+
+class $$AccountsHeadsTableFilterComposer
+    extends Composer<_$AppDatabase, $AccountsHeadsTable> {
+  $$AccountsHeadsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get accHeadId => $composableBuilder(
+    column: $table.accHeadId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accHeadName => $composableBuilder(
+    column: $table.accHeadName,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AccountsHeadsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AccountsHeadsTable> {
+  $$AccountsHeadsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get accHeadId => $composableBuilder(
+    column: $table.accHeadId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accHeadName => $composableBuilder(
+    column: $table.accHeadName,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AccountsHeadsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AccountsHeadsTable> {
+  $$AccountsHeadsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get accHeadId =>
+      $composableBuilder(column: $table.accHeadId, builder: (column) => column);
+
+  GeneratedColumn<String> get accHeadName => $composableBuilder(
+    column: $table.accHeadName,
+    builder: (column) => column,
+  );
+}
+
+class $$AccountsHeadsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AccountsHeadsTable,
+          AccountsHead,
+          $$AccountsHeadsTableFilterComposer,
+          $$AccountsHeadsTableOrderingComposer,
+          $$AccountsHeadsTableAnnotationComposer,
+          $$AccountsHeadsTableCreateCompanionBuilder,
+          $$AccountsHeadsTableUpdateCompanionBuilder,
+          (
+            AccountsHead,
+            BaseReferences<_$AppDatabase, $AccountsHeadsTable, AccountsHead>,
+          ),
+          AccountsHead,
+          PrefetchHooks Function()
+        > {
+  $$AccountsHeadsTableTableManager(_$AppDatabase db, $AccountsHeadsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AccountsHeadsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AccountsHeadsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AccountsHeadsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> accHeadId = const Value.absent(),
+                Value<String?> accHeadName = const Value.absent(),
+              }) => AccountsHeadsCompanion(
+                accHeadId: accHeadId,
+                accHeadName: accHeadName,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> accHeadId = const Value.absent(),
+                Value<String?> accHeadName = const Value.absent(),
+              }) => AccountsHeadsCompanion.insert(
+                accHeadId: accHeadId,
+                accHeadName: accHeadName,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AccountsHeadsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AccountsHeadsTable,
+      AccountsHead,
+      $$AccountsHeadsTableFilterComposer,
+      $$AccountsHeadsTableOrderingComposer,
+      $$AccountsHeadsTableAnnotationComposer,
+      $$AccountsHeadsTableCreateCompanionBuilder,
+      $$AccountsHeadsTableUpdateCompanionBuilder,
+      (
+        AccountsHead,
+        BaseReferences<_$AppDatabase, $AccountsHeadsTable, AccountsHead>,
+      ),
+      AccountsHead,
+      PrefetchHooks Function()
+    >;
 typedef $$DbInfoTableTableCreateCompanionBuilder =
     DbInfoTableCompanion Function({
       Value<String?> emailAddress,
@@ -4145,13 +6053,194 @@ typedef $$DbInfoTableTableProcessedTableManager =
       DbInfoTableData,
       PrefetchHooks Function()
     >;
+typedef $$AccountPCurrencyAssignmentTableCreateCompanionBuilder =
+    AccountPCurrencyAssignmentCompanion Function({
+      Value<int> regId,
+      Value<int?> accId,
+      Value<int?> accountTypeId,
+    });
+typedef $$AccountPCurrencyAssignmentTableUpdateCompanionBuilder =
+    AccountPCurrencyAssignmentCompanion Function({
+      Value<int> regId,
+      Value<int?> accId,
+      Value<int?> accountTypeId,
+    });
+
+class $$AccountPCurrencyAssignmentTableFilterComposer
+    extends Composer<_$AppDatabase, $AccountPCurrencyAssignmentTable> {
+  $$AccountPCurrencyAssignmentTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get regId => $composableBuilder(
+    column: $table.regId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get accId => $composableBuilder(
+    column: $table.accId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get accountTypeId => $composableBuilder(
+    column: $table.accountTypeId,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$AccountPCurrencyAssignmentTableOrderingComposer
+    extends Composer<_$AppDatabase, $AccountPCurrencyAssignmentTable> {
+  $$AccountPCurrencyAssignmentTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get regId => $composableBuilder(
+    column: $table.regId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get accId => $composableBuilder(
+    column: $table.accId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get accountTypeId => $composableBuilder(
+    column: $table.accountTypeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AccountPCurrencyAssignmentTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AccountPCurrencyAssignmentTable> {
+  $$AccountPCurrencyAssignmentTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get regId =>
+      $composableBuilder(column: $table.regId, builder: (column) => column);
+
+  GeneratedColumn<int> get accId =>
+      $composableBuilder(column: $table.accId, builder: (column) => column);
+
+  GeneratedColumn<int> get accountTypeId => $composableBuilder(
+    column: $table.accountTypeId,
+    builder: (column) => column,
+  );
+}
+
+class $$AccountPCurrencyAssignmentTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AccountPCurrencyAssignmentTable,
+          AccountPCurrencyAssignmentData,
+          $$AccountPCurrencyAssignmentTableFilterComposer,
+          $$AccountPCurrencyAssignmentTableOrderingComposer,
+          $$AccountPCurrencyAssignmentTableAnnotationComposer,
+          $$AccountPCurrencyAssignmentTableCreateCompanionBuilder,
+          $$AccountPCurrencyAssignmentTableUpdateCompanionBuilder,
+          (
+            AccountPCurrencyAssignmentData,
+            BaseReferences<
+              _$AppDatabase,
+              $AccountPCurrencyAssignmentTable,
+              AccountPCurrencyAssignmentData
+            >,
+          ),
+          AccountPCurrencyAssignmentData,
+          PrefetchHooks Function()
+        > {
+  $$AccountPCurrencyAssignmentTableTableManager(
+    _$AppDatabase db,
+    $AccountPCurrencyAssignmentTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AccountPCurrencyAssignmentTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$AccountPCurrencyAssignmentTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$AccountPCurrencyAssignmentTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> regId = const Value.absent(),
+                Value<int?> accId = const Value.absent(),
+                Value<int?> accountTypeId = const Value.absent(),
+              }) => AccountPCurrencyAssignmentCompanion(
+                regId: regId,
+                accId: accId,
+                accountTypeId: accountTypeId,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> regId = const Value.absent(),
+                Value<int?> accId = const Value.absent(),
+                Value<int?> accountTypeId = const Value.absent(),
+              }) => AccountPCurrencyAssignmentCompanion.insert(
+                regId: regId,
+                accId: accId,
+                accountTypeId: accountTypeId,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$AccountPCurrencyAssignmentTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AccountPCurrencyAssignmentTable,
+      AccountPCurrencyAssignmentData,
+      $$AccountPCurrencyAssignmentTableFilterComposer,
+      $$AccountPCurrencyAssignmentTableOrderingComposer,
+      $$AccountPCurrencyAssignmentTableAnnotationComposer,
+      $$AccountPCurrencyAssignmentTableCreateCompanionBuilder,
+      $$AccountPCurrencyAssignmentTableUpdateCompanionBuilder,
+      (
+        AccountPCurrencyAssignmentData,
+        BaseReferences<
+          _$AppDatabase,
+          $AccountPCurrencyAssignmentTable,
+          AccountPCurrencyAssignmentData
+        >,
+      ),
+      AccountPCurrencyAssignmentData,
+      PrefetchHooks Function()
+    >;
 typedef $$TransactionsPTableCreateCompanionBuilder =
     TransactionsPCompanion Function({
       Value<int> voucherNo,
+      Value<String?> txGuid,
       Value<String?> tDate,
       Value<int?> accId,
       Value<int?> accTypeId,
       Value<String?> description,
+      Value<String?> quality,
+      Value<double?> rate,
+      Value<double?> weight,
       Value<double?> dr,
       Value<double?> cr,
       Value<String?> status,
@@ -4179,10 +6268,14 @@ typedef $$TransactionsPTableCreateCompanionBuilder =
 typedef $$TransactionsPTableUpdateCompanionBuilder =
     TransactionsPCompanion Function({
       Value<int> voucherNo,
+      Value<String?> txGuid,
       Value<String?> tDate,
       Value<int?> accId,
       Value<int?> accTypeId,
       Value<String?> description,
+      Value<String?> quality,
+      Value<double?> rate,
+      Value<double?> weight,
       Value<double?> dr,
       Value<double?> cr,
       Value<String?> status,
@@ -4222,6 +6315,11 @@ class $$TransactionsPTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get txGuid => $composableBuilder(
+    column: $table.txGuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<String> get tDate => $composableBuilder(
     column: $table.tDate,
     builder: (column) => ColumnFilters(column),
@@ -4239,6 +6337,21 @@ class $$TransactionsPTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get quality => $composableBuilder(
+    column: $table.quality,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get rate => $composableBuilder(
+    column: $table.rate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get weight => $composableBuilder(
+    column: $table.weight,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4372,6 +6485,11 @@ class $$TransactionsPTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get txGuid => $composableBuilder(
+    column: $table.txGuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get tDate => $composableBuilder(
     column: $table.tDate,
     builder: (column) => ColumnOrderings(column),
@@ -4389,6 +6507,21 @@ class $$TransactionsPTableOrderingComposer
 
   ColumnOrderings<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quality => $composableBuilder(
+    column: $table.quality,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get rate => $composableBuilder(
+    column: $table.rate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get weight => $composableBuilder(
+    column: $table.weight,
     builder: (column) => ColumnOrderings(column),
   );
 
@@ -4520,6 +6653,9 @@ class $$TransactionsPTableAnnotationComposer
   GeneratedColumn<int> get voucherNo =>
       $composableBuilder(column: $table.voucherNo, builder: (column) => column);
 
+  GeneratedColumn<String> get txGuid =>
+      $composableBuilder(column: $table.txGuid, builder: (column) => column);
+
   GeneratedColumn<String> get tDate =>
       $composableBuilder(column: $table.tDate, builder: (column) => column);
 
@@ -4533,6 +6669,15 @@ class $$TransactionsPTableAnnotationComposer
     column: $table.description,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get quality =>
+      $composableBuilder(column: $table.quality, builder: (column) => column);
+
+  GeneratedColumn<double> get rate =>
+      $composableBuilder(column: $table.rate, builder: (column) => column);
+
+  GeneratedColumn<double> get weight =>
+      $composableBuilder(column: $table.weight, builder: (column) => column);
 
   GeneratedColumn<double> get dr =>
       $composableBuilder(column: $table.dr, builder: (column) => column);
@@ -4648,10 +6793,14 @@ class $$TransactionsPTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> voucherNo = const Value.absent(),
+                Value<String?> txGuid = const Value.absent(),
                 Value<String?> tDate = const Value.absent(),
                 Value<int?> accId = const Value.absent(),
                 Value<int?> accTypeId = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<String?> quality = const Value.absent(),
+                Value<double?> rate = const Value.absent(),
+                Value<double?> weight = const Value.absent(),
                 Value<double?> dr = const Value.absent(),
                 Value<double?> cr = const Value.absent(),
                 Value<String?> status = const Value.absent(),
@@ -4677,10 +6826,14 @@ class $$TransactionsPTableTableManager
                 Value<int?> isDeleted = const Value.absent(),
               }) => TransactionsPCompanion(
                 voucherNo: voucherNo,
+                txGuid: txGuid,
                 tDate: tDate,
                 accId: accId,
                 accTypeId: accTypeId,
                 description: description,
+                quality: quality,
+                rate: rate,
+                weight: weight,
                 dr: dr,
                 cr: cr,
                 status: status,
@@ -4708,10 +6861,14 @@ class $$TransactionsPTableTableManager
           createCompanionCallback:
               ({
                 Value<int> voucherNo = const Value.absent(),
+                Value<String?> txGuid = const Value.absent(),
                 Value<String?> tDate = const Value.absent(),
                 Value<int?> accId = const Value.absent(),
                 Value<int?> accTypeId = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<String?> quality = const Value.absent(),
+                Value<double?> rate = const Value.absent(),
+                Value<double?> weight = const Value.absent(),
                 Value<double?> dr = const Value.absent(),
                 Value<double?> cr = const Value.absent(),
                 Value<String?> status = const Value.absent(),
@@ -4737,10 +6894,14 @@ class $$TransactionsPTableTableManager
                 Value<int?> isDeleted = const Value.absent(),
               }) => TransactionsPCompanion.insert(
                 voucherNo: voucherNo,
+                txGuid: txGuid,
                 tDate: tDate,
                 accId: accId,
                 accTypeId: accTypeId,
                 description: description,
+                quality: quality,
+                rate: rate,
+                weight: weight,
                 dr: dr,
                 cr: cr,
                 status: status,
@@ -4790,6 +6951,491 @@ typedef $$TransactionsPTableProcessedTableManager =
       TransactionsPData,
       PrefetchHooks Function()
     >;
+typedef $$TblCashTransTableCreateCompanionBuilder =
+    TblCashTransCompanion Function({
+      Value<int> voucherNo,
+      Value<String?> tDate,
+      Value<int?> accTypeId,
+      Value<String?> description,
+      Value<double?> fcAmount,
+      Value<double?> lcAmount,
+      Value<String?> transType,
+      Value<double?> exchangeRate,
+      Value<int?> accTypeId1,
+      Value<String?> statuss,
+      Value<String?> statuss1,
+      Value<double?> fcDr,
+      Value<double?> fcCr,
+      Value<double?> lcDr,
+      Value<double?> lcCr,
+      Value<String?> stc,
+      Value<int?> companyId,
+      Value<int?> isSynced,
+      Value<String?> updatedAt,
+      Value<int?> isDeleted,
+    });
+typedef $$TblCashTransTableUpdateCompanionBuilder =
+    TblCashTransCompanion Function({
+      Value<int> voucherNo,
+      Value<String?> tDate,
+      Value<int?> accTypeId,
+      Value<String?> description,
+      Value<double?> fcAmount,
+      Value<double?> lcAmount,
+      Value<String?> transType,
+      Value<double?> exchangeRate,
+      Value<int?> accTypeId1,
+      Value<String?> statuss,
+      Value<String?> statuss1,
+      Value<double?> fcDr,
+      Value<double?> fcCr,
+      Value<double?> lcDr,
+      Value<double?> lcCr,
+      Value<String?> stc,
+      Value<int?> companyId,
+      Value<int?> isSynced,
+      Value<String?> updatedAt,
+      Value<int?> isDeleted,
+    });
+
+class $$TblCashTransTableFilterComposer
+    extends Composer<_$AppDatabase, $TblCashTransTable> {
+  $$TblCashTransTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get voucherNo => $composableBuilder(
+    column: $table.voucherNo,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get tDate => $composableBuilder(
+    column: $table.tDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get accTypeId => $composableBuilder(
+    column: $table.accTypeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fcAmount => $composableBuilder(
+    column: $table.fcAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lcAmount => $composableBuilder(
+    column: $table.lcAmount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get transType => $composableBuilder(
+    column: $table.transType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get exchangeRate => $composableBuilder(
+    column: $table.exchangeRate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get accTypeId1 => $composableBuilder(
+    column: $table.accTypeId1,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get statuss => $composableBuilder(
+    column: $table.statuss,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get statuss1 => $composableBuilder(
+    column: $table.statuss1,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fcDr => $composableBuilder(
+    column: $table.fcDr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get fcCr => $composableBuilder(
+    column: $table.fcCr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lcDr => $composableBuilder(
+    column: $table.lcDr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get lcCr => $composableBuilder(
+    column: $table.lcCr,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get stc => $composableBuilder(
+    column: $table.stc,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get companyId => $composableBuilder(
+    column: $table.companyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$TblCashTransTableOrderingComposer
+    extends Composer<_$AppDatabase, $TblCashTransTable> {
+  $$TblCashTransTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get voucherNo => $composableBuilder(
+    column: $table.voucherNo,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get tDate => $composableBuilder(
+    column: $table.tDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get accTypeId => $composableBuilder(
+    column: $table.accTypeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fcAmount => $composableBuilder(
+    column: $table.fcAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lcAmount => $composableBuilder(
+    column: $table.lcAmount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get transType => $composableBuilder(
+    column: $table.transType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get exchangeRate => $composableBuilder(
+    column: $table.exchangeRate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get accTypeId1 => $composableBuilder(
+    column: $table.accTypeId1,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get statuss => $composableBuilder(
+    column: $table.statuss,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get statuss1 => $composableBuilder(
+    column: $table.statuss1,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fcDr => $composableBuilder(
+    column: $table.fcDr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get fcCr => $composableBuilder(
+    column: $table.fcCr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lcDr => $composableBuilder(
+    column: $table.lcDr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get lcCr => $composableBuilder(
+    column: $table.lcCr,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get stc => $composableBuilder(
+    column: $table.stc,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get companyId => $composableBuilder(
+    column: $table.companyId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$TblCashTransTableAnnotationComposer
+    extends Composer<_$AppDatabase, $TblCashTransTable> {
+  $$TblCashTransTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get voucherNo =>
+      $composableBuilder(column: $table.voucherNo, builder: (column) => column);
+
+  GeneratedColumn<String> get tDate =>
+      $composableBuilder(column: $table.tDate, builder: (column) => column);
+
+  GeneratedColumn<int> get accTypeId =>
+      $composableBuilder(column: $table.accTypeId, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<double> get fcAmount =>
+      $composableBuilder(column: $table.fcAmount, builder: (column) => column);
+
+  GeneratedColumn<double> get lcAmount =>
+      $composableBuilder(column: $table.lcAmount, builder: (column) => column);
+
+  GeneratedColumn<String> get transType =>
+      $composableBuilder(column: $table.transType, builder: (column) => column);
+
+  GeneratedColumn<double> get exchangeRate => $composableBuilder(
+    column: $table.exchangeRate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get accTypeId1 => $composableBuilder(
+    column: $table.accTypeId1,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get statuss =>
+      $composableBuilder(column: $table.statuss, builder: (column) => column);
+
+  GeneratedColumn<String> get statuss1 =>
+      $composableBuilder(column: $table.statuss1, builder: (column) => column);
+
+  GeneratedColumn<double> get fcDr =>
+      $composableBuilder(column: $table.fcDr, builder: (column) => column);
+
+  GeneratedColumn<double> get fcCr =>
+      $composableBuilder(column: $table.fcCr, builder: (column) => column);
+
+  GeneratedColumn<double> get lcDr =>
+      $composableBuilder(column: $table.lcDr, builder: (column) => column);
+
+  GeneratedColumn<double> get lcCr =>
+      $composableBuilder(column: $table.lcCr, builder: (column) => column);
+
+  GeneratedColumn<String> get stc =>
+      $composableBuilder(column: $table.stc, builder: (column) => column);
+
+  GeneratedColumn<int> get companyId =>
+      $composableBuilder(column: $table.companyId, builder: (column) => column);
+
+  GeneratedColumn<int> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+}
+
+class $$TblCashTransTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $TblCashTransTable,
+          TblCashTran,
+          $$TblCashTransTableFilterComposer,
+          $$TblCashTransTableOrderingComposer,
+          $$TblCashTransTableAnnotationComposer,
+          $$TblCashTransTableCreateCompanionBuilder,
+          $$TblCashTransTableUpdateCompanionBuilder,
+          (
+            TblCashTran,
+            BaseReferences<_$AppDatabase, $TblCashTransTable, TblCashTran>,
+          ),
+          TblCashTran,
+          PrefetchHooks Function()
+        > {
+  $$TblCashTransTableTableManager(_$AppDatabase db, $TblCashTransTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$TblCashTransTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$TblCashTransTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$TblCashTransTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> voucherNo = const Value.absent(),
+                Value<String?> tDate = const Value.absent(),
+                Value<int?> accTypeId = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<double?> fcAmount = const Value.absent(),
+                Value<double?> lcAmount = const Value.absent(),
+                Value<String?> transType = const Value.absent(),
+                Value<double?> exchangeRate = const Value.absent(),
+                Value<int?> accTypeId1 = const Value.absent(),
+                Value<String?> statuss = const Value.absent(),
+                Value<String?> statuss1 = const Value.absent(),
+                Value<double?> fcDr = const Value.absent(),
+                Value<double?> fcCr = const Value.absent(),
+                Value<double?> lcDr = const Value.absent(),
+                Value<double?> lcCr = const Value.absent(),
+                Value<String?> stc = const Value.absent(),
+                Value<int?> companyId = const Value.absent(),
+                Value<int?> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int?> isDeleted = const Value.absent(),
+              }) => TblCashTransCompanion(
+                voucherNo: voucherNo,
+                tDate: tDate,
+                accTypeId: accTypeId,
+                description: description,
+                fcAmount: fcAmount,
+                lcAmount: lcAmount,
+                transType: transType,
+                exchangeRate: exchangeRate,
+                accTypeId1: accTypeId1,
+                statuss: statuss,
+                statuss1: statuss1,
+                fcDr: fcDr,
+                fcCr: fcCr,
+                lcDr: lcDr,
+                lcCr: lcCr,
+                stc: stc,
+                companyId: companyId,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> voucherNo = const Value.absent(),
+                Value<String?> tDate = const Value.absent(),
+                Value<int?> accTypeId = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<double?> fcAmount = const Value.absent(),
+                Value<double?> lcAmount = const Value.absent(),
+                Value<String?> transType = const Value.absent(),
+                Value<double?> exchangeRate = const Value.absent(),
+                Value<int?> accTypeId1 = const Value.absent(),
+                Value<String?> statuss = const Value.absent(),
+                Value<String?> statuss1 = const Value.absent(),
+                Value<double?> fcDr = const Value.absent(),
+                Value<double?> fcCr = const Value.absent(),
+                Value<double?> lcDr = const Value.absent(),
+                Value<double?> lcCr = const Value.absent(),
+                Value<String?> stc = const Value.absent(),
+                Value<int?> companyId = const Value.absent(),
+                Value<int?> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int?> isDeleted = const Value.absent(),
+              }) => TblCashTransCompanion.insert(
+                voucherNo: voucherNo,
+                tDate: tDate,
+                accTypeId: accTypeId,
+                description: description,
+                fcAmount: fcAmount,
+                lcAmount: lcAmount,
+                transType: transType,
+                exchangeRate: exchangeRate,
+                accTypeId1: accTypeId1,
+                statuss: statuss,
+                statuss1: statuss1,
+                fcDr: fcDr,
+                fcCr: fcCr,
+                lcDr: lcDr,
+                lcCr: lcCr,
+                stc: stc,
+                companyId: companyId,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$TblCashTransTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $TblCashTransTable,
+      TblCashTran,
+      $$TblCashTransTableFilterComposer,
+      $$TblCashTransTableOrderingComposer,
+      $$TblCashTransTableAnnotationComposer,
+      $$TblCashTransTableCreateCompanionBuilder,
+      $$TblCashTransTableUpdateCompanionBuilder,
+      (
+        TblCashTran,
+        BaseReferences<_$AppDatabase, $TblCashTransTable, TblCashTran>,
+      ),
+      TblCashTran,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4800,8 +7446,18 @@ class $AppDatabaseManager {
       $$AccTypeTableTableManager(_db, _db.accType);
   $$CompanyTableTableTableManager get companyTable =>
       $$CompanyTableTableTableManager(_db, _db.companyTable);
+  $$AccountsHeadsTableTableManager get accountsHeads =>
+      $$AccountsHeadsTableTableManager(_db, _db.accountsHeads);
   $$DbInfoTableTableTableManager get dbInfoTable =>
       $$DbInfoTableTableTableManager(_db, _db.dbInfoTable);
+  $$AccountPCurrencyAssignmentTableTableManager
+  get accountPCurrencyAssignment =>
+      $$AccountPCurrencyAssignmentTableTableManager(
+        _db,
+        _db.accountPCurrencyAssignment,
+      );
   $$TransactionsPTableTableManager get transactionsP =>
       $$TransactionsPTableTableManager(_db, _db.transactionsP);
+  $$TblCashTransTableTableManager get tblCashTrans =>
+      $$TblCashTransTableTableManager(_db, _db.tblCashTrans);
 }

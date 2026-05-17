@@ -12,6 +12,8 @@ import 'logging/logger_service.dart';
 class LocalStorageService {
   static const String _userListKey = "logged_in_users";
   static const String _lastUsedUserKey = "last_used_user_email";
+  static const String _authTokenMapKey = "auth_token_by_email";
+  static const String _tenantIdMapKey = "tenant_id_by_email";
 
   // ============================================================
   // 🔐 SAVE USER (SAFE — NEVER SAVE EMPTY EMAIL)
@@ -58,14 +60,14 @@ class LocalStorageService {
 
     final users = jsonList
         .map((jsonStr) {
-      try {
-        final map = jsonDecode(jsonStr);
-        final user = UserModel.fromJson(map);
-        return user.email.isNotEmpty ? user : null;
-      } catch (_) {
-        return null;
-      }
-    })
+          try {
+            final map = jsonDecode(jsonStr);
+            final user = UserModel.fromJson(map);
+            return user.email.isNotEmpty ? user : null;
+          } catch (_) {
+            return null;
+          }
+        })
         .whereType<UserModel>()
         .toList();
 
@@ -129,6 +131,8 @@ class LocalStorageService {
     });
 
     await prefs.setStringList(_userListKey, existingList);
+    await removeAuthToken(email);
+    await removeTenantId(email);
 
     final lastUsed = prefs.getString(_lastUsedUserKey);
     if (lastUsed == email) {
@@ -158,12 +162,155 @@ class LocalStorageService {
   }
 
   // ============================================================
+  // 🔐 AUTH TOKEN STORAGE (PER EMAIL)
+  // ============================================================
+  static Future<void> saveAuthToken({
+    required String email,
+    required String token,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    final normalizedToken = token.trim();
+
+    if (normalizedEmail.isEmpty || normalizedToken.isEmpty) {
+      LoggerService.warn("⛔ Refused to save auth token (empty email/token)");
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_authTokenMapKey);
+    final Map<String, dynamic> map = () {
+      if (raw == null || raw.trim().isEmpty) {
+        return <String, dynamic>{};
+      }
+      try {
+        return jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }();
+
+    map[normalizedEmail] = normalizedToken;
+    await prefs.setString(_authTokenMapKey, jsonEncode(map));
+    LoggerService.info("🔐 Saved auth token for $normalizedEmail");
+  }
+
+  static Future<String?> loadAuthToken(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_authTokenMapKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final token = map[normalizedEmail]?.toString().trim();
+      return token == null || token.isEmpty ? null : token;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String?> loadAuthTokenForLastUsedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString(_lastUsedUserKey)?.trim() ?? '';
+    if (email.isEmpty) return null;
+    return loadAuthToken(email);
+  }
+
+  static Future<void> removeAuthToken(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_authTokenMapKey);
+    if (raw == null || raw.trim().isEmpty) return;
+
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      map.remove(normalizedEmail);
+      await prefs.setString(_authTokenMapKey, jsonEncode(map));
+      LoggerService.info("🗑 Removed auth token for $normalizedEmail");
+    } catch (_) {
+      // no-op
+    }
+  }
+
+  static Future<void> saveTenantId({
+    required String email,
+    required int tenantId,
+  }) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty || tenantId <= 0) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_tenantIdMapKey);
+    final Map<String, dynamic> map = () {
+      if (raw == null || raw.trim().isEmpty) return <String, dynamic>{};
+      try {
+        return jsonDecode(raw) as Map<String, dynamic>;
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }();
+
+    map[normalizedEmail] = tenantId;
+    await prefs.setString(_tenantIdMapKey, jsonEncode(map));
+    LoggerService.info("🏢 Saved tenant id for $normalizedEmail -> $tenantId");
+  }
+
+  static Future<int?> loadTenantId(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_tenantIdMapKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final value = map[normalizedEmail];
+      final id = int.tryParse(value?.toString() ?? '');
+      if (id == null || id <= 0) return null;
+      return id;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<int?> loadTenantIdForLastUsedUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString(_lastUsedUserKey)?.trim() ?? '';
+    if (email.isEmpty) return null;
+    return loadTenantId(email);
+  }
+
+  static Future<void> removeTenantId(String email) async {
+    final normalizedEmail = email.trim().toLowerCase();
+    if (normalizedEmail.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_tenantIdMapKey);
+    if (raw == null || raw.trim().isEmpty) return;
+
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      map.remove(normalizedEmail);
+      await prefs.setString(_tenantIdMapKey, jsonEncode(map));
+    } catch (_) {
+      // no-op
+    }
+  }
+
+  // ============================================================
   // ❌ FULL RESET (DEBUG / LOGOUT ALL)
   // ============================================================
   static Future<void> clearAllUsers() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_userListKey);
     await prefs.remove(_lastUsedUserKey);
+    await prefs.remove(_authTokenMapKey);
+    await prefs.remove(_tenantIdMapKey);
     LoggerService.info("🧹 All local users cleared");
   }
 }

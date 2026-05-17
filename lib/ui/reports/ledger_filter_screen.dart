@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -9,7 +11,22 @@ import '../../services/pdf/open_file_service.dart';
 import '../../services/global_state.dart';
 
 class LedgerFilterScreen extends StatefulWidget {
-  const LedgerFilterScreen({super.key});
+  final String screenTitle;
+  final String reportTitle;
+  final String actionButtonLabel;
+  final String generatingTitle;
+  final String? outputPdfFileName;
+  final bool includeProductColumns;
+
+  const LedgerFilterScreen({
+    super.key,
+    this.screenTitle = "Ledger Filter",
+    this.reportTitle = "Ledger Report",
+    this.actionButtonLabel = "Show Ledger",
+    this.generatingTitle = "Generating Ledger PDF",
+    this.outputPdfFileName,
+    this.includeProductColumns = false,
+  });
 
   @override
   State<LedgerFilterScreen> createState() => _LedgerFilterScreenState();
@@ -20,6 +37,7 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
   final currencyController = TextEditingController();
   final fromDateController = TextEditingController();
   final toDateController = TextEditingController();
+  String _currencyLoadedForAccount = '';
 
   final dateFmtHuman = DateFormat('dd/MM/yyyy');
   final dateFmtDb = DateFormat('yyyy-MM-dd');
@@ -37,9 +55,6 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final vm = context.read<LedgerFilterViewModel>();
-      vm.loadCurrencies();
-
       // Default period → last 30 days
       final now = DateTime.now();
       final lastMonth = now.subtract(const Duration(days: 30));
@@ -58,8 +73,8 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF7F9FC),
         elevation: 0,
-        title: const Text(
-          "Ledger Filter",
+        title: Text(
+          widget.screenTitle,
           style: TextStyle(
             color: Color(0xFF0B1E3A),
             fontSize: 20,
@@ -70,12 +85,7 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
       ),
 
       body: Stack(
-        children: [
-          _buildBody(vm),
-
-          if (isGenerating)
-            _buildGeneratingOverlay(),
-        ],
+        children: [_buildBody(vm), if (isGenerating) _buildGeneratingOverlay()],
       ),
     );
   }
@@ -130,10 +140,22 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                   onChanged: (txt) {
                     if (txt.trim().isEmpty) {
                       setState(() => showSuggestions = false);
+                      if (_currencyLoadedForAccount.isNotEmpty) {
+                        _currencyLoadedForAccount = '';
+                        currencyController.clear();
+                        vm.loadCurrenciesForAccountName('');
+                      }
                       return;
+                    }
+                    if (_currencyLoadedForAccount.trim().toLowerCase() !=
+                        txt.trim().toLowerCase()) {
+                      currencyController.clear();
                     }
                     vm.searchAccounts(txt);
                     setState(() => showSuggestions = true);
+                  },
+                  onSubmitted: (txt) async {
+                    await _loadCurrenciesForAccount(vm, txt);
                   },
                 ),
 
@@ -150,14 +172,15 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                       children: vm.accountSuggestions
                           .map(
                             (s) => ListTile(
-                          dense: true,
-                          title: Text(s),
-                          onTap: () {
-                            accountController.text = s;
-                            setState(() => showSuggestions = false);
-                          },
-                        ),
-                      )
+                              dense: true,
+                              title: Text(s),
+                              onTap: () async {
+                                accountController.text = s;
+                                setState(() => showSuggestions = false);
+                                await _loadCurrenciesForAccount(vm, s);
+                              },
+                            ),
+                          )
                           .toList(),
                     ),
                   ),
@@ -167,41 +190,48 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                 // -------------------------------------------------
                 // CURRENCY DROPDOWN
                 // -------------------------------------------------
-                TextField(
-                  controller: currencyController,
+                DropdownButtonFormField<String>(
+                  key: ValueKey(
+                    'currency_${_currencyLoadedForAccount}_${vm.currencies.length}_${currencyController.text.trim().toLowerCase()}',
+                  ),
+                  initialValue:
+                      vm.currencies.any(
+                        (c) =>
+                            c.trim().toLowerCase() ==
+                            currencyController.text.trim().toLowerCase(),
+                      )
+                      ? currencyController.text.trim()
+                      : null,
+                  isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: "Currency",
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (_) => setState(() {}),
+                  hint: const Text('Select currency'),
+                  items: vm.currencies
+                      .map(
+                        (c) =>
+                            DropdownMenuItem<String>(value: c, child: Text(c)),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    setState(() {
+                      currencyController.text = (value ?? '').trim();
+                    });
+                  },
                 ),
 
-                if (currencyController.text.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: Colors.deepPurple.shade100),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: vm.currencies
-                          .where((c) => c
-                          .toLowerCase()
-                          .contains(currencyController.text.toLowerCase()))
-                          .map(
-                            (c) => ListTile(
-                          dense: true,
-                          title: Text(c),
-                          onTap: () {
-                            currencyController.text = c;
-                            FocusScope.of(context).unfocus();
-                            setState(() {});
-                          },
-                        ),
-                      )
-                          .toList(),
+                if (accountController.text.trim().isNotEmpty &&
+                    vm.currencies.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'No worked currencies found for this account yet.',
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
 
@@ -247,14 +277,17 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.picture_as_pdf_rounded),
-                      SizedBox(width: 8),
+                      const Icon(Icons.picture_as_pdf_rounded),
+                      const SizedBox(width: 8),
                       Text(
-                        "Show Ledger",
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        widget.actionButtonLabel,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ],
                   ),
@@ -301,15 +334,32 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
     }
   }
 
+  Future<void> _loadCurrenciesForAccount(
+    LedgerFilterViewModel vm,
+    String accountName,
+  ) async {
+    final name = accountName.trim();
+    await vm.loadCurrenciesForAccountName(name);
+    if (!mounted) return;
+
+    setState(() => _currencyLoadedForAccount = name);
+    final current = currencyController.text.trim().toLowerCase();
+    if (current.isNotEmpty &&
+        !vm.currencies.any((c) => c.trim().toLowerCase() == current)) {
+      currencyController.clear();
+    }
+  }
+
   // -------------------------------------------------------------
   // GENERATE PDF
   // -------------------------------------------------------------
-  Future<void> _onGeneratePressed(
-      LedgerFilterViewModel vm,
-      ) async {
+  Future<void> _onGeneratePressed(LedgerFilterViewModel vm) async {
     if (isGenerating) return;
 
     final acc = accountController.text.trim();
+    if (_currencyLoadedForAccount.trim().toLowerCase() != acc.toLowerCase()) {
+      await _loadCurrenciesForAccount(vm, acc);
+    }
     final cur = currencyController.text.trim();
 
     if (acc.isEmpty || cur.isEmpty) {
@@ -381,6 +431,8 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
         currency: cur,
         periodText: "Period: $fromHuman - $toHuman",
         result: result,
+        reportTitle: widget.reportTitle,
+        includeProductColumns: widget.includeProductColumns,
         onProgress: (progress) {
           if (!mounted) return;
           setState(() {
@@ -400,14 +452,19 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
       );
 
       if (!mounted) return;
+      final outputFile = await _saveOutputPdf(file);
+      if (!mounted) return;
       final openSw = Stopwatch()..start();
-      await OpenFileService.openPdf(context, file);
+      await OpenFileService.openPdf(context, outputFile);
       openSw.stop();
       totalSw.stop();
       debugPrint(
         "[LedgerPerf][UI] openFile:done elapsedMs=${openSw.elapsedMilliseconds} "
         "totalElapsedMs=${totalSw.elapsedMilliseconds}",
       );
+      if (outputFile.path != file.path) {
+        _toast("Saved to ${outputFile.path}");
+      }
     } catch (e) {
       totalSw.stop();
       debugPrint(
@@ -460,8 +517,12 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                       child: CircularProgressIndicator(
                         strokeWidth: 4.4,
                         value: progressValue,
-                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                        backgroundColor: AppColors.primary.withValues(alpha: 0.16),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primary,
+                        ),
+                        backgroundColor: AppColors.primary.withValues(
+                          alpha: 0.16,
+                        ),
                       ),
                     ),
                     Icon(
@@ -472,10 +533,10 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
                   ],
                 ),
                 const SizedBox(height: 14),
-                const Text(
-                  "Generating Ledger PDF",
+                Text(
+                  widget.generatingTitle,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: Color(0xFF0B1E3A),
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
@@ -517,9 +578,42 @@ class _LedgerFilterScreenState extends State<LedgerFilterScreen> {
     return pages <= 0 ? 1 : pages;
   }
 
+  Future<File> _saveOutputPdf(File generatedFile) async {
+    final desiredName = widget.outputPdfFileName?.trim();
+    if (desiredName == null || desiredName.isEmpty) {
+      return generatedFile;
+    }
+
+    final cleanedName = desiredName
+        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
+        .trim();
+    final fileName = cleanedName.toLowerCase().endsWith('.pdf')
+        ? cleanedName
+        : '$cleanedName.pdf';
+
+    final candidates = <Directory>[
+      if (Platform.isAndroid) Directory('/storage/emulated/0/Download'),
+      if (Platform.isAndroid) Directory('/sdcard/Download'),
+    ];
+
+    for (final dir in candidates) {
+      try {
+        if (!await dir.exists()) continue;
+        final target = File('${dir.path}/$fileName');
+        final bytes = await generatedFile.readAsBytes();
+        await target.writeAsBytes(bytes, flush: true);
+        return target;
+      } catch (e) {
+        debugPrint(
+          "[LedgerPerf][UI] saveOutputPdf failed dir=${dir.path} error=$e",
+        );
+      }
+    }
+
+    return generatedFile;
+  }
+
   void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 }

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:country_flags/country_flags.dart';
 
 import '../../../model/balance_currency_ui.dart';
 import '../../../services/share/balance_share_full_image_service.dart';
+import '../../commons/currency_flag.dart';
+
+const _kTxBrandBlue = Color(0xFF1862A3);
 
 class BalanceList extends StatefulWidget {
   final String name;
@@ -37,121 +39,8 @@ class _BalanceListState extends State<BalanceList> {
 
   bool _isZero(double v) => v.abs() < 0.005;
 
-  String _currencyToCountryCode(String currency) {
-    switch (currency.toUpperCase().trim()) {
-      case 'PKR':
-        return 'PK';
-      case 'USD':
-        return 'US';
-      case 'AED':
-        return 'AE';
-      case 'SAR':
-        return 'SA';
-      case 'EUR':
-        return 'EU';
-      case 'GBP':
-      case 'POUND':
-        return 'GB';
-      case 'INR':
-      case 'IND':
-        return 'IN';
-      case 'AFG':
-      case 'AFN':
-        return 'AF';
-      case 'CAD':
-        return 'CA';
-      case 'JPY':
-        return 'JP';
-      case 'RMB':
-      case 'CNY':
-        return 'CN';
-      case 'IRR':
-        return 'IR';
-      case 'BHD':
-        return 'BH';
-      case 'OMR':
-        return 'OM';
-      case 'QAR':
-        return 'QA';
-      case 'DKK':
-        return 'DK';
-      case 'SEK':
-        return 'SE';
-      case 'NOK':
-        return 'NO';
-      case 'MYR':
-        return 'MY';
-      case 'AUD':
-        return 'AU';
-      case 'HKD':
-        return 'HK';
-      case 'SGD':
-      case 'SGP':
-        return 'SG';
-      case 'RUB':
-        return 'RU';
-      default:
-        return 'UN';
-    }
-  }
-
-  String _countryNameForCurrency(String currency) {
-    switch (currency.toUpperCase().trim()) {
-      case 'PKR':
-        return 'Pakistan';
-      case 'USD':
-        return 'United States';
-      case 'AED':
-        return 'United Arab Emirates';
-      case 'SAR':
-        return 'Saudi Arabia';
-      case 'EUR':
-        return 'European Union';
-      case 'GBP':
-      case 'POUND':
-        return 'United Kingdom';
-      case 'INR':
-      case 'IND':
-        return 'India';
-      case 'AFG':
-      case 'AFN':
-        return 'Afghanistan';
-      case 'CAD':
-        return 'Canada';
-      case 'JPY':
-        return 'Japan';
-      case 'RMB':
-      case 'CNY':
-        return 'China';
-      case 'IRR':
-        return 'Iran';
-      case 'BHD':
-        return 'Bahrain';
-      case 'OMR':
-        return 'Oman';
-      case 'QAR':
-        return 'Qatar';
-      case 'DKK':
-        return 'Denmark';
-      case 'SEK':
-        return 'Sweden';
-      case 'NOK':
-        return 'Norway';
-      case 'MYR':
-        return 'Malaysia';
-      case 'AUD':
-        return 'Australia';
-      case 'HKD':
-        return 'Hong Kong';
-      case 'SGD':
-      case 'SGP':
-        return 'Singapore';
-      case 'RUB':
-        return 'Russia';
-      default:
-        return 'Unknown';
-    }
-  }
+  String _countryNameForCurrency(String currency) =>
+      currencyCountryName(currency);
 
   List<BalanceCurrencyUi> _visibleRows() {
     return widget.rows.where((r) {
@@ -177,11 +66,7 @@ class _BalanceListState extends State<BalanceList> {
           ? 'Balance Summary'
           : 'Balance • ${widget.name.trim()}';
 
-      await Share.shareXFiles(
-        [XFile(file.path)],
-        text: title,
-        subject: title,
-      );
+      await Share.shareXFiles([XFile(file.path)], text: title, subject: title);
     } catch (e) {
       debugPrint('❌ Share image failed: $e');
     } finally {
@@ -215,20 +100,59 @@ class _BalanceListState extends State<BalanceList> {
     final visibleRows = _visibleRows();
 
     if (visibleRows.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            widget.name.trim().isEmpty
-                ? 'Type a name to view balance'
-                : 'No balance data for this person',
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
+        padding: const EdgeInsets.fromLTRB(16, 52, 16, 120),
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _kTxBrandBlue.withValues(alpha: 0.08),
+                  Colors.white,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: _kTxBrandBlue.withValues(alpha: 0.12),
+              ),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _kTxBrandBlue.withValues(alpha: 0.10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: _kTxBrandBlue,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.name.trim().isEmpty
+                      ? 'Type a name to view balance'
+                      : 'No balance data for this person',
+                  style: const TextStyle(
+                    color: Color(0xFF16324B),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
 
@@ -265,7 +189,7 @@ class _BalanceListState extends State<BalanceList> {
                         tooltip: 'Share Image',
                         icon: const Icon(
                           Icons.ios_share_rounded,
-                          color: Color(0xFF0B1E3A),
+                          color: _kTxBrandBlue,
                         ),
                         onPressed: _handleShareImage,
                       ),
@@ -282,7 +206,7 @@ class _BalanceListState extends State<BalanceList> {
                         tooltip: 'Export PDF',
                         icon: const Icon(
                           Icons.picture_as_pdf,
-                          color: Color(0xFFC62828),
+                          color: _kTxBrandBlue,
                         ),
                         onPressed: _handleExportPdf,
                       ),
@@ -295,23 +219,30 @@ class _BalanceListState extends State<BalanceList> {
         // ================= LIST =================
         Expanded(
           child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
             itemCount: visibleRows.length,
-            separatorBuilder: (context, index) =>
-                const SizedBox(height: 8),
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
               final row = visibleRows[i];
               final bal = row.balance;
-              final currencyLabel =
-                  row.currency.isEmpty ? 'Unknown currency' : row.currency;
+              final currencyLabel = row.currency.isEmpty
+                  ? 'Unknown currency'
+                  : row.currency;
               final countryName = _countryNameForCurrency(currencyLabel);
               final isPositive = bal >= 0;
 
-              final Color balColor =
-                  isPositive ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+              final Color balColor = isPositive
+                  ? _kTxBrandBlue
+                  : const Color(0xFFC62828);
 
               return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
@@ -329,13 +260,9 @@ class _BalanceListState extends State<BalanceList> {
                     SizedBox(
                       width: 42,
                       height: 42,
-                      child: CountryFlag.fromCountryCode(
-                        _currencyToCountryCode(currencyLabel),
-                        theme: const ImageTheme(
-                          width: 38,
-                          height: 38,
-                          shape: Circle(),
-                        ),
+                      child: CurrencyFlagBadge(
+                        currency: currencyLabel,
+                        size: 38,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -372,12 +299,12 @@ class _BalanceListState extends State<BalanceList> {
                       ),
                       decoration: BoxDecoration(
                         color: isPositive
-                            ? const Color(0xFFEFFAF2)
+                            ? _kTxBrandBlue.withValues(alpha: 0.08)
                             : const Color(0xFFFFF1F1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: isPositive
-                              ? const Color(0xFFCBEBD2)
+                              ? _kTxBrandBlue.withValues(alpha: 0.18)
                               : const Color(0xFFF6C9C9),
                         ),
                       ),
@@ -405,7 +332,7 @@ class _BalanceListState extends State<BalanceList> {
                           ),
                         ],
                       ),
-                    )
+                    ),
                   ],
                 ),
               );

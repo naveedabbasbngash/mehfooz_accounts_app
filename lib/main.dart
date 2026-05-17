@@ -1,12 +1,12 @@
 // lib/main.dart
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 import 'package:mehfooz_accounts_app/services/sync/pending_share.dart';
 import 'package:provider/provider.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_options.dart';
@@ -22,13 +22,43 @@ import 'viewmodel/profile/profile_view_model.dart';
 import 'viewmodel/sync/sync_viewmodel.dart';
 
 import 'services/sync/sync_service.dart';
+import 'services/sync/sync_invalidation_store.dart';
 import 'data/local/database_manager.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await _ensureFirebaseInitialized();
+  await SyncInvalidationStore.markFromPayload(
+    message.data,
+    source: 'fcm-background',
+  );
+}
+
+Future<void> _ensureFirebaseInitialized() async {
+  try {
+    Firebase.app();
+    return;
+  } catch (_) {
+    // App not yet visible to Dart side; continue.
+  }
+
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } on FirebaseException catch (e) {
+    // Native side may have initialized [DEFAULT] just before this call.
+    if (e.code == 'duplicate-app') {
+      return;
+    }
+    rethrow;
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // 🔥 REQUIRED
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await _ensureFirebaseInitialized();
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   await EasyLocalization.ensureInitialized();
 
@@ -123,7 +153,7 @@ class MahfoozAppState extends State<MahfoozApp> {
         ChangeNotifierProvider(
           create: (_) => SyncViewModel(
             syncService: SyncService(
-              baseUrl: "https://admin.mahfoozaccounts.com/",
+              baseUrl: "https://mkb.mahfoozaccounts.com/",
             ),
           ),
         ),

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 import '../../../data/local/database_manager.dart';
-import '../../../theme/app_colors.dart';
 import '../../../viewmodel/home/home_view_model.dart';
+
+const _kHomeBrandBlue = Color(0xFF1862A3);
 
 class CompanySelectorBottomSheet {
   /// -------------------------------------------------------------
@@ -35,7 +35,7 @@ class CompanySelectorBottomSheet {
                   height: 4,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: _kHomeBrandBlue.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -64,11 +64,13 @@ class CompanySelectorBottomSheet {
                         dense: true,
                         leading: CircleAvatar(
                           radius: 16,
-                          backgroundColor: Colors.deepPurple.shade50,
+                          backgroundColor: _kHomeBrandBlue.withValues(
+                            alpha: 0.10,
+                          ),
                           child: const Icon(
                             Icons.business,
                             size: 18,
-                            color: AppColors.primary,
+                            color: _kHomeBrandBlue,
                           ),
                         ),
                         title: Text(
@@ -79,14 +81,11 @@ class CompanySelectorBottomSheet {
                           ),
                         ),
                         trailing: isSelected
-                            ? const Icon(Icons.check, color: Colors.green)
+                            ? const Icon(Icons.check, color: _kHomeBrandBlue)
                             : null,
 
                         onTap: () async {
-                          if (c.companyId != null) {
-                            // 🔥 Single source of truth = setCompany()
-                            await vm.setCompany(c.companyId!);
-                          }
+                          await vm.setCompany(c.companyId);
 
                           // Close AFTER update
                           if (context.mounted) Navigator.pop(context);

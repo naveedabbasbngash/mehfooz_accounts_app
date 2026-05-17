@@ -4,7 +4,9 @@ import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 import '../../main.dart';
 import '../../model/user_model.dart';
 import '../../services/auth_service.dart';
-import '../../theme/app_colors.dart';
+
+const _kDrawerBrandBlue = Color(0xFF1862A3);
+const _kDrawerBrandBlueDark = Color(0xFF0D4C81);
 
 class DrawerMenu extends StatelessWidget {
   final Function(int) onItemClick;
@@ -21,11 +23,11 @@ class DrawerMenu extends StatelessWidget {
   });
 
   void _logAction(String title) {
-    print("\n============================");
-    print("📌 Drawer Menu Clicked: $title");
-    print("👤 User Email: ${user.email}");
-    print("🔐 is_login: ${user.isLogin}");
-    print("============================\n");
+    debugPrint("\n============================");
+    debugPrint("📌 Drawer Menu Clicked: $title");
+    debugPrint("👤 User Email: ${user.email}");
+    debugPrint("🔐 is_login: ${user.isLogin}");
+    debugPrint("============================\n");
   }
 
   Widget _menuItem({
@@ -42,17 +44,17 @@ class DrawerMenu extends StatelessWidget {
       margin: const EdgeInsets.symmetric(vertical: 4),
       decoration: BoxDecoration(
         color: selected
-            ? Colors.white.withOpacity(0.12)
+            ? Colors.white.withValues(alpha: 0.12)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(14),
         boxShadow: selected
             ? [
-          BoxShadow(
-            color: Colors.white.withOpacity(0.25),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ]
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.25),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ]
             : [],
       ),
       child: Row(
@@ -72,8 +74,7 @@ class DrawerMenu extends StatelessWidget {
 
           Expanded(
             child: ListTile(
-              contentPadding:
-              const EdgeInsets.symmetric(horizontal: 4),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 4),
               leading: Icon(
                 icon,
                 color: selected ? Colors.white : Colors.white70,
@@ -82,8 +83,7 @@ class DrawerMenu extends StatelessWidget {
                 title,
                 style: TextStyle(
                   color: Colors.white,
-                  fontWeight:
-                  selected ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   letterSpacing: 0.3,
                 ),
               ),
@@ -99,26 +99,55 @@ class DrawerMenu extends StatelessWidget {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.darkgreen,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_kDrawerBrandBlue, _kDrawerBrandBlueDark],
+        ),
+      ),
       padding: const EdgeInsets.only(top: 50, left: 20, right: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ⭐ BRAND HEADER (SINGLE CARD – NO DOUBLE RECTANGLE)
-// ================= BRAND HEADER =================
+          // ================= BRAND HEADER =================
           Center(
             child: Column(
               children: [
                 ClipOval(
-                  child: Image.asset(
-                    'assets/icon/app_icon.png',
-                    width: 64,
-                    height: 64,
-                    fit: BoxFit.cover,
+                  child: ColorFiltered(
+                    colorFilter: const ColorFilter.matrix([
+                      0.2126,
+                      0.7152,
+                      0.0722,
+                      0,
+                      0,
+                      0.2126,
+                      0.7152,
+                      0.0722,
+                      0,
+                      0,
+                      0.2126,
+                      0.7152,
+                      0.0722,
+                      0,
+                      0,
+                      0,
+                      0,
+                      0,
+                      1,
+                      0,
+                    ]),
+                    child: Image.asset(
+                      'assets/icon/app_icon.png',
+                      width: 64,
+                      height: 64,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
 
@@ -137,23 +166,41 @@ class DrawerMenu extends StatelessWidget {
             ),
           ),
 
-// ⭐ CLEAR SEPARATION (THIS IS THE KEY)
+          // ⭐ CLEAR SEPARATION (THIS IS THE KEY)
           const SizedBox(height: 20),
 
           Container(
             margin: const EdgeInsets.only(right: 20),
             height: 1,
-            color: Colors.white.withOpacity(0.25),
+            color: Colors.white.withValues(alpha: 0.25),
           ),
 
           const SizedBox(height: 16),
-// ================= END HEADER =================
 
+          // ================= END HEADER =================
           const SizedBox(height: 15),
           _menuItem(
             title: "Home",
             icon: Icons.home,
             index: 0,
+            context: context,
+          ),
+          _menuItem(
+            title: "Currencies",
+            icon: Icons.currency_exchange,
+            index: 4,
+            context: context,
+          ),
+          _menuItem(
+            title: "Accounts",
+            icon: Icons.manage_accounts,
+            index: 5,
+            context: context,
+          ),
+          _menuItem(
+            title: "Heads",
+            icon: Icons.account_tree_outlined,
+            index: 6,
             context: context,
           ),
           _menuItem(
@@ -180,14 +227,12 @@ class DrawerMenu extends StatelessWidget {
           // ⭐ LOGOUT ONLY
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.white),
-            title: const Text(
-              "Logout",
-              style: TextStyle(color: Colors.white),
-            ),
-            onTap: () async {
+            title: const Text("Logout", style: TextStyle(color: Colors.white)),
+            onTap: () {
               _logAction("Logout");
-              await AuthService.logout();
-              context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
+              AuthService.logout().then((_) {
+                context.findAncestorStateOfType<MahfoozAppState>()?.resetUser();
+              });
             },
           ),
         ],

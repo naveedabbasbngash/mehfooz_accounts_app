@@ -8,10 +8,11 @@ import 'package:flutter_slider_drawer/flutter_slider_drawer.dart';
 import 'package:provider/provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
-import '../../main.dart';
 import '../../model/user_model.dart';
-import '../../services/auth_service.dart';
+import '../../data/local/database_manager.dart';
+import '../../repository/transactions_repository.dart';
 import '../../services/file_picker_service.dart';
+import '../../services/global_state.dart';
 import '../../services/sqlite_import_service.dart';
 import '../../services/sync/pending_share.dart';
 import '../../theme/app_colors.dart';
@@ -19,15 +20,20 @@ import '../../viewmodel/home/home_view_model.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
 
 import '../../viewmodel/sync/sync_viewmodel.dart';
+import '../accounts/accounts_screen.dart';
+import '../currencies/currencies_screen.dart';
 import '../drawer/drawer_menu.dart';
+import '../heads/heads_screen.dart';
 import '../profile/profile_screen.dart';
 import '../reports/reports.dart';
-import '../settings/settings_screen.dart';
-import '../settings/settings_wrapper.dart';
+import '../accounts/account_trash_screen.dart';
 import '../transcations/transaction_screen.dart';
+import '../transcations/transaction_trash_screen.dart';
 import 'home_screen.dart';
 
 import '../../services/logging/logger_service.dart';
+
+const _kNavBrandBlue = Color(0xFF1862A3);
 
 class HomeWrapper extends StatefulWidget {
   final UserModel user;
@@ -48,18 +54,38 @@ class HomeWrapper extends StatefulWidget {
 }
 
 class _HomeWrapperState extends State<HomeWrapper> {
+  static const int _homeIndex = 0;
+  static const int _transactionIndex = 1;
+  static const int _reportsIndex = 2;
+  static const int _profileIndex = 3;
+  static const int _currenciesIndex = 4;
+  static const int _accountsIndex = 5;
+  static const int _headsIndex = 6;
+
   StreamSubscription<List<SharedMediaFile>>? _intentStream;
 
   late int _pageIndex = widget.initialTabIndex;
   bool _initDone = false;
+  DateTime? _lastBackPressedAt;
 
-  final List<String> _titles = ["Home", "Transaction", "Reports", "Profile"];
+  final List<String> _titles = [
+    "Home",
+    "Transaction",
+    "Reports",
+    "Profile",
+    "Currencies",
+    "Accounts",
+    "Heads",
+  ];
 
   final List<Widget> _screens = const [
     HomeScreenContent(),
     TransactionScreen(),
     ReportsScreen(),
     ProfileScreen(),
+    CurrenciesScreen(),
+    AccountsScreen(),
+    HeadsScreen(),
   ];
 
   @override
@@ -115,7 +141,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
       }
 
       if (profileVM.isRestricted && mounted) {
-        setState(() => _pageIndex = 3);
+        setState(() => _pageIndex = _profileIndex);
       }
     });
   }
@@ -231,7 +257,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     await context.read<ProfileViewModel>().refresh();
 
     if (mounted) {
-      setState(() => _pageIndex = 3);
+      setState(() => _pageIndex = _profileIndex);
     }
   }
 
@@ -265,7 +291,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     );
     await context.read<ProfileViewModel>().refresh();
 
-    if (mounted) setState(() => _pageIndex = 3);
+    if (mounted) setState(() => _pageIndex = _profileIndex);
   }
 
   // ============================================================
@@ -274,16 +300,44 @@ class _HomeWrapperState extends State<HomeWrapper> {
   void _onDrawerItemClick(int index) {
     widget.sliderDrawerKey.currentState?.closeSlider();
 
-    final isRestricted = context.read<ProfileViewModel>().isRestricted;
-
-    if (isRestricted && index != 3) {
-      _restrictedMessage();
-      return;
-    }
-
     if (_pageIndex == index) return;
 
     setState(() => _pageIndex = index);
+  }
+
+  Future<bool> _handleBackPress() async {
+    final drawerState = widget.sliderDrawerKey.currentState;
+    final isDrawerOpen = drawerState?.isDrawerOpen ?? false;
+    if (isDrawerOpen) {
+      drawerState?.closeSlider();
+      return false;
+    }
+
+    if (_pageIndex != _homeIndex) {
+      setState(() => _pageIndex = _homeIndex);
+      return false;
+    }
+
+    final now = DateTime.now();
+    final shouldExit = _lastBackPressedAt != null &&
+        now.difference(_lastBackPressedAt!) <= const Duration(seconds: 2);
+    if (shouldExit) {
+      return true;
+    }
+
+    _lastBackPressedAt = now;
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Press back again to exit'),
+            backgroundColor: _kNavBrandBlue,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+    }
+    return false;
   }
 
   // ============================================================
@@ -291,58 +345,62 @@ class _HomeWrapperState extends State<HomeWrapper> {
   // ============================================================
   @override
   Widget build(BuildContext context) {
-    final profileVM = context.watch<ProfileViewModel>();
-    final isRestricted = profileVM.isRestricted;
-
-    return Scaffold(
-      backgroundColor: AppColors.app_bg,
-      body: SafeArea(
-        child: SliderDrawer(
-          key: widget.sliderDrawerKey,
-          isDraggable: false,
-          sliderOpenSize: 240,
-          appBar: SliderAppBar(
-            config: SliderAppBarConfig(
-              backgroundColor: _appBarColor,
-              title: Text(
-                _titles[_pageIndex],
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final shouldExit = await _handleBackPress();
+        if (shouldExit) {
+          await SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.app_bg,
+        body: SafeArea(
+          child: SliderDrawer(
+            key: widget.sliderDrawerKey,
+            isDraggable: false,
+            sliderOpenSize: 240,
+            appBar: SliderAppBar(
+              config: SliderAppBarConfig(
+                backgroundColor: _appBarColor,
+                title: Text(
+                  _titles[_pageIndex],
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
+                trailing: _buildTopRightMenu(context),
               ),
             ),
+            slider: DrawerMenu(
+              currentPageIndex: _pageIndex,
+              drawerKey: widget.sliderDrawerKey,
+              onItemClick: _onDrawerItemClick, // ✅ FIX-1
+              user: widget.user,
+            ),
+            child: _screens[_pageIndex],
           ),
-          slider: DrawerMenu(
-            currentPageIndex: _pageIndex,
-            drawerKey: widget.sliderDrawerKey,
-            onItemClick: _onDrawerItemClick, // ✅ FIX-1
-            user: widget.user,
-          ),
-          child: _screens[_pageIndex],
         ),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: CurvedNavigationBar(
-          index: _pageIndex,
-          height: 60,
-          backgroundColor: Colors.transparent,
-          color: AppColors.darkgreen,
-          buttonBackgroundColor: AppColors.darkgreen,
-          items: const [
-            Icon(Icons.home, color: Colors.white),
-            Icon(Icons.search, color: Colors.white),
-            Icon(Icons.bar_chart, color: Colors.white),
-            Icon(Icons.person, color: Colors.white),
-          ],
-          onTap: (i) {
-            if (isRestricted && i != 3) {
-              _restrictedMessage();
-              return;
-            }
-            setState(() => _pageIndex = i);
-          },
-        ),
+        bottomNavigationBar: _pageIndex > _profileIndex
+            ? null
+            : SafeArea(
+                child: CurvedNavigationBar(
+                  index: _pageIndex,
+                  height: 60,
+                  backgroundColor: Colors.transparent,
+                  color: _kNavBrandBlue,
+                  buttonBackgroundColor: _kNavBrandBlue,
+                  items: const [
+                    Icon(Icons.home, color: Colors.white),
+                    Icon(Icons.search, color: Colors.white),
+                    Icon(Icons.bar_chart, color: Colors.white),
+                    Icon(Icons.person, color: Colors.white),
+                  ],
+                  onTap: (i) => setState(() => _pageIndex = i),
+                ),
+              ),
       ),
     );
   }
@@ -352,24 +410,19 @@ class _HomeWrapperState extends State<HomeWrapper> {
   // ============================================================
   Color get _appBarColor {
     switch (_pageIndex) {
-      case 0:
+      case _homeIndex:
         return AppColors.homeColor;
-      case 1:
+      case _transactionIndex:
         return AppColors.searchColor;
-      case 2:
+      case _reportsIndex:
         return AppColors.reportsColor;
+      case _currenciesIndex:
+      case _accountsIndex:
+      case _headsIndex:
+        return AppColors.searchColor;
       default:
         return AppColors.profileColor;
     }
-  }
-
-  void _restrictedMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Feature restricted. First upload database."),
-        backgroundColor: Colors.red,
-      ),
-    );
   }
 
   void _showError(String msg) {
@@ -386,5 +439,77 @@ class _HomeWrapperState extends State<HomeWrapper> {
         ],
       ),
     );
+  }
+
+  Widget? _buildTopRightMenu(BuildContext context) {
+    if (_pageIndex == _transactionIndex) {
+      return PopupMenuButton<String>(
+        tooltip: 'More options',
+        onSelected: (value) {
+          if (value == 'trash') {
+            final homeVM = context.read<HomeViewModel>();
+            final companyId =
+                homeVM.selectedCompanyId ?? GlobalState.instance.companyId;
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => TransactionTrashScreen(
+                  repo: TransactionsRepository(DatabaseManager.instance.db),
+                  companyId: companyId,
+                ),
+              ),
+            );
+          }
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem<String>(
+            value: 'trash',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.delete_outline, color: _kNavBrandBlue),
+              title: Text('Trash'),
+            ),
+          ),
+        ],
+        icon: const Icon(Icons.more_vert, color: _kNavBrandBlue),
+      );
+    }
+
+    if (_pageIndex == _accountsIndex) {
+      return PopupMenuButton<String>(
+        tooltip: 'More options',
+        onSelected: (value) {
+          if (value == 'trash') {
+            final companyId = context.read<HomeViewModel>().selectedCompanyId;
+            if (companyId == null) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Please select a company first.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
+            }
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AccountTrashScreen(companyId: companyId),
+              ),
+            );
+          }
+        },
+        itemBuilder: (_) => const [
+          PopupMenuItem<String>(
+            value: 'trash',
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.delete_outline, color: _kNavBrandBlue),
+              title: Text('Trash'),
+            ),
+          ),
+        ],
+        icon: const Icon(Icons.more_vert, color: _kNavBrandBlue),
+      );
+    }
+
+    return null;
   }
 }
