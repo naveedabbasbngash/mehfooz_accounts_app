@@ -97,7 +97,7 @@ class _HomeScreenContentState extends State<HomeScreenContent> {
                           ),
                           const SizedBox(height: 8),
                           _HomeSectionShell(
-                            title: 'Live balances',
+                            title: 'Running balances',
                             subtitle:
                                 'A polished snapshot of your running cash and account positions.',
                             child: Column(

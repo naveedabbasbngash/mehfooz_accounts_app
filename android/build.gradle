@@ -19,6 +19,7 @@ allprojects {
 
 rootProject.buildDir = '../build'
 subprojects { subproject ->
+    subproject.buildDir = "${rootProject.buildDir}/${subproject.name}"
     afterEvaluate {
         // Force Java 17 for all Android modules
         if (subproject.hasProperty("android")) {

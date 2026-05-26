@@ -124,10 +124,7 @@ class _TransactionEntryScreenState extends State<TransactionEntryScreen> {
 
     try {
       await syncVm
-          .syncNowIfNeededSingleFlight(
-            force: false,
-            silent: true,
-          )
+          .syncNowIfNeededSingleFlight(force: false, silent: true)
           .timeout(const Duration(seconds: 5));
     } catch (_) {
       // Best-effort preflight only.
@@ -942,7 +939,7 @@ class _TransactionEntryScreenState extends State<TransactionEntryScreen> {
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
-                    child: SizedBox(
+                  child: SizedBox(
                     height: 50,
                     child: FilledButton.icon(
                       onPressed: _isSaving ? null : _submit,
@@ -1643,7 +1640,10 @@ class _CurrencyPickerScreenState extends State<_CurrencyPickerScreen> {
                   hintText: 'Type currency name or code',
                   filled: true,
                   fillColor: _kEntrySurface,
-                  prefixIcon: const Icon(Icons.search_rounded, color: _kEntryBlue),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: _kEntryBlue,
+                  ),
                   suffixIcon: _searchCtrl.text.trim().isEmpty
                       ? null
                       : IconButton(
@@ -1667,7 +1667,10 @@ class _CurrencyPickerScreenState extends State<_CurrencyPickerScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: _kEntryBlue, width: 1.4),
+                    borderSide: const BorderSide(
+                      color: _kEntryBlue,
+                      width: 1.4,
+                    ),
                   ),
                 ),
               ),
@@ -1765,7 +1768,8 @@ class _CurrencyPickerScreenState extends State<_CurrencyPickerScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         name.isEmpty
@@ -1963,7 +1967,10 @@ class _AccountPickerScreenState extends State<_AccountPickerScreen> {
                   hintText: 'Type customer name',
                   filled: true,
                   fillColor: _kEntrySurface,
-                  prefixIcon: const Icon(Icons.search_rounded, color: _kEntryBlue),
+                  prefixIcon: const Icon(
+                    Icons.search_rounded,
+                    color: _kEntryBlue,
+                  ),
                   suffixIcon: _searchCtrl.text.trim().isEmpty
                       ? null
                       : IconButton(
@@ -1987,7 +1994,10 @@ class _AccountPickerScreenState extends State<_AccountPickerScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
-                    borderSide: const BorderSide(color: _kEntryBlue, width: 1.4),
+                    borderSide: const BorderSide(
+                      color: _kEntryBlue,
+                      width: 1.4,
+                    ),
                   ),
                 ),
               ),
@@ -2091,7 +2101,8 @@ class _AccountPickerScreenState extends State<_AccountPickerScreen> {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Text(
                                         _itemLabel(row),

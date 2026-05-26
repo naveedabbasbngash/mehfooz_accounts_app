@@ -14,9 +14,33 @@ import '../../services/report_preferences_service.dart';
 import '../auth/auth_screen.dart';
 import '../home/widgets/google_sync_icon.dart';
 
+// Brand colors (used in header card + dialogs)
 const Color _kProfileBlue = Color(0xFF1862A3);
 const Color _kProfileBlueDark = Color(0xFF0F4E88);
 const Color _kProfileBg = Color(0xFFF4F8FC);
+
+// iOS Settings design system
+const Color _kSettingsBg = Color(0xFFF2F2F7);
+const Color _kTextPrimary = Color(0xFF000000);
+const Color _kTextSecondary = Color(0xFF8E8E93);
+const Color _kDivider = Color(0xFFE5E5EA);
+const Color _kChevron = Color(0xFFC7C7CC);
+
+// Icon backgrounds and foregrounds
+const Color _kIconBlue = Color(0xFF007AFF);
+const Color _kIconBlueBg = Color(0xFFE5F1FF);
+const Color _kIconGreen = Color(0xFF34C759);
+const Color _kIconGreenBg = Color(0xFFE8F9EC);
+const Color _kIconOrange = Color(0xFFFF9500);
+const Color _kIconOrangeBg = Color(0xFFFFF3E0);
+const Color _kIconRed = Color(0xFFFF3B30);
+const Color _kIconRedBg = Color(0xFFFFEBEA);
+const Color _kIconYellow = Color(0xFFFFCC00);
+const Color _kIconYellowBg = Color(0xFFFFFCE0);
+const Color _kIconGray = Color(0xFF8E8E93);
+const Color _kIconGrayBg = Color(0xFFEEEEF0);
+const Color _kIconPurple = Color(0xFFAF52DE);
+const Color _kIconPurpleBg = Color(0xFFF3E8FF);
 
 class _TeamMembersSnapshot {
   final bool accessDenied;
@@ -129,8 +153,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadAppSettings() async {
-    final enabled =
-        await ReportPreferencesService.getSubgroupFiltersEnabled();
+    final enabled = await ReportPreferencesService.getSubgroupFiltersEnabled();
     if (!mounted) return;
     setState(() => _trailBalanceFiltersEnabled = enabled);
   }
@@ -169,47 +192,51 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final canManageCompanies = _canManageCompanies(user);
 
         return Scaffold(
-          backgroundColor: _kProfileBg,
+          backgroundColor: _kSettingsBg,
           body: Stack(
             children: [
               const _ProfileBackdrop(),
               SafeArea(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 36),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _userHeaderCard(context, user, svm),
-                      const SizedBox(height: 18),
+                      const SizedBox(height: 28),
+
+                      if (user.planStatus != null ||
+                          user.expiry != null ||
+                          user.subscription != null) ...[
+                        _iosSectionHeader('Subscription'),
+                        _iosPlanSection(user),
+                        const SizedBox(height: 28),
+                      ],
 
                       if (vm.companies.isNotEmpty) ...[
-                        _companySelectorAnimated(
+                        _iosSectionHeader('Company / Business'),
+                        _iosCompanySection(
                           context,
                           vm,
                           homeVM,
                           canManageCompanies: canManageCompanies,
                         ),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 28),
                       ],
 
-                      _syncCard(context, svm, vm),
-                      const SizedBox(height: 18),
+                      _iosSectionHeader('Sync'),
+                      _iosSyncSection(context, svm, vm),
+                      const SizedBox(height: 28),
 
-                      _localDataCard(context, vm),
-                      const SizedBox(height: 18),
+                      _iosSectionHeader('Local Data'),
+                      _iosLocalDataSection(context, vm),
+                      const SizedBox(height: 28),
 
-                      _planCards(user),
-                      const SizedBox(height: 18),
+                      _iosSectionHeader('Settings'),
+                      _iosSettingsAndTeamSection(context),
+                      const SizedBox(height: 28),
 
-                      _appSettingsCard(context),
-                      const SizedBox(height: 18),
-
-                      if (!_teamAccessDenied) ...[
-                        _teamMembersCard(context),
-                        const SizedBox(height: 18),
-                      ],
-
-                      _accountActions(context, vm),
+                      _iosDangerSection(context, vm),
                     ],
                   ),
                 ),
@@ -233,6 +260,489 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final name = user.fullName.trim();
     if (name.isNotEmpty) return name;
     return user.email.trim();
+  }
+
+  // ─────────────── iOS SECTION HELPERS ───────────────
+
+  Widget _iosSectionHeader(String label, {Widget? action}) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 16, right: 8, bottom: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: _kTextSecondary,
+                letterSpacing: 0.6,
+              ),
+            ),
+          ),
+          if (action != null) action,
+        ],
+      ),
+    );
+  }
+
+  Widget _iosCard(List<Widget> items) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Column(
+        children: [
+          for (int i = 0; i < items.length; i++) ...[
+            items[i],
+            if (i < items.length - 1)
+              const Divider(
+                height: 1,
+                thickness: 0.5,
+                indent: 58,
+                endIndent: 0,
+                color: _kDivider,
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _iosRow({
+    required IconData icon,
+    required Color iconBg,
+    required Color iconColor,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    bool showChevron = true,
+    VoidCallback? onTap,
+    bool enabled = true,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: iconBg,
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Icon(icon, color: iconColor, size: 18),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: enabled ? _kTextPrimary : _kTextSecondary,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: _kTextSecondary,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[const SizedBox(width: 8), trailing],
+              if (showChevron && onTap != null) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right, color: _kChevron, size: 20),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─────────────── PLAN SECTION ───────────────
+
+  Widget _iosPlanSection(UserModel user) {
+    final items = <Widget>[];
+
+    if (user.planStatus != null) {
+      items.add(
+        _iosRow(
+          icon: Icons.workspace_premium_rounded,
+          iconBg: _kIconYellowBg,
+          iconColor: _kIconYellow,
+          title: 'Plan Status',
+          trailing: Text(
+            user.planStatus!.statusText,
+            style: const TextStyle(color: _kTextSecondary, fontSize: 15),
+          ),
+          showChevron: false,
+        ),
+      );
+    }
+
+    if (user.expiry != null) {
+      items.add(
+        _iosRow(
+          icon: Icons.timer_outlined,
+          iconBg: _kIconOrangeBg,
+          iconColor: _kIconOrange,
+          title: 'Remaining Days',
+          trailing: Text(
+            '${user.expiry!.remainingDays} days',
+            style: const TextStyle(color: _kTextSecondary, fontSize: 15),
+          ),
+          showChevron: false,
+        ),
+      );
+    }
+
+    if (user.subscription != null) {
+      items.add(
+        _iosRow(
+          icon: Icons.calendar_month_rounded,
+          iconBg: _kIconBlueBg,
+          iconColor: _kIconBlue,
+          title: 'Subscription',
+          trailing: Text(
+            user.subscription!.planTitle,
+            style: const TextStyle(color: _kTextSecondary, fontSize: 15),
+          ),
+          showChevron: false,
+        ),
+      );
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+    return _iosCard(items);
+  }
+
+  // ─────────────── COMPANY SECTION ───────────────
+
+  Widget _iosCompanySection(
+    BuildContext context,
+    ProfileViewModel vm,
+    HomeViewModel homeVM, {
+    required bool canManageCompanies,
+  }) {
+    final selectedId = homeVM.selectedCompanyId;
+    final selected = selectedId == null
+        ? null
+        : vm.companies.firstWhere(
+            (c) => c.companyId == selectedId,
+            orElse: () => vm.companies.first,
+          );
+
+    return _iosCard([
+      _iosRow(
+        icon: Icons.business_center_rounded,
+        iconBg: _kIconBlueBg,
+        iconColor: _kIconBlue,
+        title: selected?.companyName ?? 'Select Company',
+        subtitle:
+            '${vm.companies.length} ${vm.companies.length == 1 ? 'company' : 'companies'} available',
+        onTap: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => _CompanyListScreen(
+                vm: vm,
+                homeVM: homeVM,
+                canManage: canManageCompanies,
+              ),
+            ),
+          );
+          if (!mounted) return;
+          setState(() {});
+        },
+      ),
+    ]);
+  }
+
+  // ─────────────── SYNC SECTION ───────────────
+
+  Widget _iosSyncSection(
+    BuildContext context,
+    SyncViewModel svm,
+    ProfileViewModel vm,
+  ) {
+    return Column(
+      children: [
+        _iosCard([
+          // Sync row (custom — needs pending chip + sync button)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: _kIconBlueBg,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: const Icon(
+                    Icons.sync_rounded,
+                    color: _kIconBlue,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Sync',
+                        style: TextStyle(fontSize: 16, color: _kTextPrimary),
+                      ),
+                      if (svm.lastSyncedTime != null)
+                        Text(
+                          'Last synced: ${_timeAgo(svm.lastSyncedTime!)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: _kTextSecondary,
+                          ),
+                        ),
+                      if (!svm.canSync)
+                        Text(
+                          svm.syncBlockReason,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: _kIconOrange,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                _pendingCountChip(svm),
+                const SizedBox(width: 8),
+                _pendingToggleButton(svm),
+                const SizedBox(width: 8),
+                _syncCapsule(svm),
+              ],
+            ),
+          ),
+
+          // Auto Sync row
+          _iosRow(
+            icon: Icons.schedule_rounded,
+            iconBg: _kIconGreenBg,
+            iconColor: _kIconGreen,
+            title: 'Auto Sync',
+            trailing: Text(
+              svm.labelForInterval,
+              style: const TextStyle(color: _kTextSecondary, fontSize: 15),
+            ),
+            onTap: svm.canSync ? () => _showAutoSyncSheet(context, svm) : null,
+            enabled: svm.canSync,
+          ),
+        ]),
+
+        // Syncing progress bar
+        if (svm.isSyncing) ...[
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: svm.syncProgress,
+              minHeight: 5,
+              color: _kProfileBlue,
+              backgroundColor: const Color(0xFFDCE7F8),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: svm.cancelSync,
+              child: const Text('Cancel'),
+            ),
+          ),
+        ],
+
+        // Pending batches panel
+        AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeInOut,
+          child: _showPendingBatches
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: _pendingBatchesPanel(context, svm),
+                )
+              : const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  // ─────────────── LOCAL DATA SECTION ───────────────
+
+  Widget _iosLocalDataSection(BuildContext context, ProfileViewModel vm) {
+    return _iosCard([
+      _iosRow(
+        icon: Icons.file_open_outlined,
+        iconBg: _kIconOrangeBg,
+        iconColor: _kIconOrange,
+        title: 'Import Database',
+        subtitle: 'Load a local SQLite file',
+        enabled: vm.canImport,
+        onTap: vm.canImport
+            ? () async {
+                final homeVM = context.read<HomeViewModel>();
+                final user = vm.loggedInUser;
+                final path = await FilePickerService.pickSqliteFile();
+                if (path == null || !context.mounted) return;
+                await homeVM.confirmAndImportDatabase(
+                  context: context,
+                  inputPath: path,
+                  user: user,
+                );
+              }
+            : null,
+      ),
+      _iosRow(
+        icon: Icons.ios_share_rounded,
+        iconBg: _kIconBlueBg,
+        iconColor: _kIconBlue,
+        title: vm.isExportingDatabase
+            ? 'Preparing…'
+            : 'Export & Share Database',
+        subtitle: 'Share via WhatsApp or any app',
+        trailing: vm.isExportingDatabase
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _kIconBlue,
+                ),
+              )
+            : null,
+        showChevron: !vm.isExportingDatabase,
+        onTap: vm.isExportingDatabase
+            ? null
+            : () async {
+                final error = await vm.exportAndShareDatabase();
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      error ??
+                          'Database ready to share via WhatsApp or any app.',
+                    ),
+                    backgroundColor: error == null
+                        ? AppColors.darkgreen
+                        : Colors.red,
+                  ),
+                );
+              },
+      ),
+    ]);
+  }
+
+  // ─────────────── SETTINGS + TEAM SECTION ───────────────
+
+  Widget _iosSettingsAndTeamSection(BuildContext context) {
+    final count = _teamMembers.length;
+    final teamSubtitle = _teamLoading
+        ? 'Refreshing team…'
+        : _teamError != null
+        ? _teamError!
+        : count == 0
+        ? (_canManageTeam
+              ? 'Tap to invite your first member'
+              : 'No team members yet')
+        : '$count active ${count == 1 ? 'member' : 'members'}';
+
+    final items = <Widget>[
+      _iosRow(
+        icon: Icons.tune_rounded,
+        iconBg: _kIconGrayBg,
+        iconColor: _kIconGray,
+        title: 'App Settings',
+        subtitle: _trailBalanceFiltersEnabled
+            ? 'Trail Balance opens filters before export'
+            : 'Trail Balance exports directly',
+        onTap: () => _showAppSettingsSheet(context),
+      ),
+    ];
+
+    if (!_teamAccessDenied) {
+      items.add(
+        _iosRow(
+          icon: Icons.groups_rounded,
+          iconBg: _kIconBlueBg,
+          iconColor: _kIconBlue,
+          title: 'Team Members',
+          subtitle: teamSubtitle,
+          trailing: count > 0
+              ? Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _kIconBlueBg,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _kIconBlue,
+                    ),
+                  ),
+                )
+              : null,
+          onTap: () async {
+            final vm = context.read<ProfileViewModel>();
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) =>
+                    _TeamMembersHubScreen(loggedInUser: vm.loggedInUser),
+              ),
+            );
+            if (!mounted) return;
+            await _loadTeamMembers(silent: true);
+          },
+        ),
+      );
+    }
+
+    return _iosCard(items);
+  }
+
+  // ─────────────── DANGER SECTION ───────────────
+
+  Widget _iosDangerSection(BuildContext context, ProfileViewModel vm) {
+    return _iosCard([
+      _iosRow(
+        icon: Icons.delete_forever_rounded,
+        iconBg: _kIconRedBg,
+        iconColor: _kIconRed,
+        title: 'Delete Account',
+        subtitle: 'Permanently delete your account and data',
+        onTap: () => _confirmDeleteAccount(context, vm),
+      ),
+    ]);
   }
 
   Widget _infoPill({
@@ -306,147 +816,261 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   // ───────────────────────── USER HEADER ─────────────────────────
 
-  Widget _userHeaderCard(BuildContext context, UserModel user, SyncViewModel svm) {
+  Widget _userHeaderCard(
+    BuildContext context,
+    UserModel user,
+    SyncViewModel svm,
+  ) {
     final roleLabel = _profileRoleLabel(user);
     final statusText = user.planStatus?.statusText.trim();
+    final initials = _profileName(user)
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((e) => e.isNotEmpty)
+        .take(2)
+        .map((e) => e[0].toUpperCase())
+        .join();
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [_kProfileBlue, _kProfileBlueDark],
+          colors: [Color(0xFF1E72C8), _kProfileBlue, Color(0xFF0B3E7A)],
+          stops: [0.0, 0.52, 1.0],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.all(Radius.circular(28)),
+        borderRadius: BorderRadius.all(Radius.circular(26)),
         boxShadow: [
           BoxShadow(
-            color: Color(0x301862A3),
-            blurRadius: 28,
-            offset: Offset(0, 16),
+            color: Color(0x441862A3),
+            blurRadius: 32,
+            spreadRadius: -4,
+            offset: Offset(0, 18),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(26),
+        child: Stack(
           children: [
-            Align(
-              alignment: Alignment.topRight,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () => _smartLogout(context),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 2,
-                      vertical: 2,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.logout_rounded,
-                          size: 16,
-                          color: Colors.white.withValues(alpha: 0.92),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Logout',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.92),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+            // Decorative background blobs
+            Positioned(
+              top: -36,
+              right: -28,
+              child: Container(
+                width: 140,
+                height: 140,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.07),
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(22),
-                    color: Colors.white.withValues(alpha: 0.16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.16),
-                    ),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: user.imageUrl.isNotEmpty
-                        ? Image.network(user.imageUrl, fit: BoxFit.cover)
-                        : Center(
-                            child: Text(
-                              _profileName(user)
-                                  .trim()
-                                  .split(RegExp(r'\s+'))
-                                  .where((e) => e.isNotEmpty)
-                                  .take(2)
-                                  .map((e) => e[0].toUpperCase())
-                                  .join(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w800,
+            Positioned(
+              bottom: -50,
+              left: -30,
+              child: Container(
+                width: 180,
+                height: 180,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 38,
+              right: 82,
+              child: Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.04),
+                ),
+              ),
+            ),
+
+            // Content
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Glassmorphism logout pill — top right
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      onTap: () => _smartLogout(context),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.logout_rounded,
+                              size: 11,
+                              color: Colors.white.withValues(alpha: 0.92),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Logout',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.92),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
                               ),
                             ),
-                          ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 8),
+
+                  // Avatar + name/email row
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        _profileName(user),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 21,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        user.email,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.82),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          _infoPill(
-                            icon: Icons.verified_user_outlined,
-                            text: roleLabel,
+                      // Avatar with white border ring
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(17),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.55),
+                            width: 2,
                           ),
-                          if (statusText != null && statusText.isNotEmpty)
-                            _infoPill(
-                              icon: Icons.workspace_premium_outlined,
-                              text: statusText,
+                        ),
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            gradient: LinearGradient(
+                              colors: [
+                                Colors.white.withValues(alpha: 0.24),
+                                Colors.white.withValues(alpha: 0.10),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
                             ),
-                        ],
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: user.imageUrl.isNotEmpty
+                                ? Image.network(
+                                    user.imageUrl,
+                                    fit: BoxFit.cover,
+                                  )
+                                : Center(
+                                    child: Text(
+                                      initials,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 17,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: 1,
+                                      ),
+                                    ),
+                                  ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Name + email
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _profileName(user),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.mail_outline_rounded,
+                                  size: 11,
+                                  color: Colors.white.withValues(alpha: 0.68),
+                                ),
+                                const SizedBox(width: 4),
+                                Expanded(
+                                  child: Text(
+                                    user.email,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.80,
+                                      ),
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 10),
+
+                  // Gradient hairline divider
+                  Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          Colors.white.withValues(alpha: 0.20),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Role + plan pills
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _infoPill(
+                        icon: Icons.verified_user_outlined,
+                        text: roleLabel,
+                      ),
+                      if (statusText != null && statusText.isNotEmpty)
+                        _infoPill(
+                          icon: Icons.workspace_premium_outlined,
+                          text: statusText,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -833,24 +1457,250 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ignore: unused_element
   void _showAutoSyncSheet(BuildContext context, SyncViewModel svm) {
+    // Per-interval UI metadata — display only, no logic change
+    const meta =
+        <
+          AutoSyncInterval,
+          ({IconData icon, Color bg, Color fg, String label, String sub})
+        >{
+          AutoSyncInterval.off: (
+            icon: Icons.sync_disabled_rounded,
+            bg: _kIconRedBg,
+            fg: _kIconRed,
+            label: 'Off',
+            sub: 'Manual sync only',
+          ),
+          AutoSyncInterval.sec30: (
+            icon: Icons.bolt_rounded,
+            bg: _kIconOrangeBg,
+            fg: _kIconOrange,
+            label: 'Every 30 seconds',
+            sub: 'High frequency',
+          ),
+          AutoSyncInterval.min2: (
+            icon: Icons.schedule_rounded,
+            bg: _kIconGreenBg,
+            fg: _kIconGreen,
+            label: 'Every 2 minutes',
+            sub: 'Recommended',
+          ),
+          AutoSyncInterval.min5: (
+            icon: Icons.av_timer_rounded,
+            bg: _kIconBlueBg,
+            fg: _kIconBlue,
+            label: 'Every 5 minutes',
+            sub: 'Balanced',
+          ),
+          AutoSyncInterval.min20: (
+            icon: Icons.battery_saver_rounded,
+            bg: _kIconGrayBg,
+            fg: _kIconGray,
+            label: 'Every 20 minutes',
+            sub: 'Battery saver',
+          ),
+        };
+
     showModalBottomSheet(
       context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: AutoSyncInterval.values.map((interval) {
-            return ListTile(
-              title: Text(interval.name),
-              onTap: () {
-                svm.setAutoSyncInterval(interval);
-                Navigator.pop(context);
-              },
-            );
-          }).toList(),
-        ),
-      ),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: _kSettingsBg,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Drag handle
+                  const SizedBox(height: 12),
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: _kDivider,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Header row
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [_kProfileBlue, _kProfileBlueDark],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: const Icon(
+                            Icons.schedule_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Auto Sync',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: _kTextPrimary,
+                                ),
+                              ),
+                              SizedBox(height: 3),
+                              Text(
+                                'Choose how often to sync your data',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: _kTextSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Options card
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      clipBehavior: Clip.hardEdge,
+                      child: Column(
+                        children: () {
+                          final intervals = AutoSyncInterval.values;
+                          final rows = <Widget>[];
+                          for (int i = 0; i < intervals.length; i++) {
+                            final interval = intervals[i];
+                            final m = meta[interval]!;
+                            final isActive = svm.autoSyncInterval == interval;
+                            rows.add(
+                              Material(
+                                color: isActive
+                                    ? const Color(0xFFF0F8FF)
+                                    : Colors.white,
+                                child: InkWell(
+                                  onTap: () {
+                                    svm.setAutoSyncInterval(interval);
+                                    Navigator.pop(context);
+                                  },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 13,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 36,
+                                          height: 36,
+                                          decoration: BoxDecoration(
+                                            color: m.bg,
+                                            borderRadius: BorderRadius.circular(
+                                              9,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            m.icon,
+                                            color: m.fg,
+                                            size: 19,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                m.label,
+                                                style: TextStyle(
+                                                  fontSize: 15.5,
+                                                  fontWeight: isActive
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w500,
+                                                  color: isActive
+                                                      ? _kProfileBlue
+                                                      : _kTextPrimary,
+                                                ),
+                                              ),
+                                              Text(
+                                                m.sub,
+                                                style: const TextStyle(
+                                                  fontSize: 12.5,
+                                                  color: _kTextSecondary,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (isActive)
+                                          const Icon(
+                                            Icons.check_circle_rounded,
+                                            color: _kIconBlue,
+                                            size: 20,
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                            if (i < intervals.length - 1) {
+                              rows.add(
+                                const Divider(
+                                  height: 1,
+                                  thickness: 0.5,
+                                  indent: 66,
+                                  endIndent: 0,
+                                  color: _kDivider,
+                                ),
+                              );
+                            }
+                          }
+                          return rows;
+                        }(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1286,9 +2136,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _companySelectorAnimated(
     BuildContext context,
     ProfileViewModel vm,
-    HomeViewModel homeVM,
-    {required bool canManageCompanies}
-  ) {
+    HomeViewModel homeVM, {
+    required bool canManageCompanies,
+  }) {
     final selectedId = homeVM.selectedCompanyId;
     final selected = selectedId == null
         ? null
@@ -1577,7 +2427,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (vm.companies.length >= 2) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('You already have 2 companies. New companies cannot be added.'),
+          content: Text(
+            'You already have 2 companies. New companies cannot be added.',
+          ),
           backgroundColor: Colors.red,
         ),
       );
@@ -1644,7 +2496,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     final payload = await _showCompanyEditorSheet(
       context,
-      title: 'Edit Company',
+      title: 'Edit Company / Business',
       actionLabel: 'Save Changes',
       initialName: nameController.text,
       initialRemarks: remarksController.text,
@@ -1686,28 +2538,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (sheetContext) {
         return Padding(
           padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            top: 24,
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom +
-                MediaQuery.of(sheetContext).padding.bottom +
-                16,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
           ),
           child: Container(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x241862A3),
-                  blurRadius: 32,
-                  offset: Offset(0, 18),
-                ),
-              ],
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
             ),
             child: SingleChildScrollView(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  16,
+                  18,
+                  MediaQuery.of(sheetContext).padding.bottom + 18,
+                ),
                 child: Form(
                   key: formKey,
                   child: Column(
@@ -1821,13 +2669,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                               onPressed: () {
                                 if (!formKey.currentState!.validate()) return;
-                                Navigator.pop(
-                                  sheetContext,
-                                  (
-                                    nameController.text.trim(),
-                                    remarksController.text.trim(),
-                                  ),
-                                );
+                                Navigator.pop(sheetContext, (
+                                  nameController.text.trim(),
+                                  remarksController.text.trim(),
+                                ));
                               },
                               child: Text(
                                 actionLabel,
@@ -2125,7 +2970,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     children: [
                       if (count > 0)
                         SizedBox(
-                          width: count == 1 ? 28 : count == 2 ? 46 : 64,
+                          width: count == 1
+                              ? 28
+                              : count == 2
+                              ? 46
+                              : 64,
                           height: 28,
                           child: Stack(
                             children: List.generate(
@@ -2143,17 +2992,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       width: 2,
                                     ),
                                   ),
-                                    child: Center(
-                                      child: Text(
-                                        ((_teamMembers[index].fullName.trim().isNotEmpty
-                                                    ? _teamMembers[index]
-                                                        .fullName
+                                  child: Center(
+                                    child: Text(
+                                      ((_teamMembers[index].fullName
+                                                      .trim()
+                                                      .isNotEmpty
+                                                  ? _teamMembers[index].fullName
                                                         .trim()
-                                                    : _teamMembers[index]
-                                                        .email
+                                                  : _teamMembers[index].email
                                                         .trim())
-                                                .substring(0, 1))
-                                            .toUpperCase(),
+                                              .substring(0, 1))
+                                          .toUpperCase(),
                                       style: const TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w800,
@@ -2272,6 +3121,763 @@ class _ProfileScreenState extends State<ProfileScreen> {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  COMPANY LIST SCREEN
+// ═══════════════════════════════════════════════════════════
+
+class _CompanyListScreen extends StatefulWidget {
+  final ProfileViewModel vm;
+  final HomeViewModel homeVM;
+  final bool canManage;
+
+  const _CompanyListScreen({
+    required this.vm,
+    required this.homeVM,
+    required this.canManage,
+  });
+
+  @override
+  State<_CompanyListScreen> createState() => _CompanyListScreenState();
+}
+
+class _CompanyListScreenState extends State<_CompanyListScreen> {
+  bool _canManageCompanies() {
+    final roles = widget.vm.loggedInUser.roleCodes
+        .map((e) => e.trim().toUpperCase())
+        .where((e) => e.isNotEmpty)
+        .toSet();
+    if (roles.contains('VIEW') ||
+        roles.contains('VIEWER') ||
+        roles.contains('READONLY') ||
+        roles.contains('READ_ONLY')) {
+      return false;
+    }
+    return true;
+  }
+
+  Future<void> _addCompany() async {
+    if (!_canManageCompanies()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Viewer role has read-only access to companies'),
+        ),
+      );
+      return;
+    }
+    if (widget.vm.companies.length >= 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'You already have 2 companies. New companies cannot be added.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final payload = await _showCompanyEditorSheet(
+      context,
+      title: 'Add Company',
+      actionLabel: 'Add Company',
+      nameHint: 'e.g. Mahfooz Accounts',
+    );
+
+    if (payload == null || !mounted) return;
+    final normalizedName = payload.$1.trim().toLowerCase();
+    final exists = widget.vm.companies.any(
+      (c) => (c.companyName ?? '').trim().toLowerCase() == normalizedName,
+    );
+    if (exists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Company name already exists.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    final error = await widget.vm.addCompany(
+      context: context,
+      name: payload.$1,
+      remarks: payload.$2,
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'Company added successfully.'),
+        backgroundColor: error == null ? AppColors.darkgreen : Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _editCompany(CompanyTableData company) async {
+    if (!_canManageCompanies()) return;
+    final payload = await _showCompanyEditorSheet(
+      context,
+      title: 'Edit Company / Business',
+      actionLabel: 'Save Changes',
+      initialName: company.companyName ?? '',
+      initialRemarks: company.remarks ?? '',
+    );
+    if (payload == null || !mounted) return;
+    final error = await widget.vm.updateCompany(
+      context: context,
+      companyId: company.companyId,
+      name: payload.$1,
+      remarks: payload.$2,
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'Company updated.'),
+        backgroundColor: error == null ? AppColors.darkgreen : Colors.red,
+      ),
+    );
+  }
+
+  Future<void> _deleteCompany(CompanyTableData company) async {
+    if (!_canManageCompanies()) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Company'),
+        content: Text(
+          "Delete '${company.companyName ?? 'this company'}' (ID: ${company.companyId})?\n\nAll company transactions and accounts will be removed.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final error = await widget.vm.deleteCompany(
+      context: context,
+      companyId: company.companyId,
+    );
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'Company deleted.'),
+        backgroundColor: error == null ? AppColors.darkgreen : Colors.red,
+      ),
+    );
+  }
+
+  Future<(String, String)?> _showCompanyEditorSheet(
+    BuildContext context, {
+    required String title,
+    required String actionLabel,
+    String initialName = '',
+    String initialRemarks = '',
+    String? nameHint,
+  }) async {
+    final nameController = TextEditingController(text: initialName);
+    final remarksController = TextEditingController(text: initialRemarks);
+    final formKey = GlobalKey<FormState>();
+
+    return showModalBottomSheet<(String, String)>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
+            ),
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  18,
+                  16,
+                  18,
+                  MediaQuery.of(sheetContext).padding.bottom + 18,
+                ),
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 44,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFBFD7F3),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 56,
+                            height: 56,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [_kProfileBlue, _kProfileBlueDark],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(
+                              Icons.business_center_rounded,
+                              color: Colors.white,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                const Text(
+                                  'Create or update a company space.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    height: 1.45,
+                                    color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      TextFormField(
+                        controller: nameController,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'Required' : null,
+                        decoration: InputDecoration(
+                          labelText: 'Company Name',
+                          hintText: nameHint ?? 'Enter company name',
+                          prefixIcon: const Icon(
+                            Icons.apartment_rounded,
+                            color: _kProfileBlue,
+                            size: 20,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FBFF),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFDCE7F8),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFDCE7F8),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: _kProfileBlue,
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: remarksController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          labelText: 'Remarks',
+                          hintText: 'Optional notes',
+                          prefixIcon: const Icon(
+                            Icons.edit_note_rounded,
+                            color: _kProfileBlue,
+                            size: 20,
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FBFF),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 16,
+                          ),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFDCE7F8),
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFDCE7F8),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(18),
+                            borderSide: const BorderSide(
+                              color: _kProfileBlue,
+                              width: 1.4,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xFF475569),
+                                side: const BorderSide(
+                                  color: Color(0xFFDCE7F8),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              onPressed: () => Navigator.pop(sheetContext),
+                              child: const Text(
+                                'Cancel',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: _kProfileBlue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                              onPressed: () {
+                                if (!formKey.currentState!.validate()) return;
+                                Navigator.pop(sheetContext, (
+                                  nameController.text.trim(),
+                                  remarksController.text.trim(),
+                                ));
+                              },
+                              child: Text(
+                                actionLabel,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final companies = widget.vm.companies;
+    final selectedId = widget.homeVM.selectedCompanyId;
+
+    return Scaffold(
+      backgroundColor: _kSettingsBg,
+      body: Stack(
+        children: [
+          const _ProfileBackdrop(),
+          SafeArea(
+            child: Column(
+              children: [
+                // ── Custom AppBar ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 6, 12, 0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 18,
+                          color: _kIconBlue,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          'Company / Business',
+                          style: TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w700,
+                            color: _kTextPrimary,
+                          ),
+                        ),
+                      ),
+                      if (widget.canManage)
+                        TextButton.icon(
+                          onPressed: _addCompany,
+                          icon: const Icon(
+                            Icons.add_business_outlined,
+                            size: 18,
+                            color: _kIconBlue,
+                          ),
+                          label: const Text(
+                            'Add',
+                            style: TextStyle(
+                              color: _kIconBlue,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+
+                // ── Scrollable content ──
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 36),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (companies.isEmpty)
+                          _buildEmptyState()
+                        else ...[
+                          // Section label
+                          Padding(
+                            padding: const EdgeInsets.only(left: 16, bottom: 8),
+                            child: Text(
+                              '${companies.length} ${companies.length == 1 ? 'WORKSPACE' : 'WORKSPACES'}',
+                              style: const TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: _kTextSecondary,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ),
+
+                          // Company list card
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            clipBehavior: Clip.hardEdge,
+                            child: Column(
+                              children: [
+                                for (int i = 0; i < companies.length; i++) ...[
+                                  _CompanyRow(
+                                    company: companies[i],
+                                    isSelected:
+                                        companies[i].companyId == selectedId,
+                                    canManage: widget.canManage,
+                                    onTap: () async {
+                                      final messenger = ScaffoldMessenger.of(
+                                        context,
+                                      );
+                                      final name =
+                                          companies[i].companyName ?? 'Company';
+                                      await widget.homeVM.setCompany(
+                                        companies[i].companyId,
+                                      );
+                                      if (!mounted) return;
+                                      setState(() {});
+                                      messenger.showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            '$name is now the active workspace.',
+                                          ),
+                                          backgroundColor: AppColors.darkgreen,
+                                        ),
+                                      );
+                                    },
+                                    onEdit: () => _editCompany(companies[i]),
+                                    onDelete: () =>
+                                        _deleteCompany(companies[i]),
+                                  ),
+                                  if (i < companies.length - 1)
+                                    const Divider(
+                                      height: 1,
+                                      thickness: 0.5,
+                                      indent: 58,
+                                      endIndent: 0,
+                                      color: _kDivider,
+                                    ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: _kIconBlueBg,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(
+              Icons.business_center_rounded,
+              color: _kIconBlue,
+              size: 32,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'No companies yet',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: _kTextPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Tap Add to create your first company.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: _kTextSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Single company row used inside _CompanyListScreen
+class _CompanyRow extends StatelessWidget {
+  final CompanyTableData company;
+  final bool isSelected;
+  final bool canManage;
+  final VoidCallback onTap;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _CompanyRow({
+    required this.company,
+    required this.isSelected,
+    required this.canManage,
+    required this.onTap,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isSelected ? const Color(0xFFF0F8FF) : Colors.white,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              // Icon box
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: isSelected
+                      ? const LinearGradient(
+                          colors: [_kProfileBlue, _kProfileBlueDark],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: isSelected ? null : _kIconGrayBg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  isSelected ? Icons.business_rounded : Icons.apartment_rounded,
+                  color: isSelected ? Colors.white : _kIconGray,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 14),
+
+              // Name + status
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      company.companyName ?? 'Unnamed',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: isSelected ? _kProfileBlue : _kTextPrimary,
+                        fontWeight: isSelected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (isSelected) ...[
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              color: _kIconGreen,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                        ],
+                        Text(
+                          isSelected
+                              ? 'Active workspace'
+                              : 'Tap to switch workspace',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: isSelected ? _kIconGreen : _kTextSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Active checkmark
+              if (isSelected)
+                const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(
+                    Icons.check_circle_rounded,
+                    color: _kIconBlue,
+                    size: 20,
+                  ),
+                ),
+
+              // Manage actions
+              if (canManage)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _ActionPill(
+                      icon: Icons.edit_outlined,
+                      color: _kTextSecondary,
+                      tooltip: 'Edit',
+                      onTap: onEdit,
+                    ),
+                    const SizedBox(width: 6),
+                    _ActionPill(
+                      icon: Icons.delete_outline,
+                      color: _kIconRed,
+                      tooltip: 'Delete',
+                      onTap: onDelete,
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Small tappable icon button used in _CompanyRow
+class _ActionPill extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _ActionPill({
+    required this.icon,
+    required this.color,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 17, color: color),
+        ),
       ),
     );
   }
@@ -2517,26 +4123,58 @@ class _TeamMembersHubScreenState extends State<_TeamMembersHubScreen> {
 
   Widget _buildOverview() {
     if (_loading) {
-      return const SizedBox(
-        height: 220,
-        child: Center(child: CircularProgressIndicator()),
+      return Container(
+        height: 120,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 16,
+              offset: Offset(0, 4),
+            ),
+          ],
+        ),
+        child: const Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_error != null) {
       return Container(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: const Color(0xFFFECACA)),
         ),
-        child: Text(
-          _error!,
-          style: const TextStyle(
-            color: Colors.red,
-            fontWeight: FontWeight.w600,
-          ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _kIconRedBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: _kIconRed,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                _error!,
+                style: const TextStyle(
+                  color: _kIconRed,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -2546,16 +4184,15 @@ class _TeamMembersHubScreenState extends State<_TeamMembersHubScreen> {
         : widget.loggedInUser.fullName;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 22),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: const Color(0xFFDCE7F8)),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x140F172A),
-            blurRadius: 26,
-            offset: Offset(0, 12),
+            color: Color(0x0A000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -2575,7 +4212,10 @@ class _TeamMembersHubScreenState extends State<_TeamMembersHubScreen> {
 
           return Column(
             children: [
-              _OwnerTreeCard(title: _displayText(ownerName)),
+              _OwnerTreeCard(
+                title: _displayText(ownerName),
+                email: widget.loggedInUser.email.trim(),
+              ),
               if (_members.isNotEmpty) const _TreeConnector(height: 22),
               if (_members.isEmpty)
                 Container(
@@ -2583,9 +4223,9 @@ class _TeamMembersHubScreenState extends State<_TeamMembersHubScreen> {
                   constraints: const BoxConstraints(minHeight: 72),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(color: const Color(0xFFDCE7F8)),
+                    color: _kSettingsBg,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _kDivider),
                   ),
                   child: const Center(
                     child: Text(
@@ -2594,7 +4234,7 @@ class _TeamMembersHubScreenState extends State<_TeamMembersHubScreen> {
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF64748B),
+                        color: _kTextSecondary,
                       ),
                     ),
                   ),
@@ -2672,159 +4312,281 @@ class _TeamMembersHubScreenState extends State<_TeamMembersHubScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF4F7FB),
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text(
-          'Team Members',
-          style: TextStyle(
-            color: Color(0xFF0F172A),
-            fontWeight: FontWeight.w800,
-          ),
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 2),
+      child: Text(
+        text.toUpperCase(),
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: _kTextSecondary,
+          letterSpacing: 0.6,
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loading ? null : () => _refresh(),
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF0F172A)),
-          ),
-          if (_canManage)
-            Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0A6B1D),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: IconButton(
-                  tooltip: 'Add team member',
-                  onPressed: _openAddMember,
-                  icon: const Icon(Icons.add_rounded, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildDirectory() {
+    if (_accessDenied) {
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _kIconGrayBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.lock_outline_rounded,
+                color: _kIconGray,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Team members are not available for this account.',
+                style: TextStyle(
+                  color: _kTextSecondary,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 13,
                 ),
               ),
             ),
+          ],
+        ),
+      );
+    }
+
+    if (_loading) {
+      return const SizedBox(
+        height: 80,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFFECACA)),
+        ),
+        child: Text(
+          _error!,
+          style: const TextStyle(
+            color: _kIconRed,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
+        ),
+      );
+    }
+
+    if (_members.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: _kIconBlueBg,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(
+                Icons.people_outline_rounded,
+                color: _kIconBlue,
+                size: 26,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _canManage
+                  ? 'No team members yet.\nTap Add to invite your first member.'
+                  : 'No team members assigned yet.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: _kTextSecondary,
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // iOS-style white card containing all members as a list
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x08000000),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
         ],
       ),
-      body: SafeArea(
-        top: false,
-        child: RefreshIndicator(
-          color: AppColors.darkgreen,
-          onRefresh: _refresh,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            children: [
-              _buildOverview(),
-              const SizedBox(height: 18),
-              Container(
-                padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFFDCE7F8)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Directory',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
+      child: Column(
+        children: List.generate(_members.length, (index) {
+          final member = _members[index];
+          final isLast = index == _members.length - 1;
+          return _TeamMemberDirectoryCard(
+            member: member,
+            initials: _initials(member),
+            displayName: _displayName(member),
+            statusTint: _statusTint(member.status),
+            statusColor: _statusColor(member.status),
+            canManage: _canManage,
+            isHighlighted: _selectedMemberUserId == member.userId,
+            showDivider: !isLast,
+            onEdit: () => _openEditMember(member),
+            onDelete: () => _deleteMember(member),
+          );
+        }),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kSettingsBg,
+      body: Stack(
+        children: [
+          const _ProfileBackdrop(),
+          SafeArea(
+            child: Column(
+              children: [
+                // ── Custom header ──
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 8, 16, 4),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          size: 20,
+                          color: _kTextPrimary,
+                        ),
+                      ),
+                      const Expanded(
+                        child: Text(
+                          'Team Members',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: _kTextPrimary,
+                            letterSpacing: -0.3,
                           ),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
+                      ),
+                      GestureDetector(
+                        onTap: _loading ? null : () => _refresh(),
+                        child: Container(
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(14),
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
                           ),
-                          child: Text(
-                            '${_members.length} total',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF475569),
+                          child: Icon(
+                            Icons.refresh_rounded,
+                            size: 20,
+                            color: _loading ? _kChevron : _kTextPrimary,
+                          ),
+                        ),
+                      ),
+                      if (_canManage) ...[
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _openAddMember,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1E72C8), _kProfileBlue],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.person_add_rounded,
+                                  size: 15,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  'Add',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 14),
-                    if (_accessDenied)
-                      const Text(
-                        'Team members are not available for this account.',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    else if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 20),
-                        child: Center(child: CircularProgressIndicator()),
-                      )
-                    else if (_error != null)
-                      Text(
-                        _error!,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      )
-                    else if (_members.isEmpty)
-                      Container(
-                        padding: const EdgeInsets.all(18),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: Text(
-                          _canManage
-                              ? 'No team members yet. Use the + button to add your first member.'
-                              : 'No team members assigned yet.',
-                          style: const TextStyle(
-                            color: Color(0xFF64748B),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      )
-                    else
-                      ..._members.map((member) {
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: _TeamMemberDirectoryCard(
-                            member: member,
-                            initials: _initials(member),
-                            displayName: _displayName(member),
-                            statusTint: _statusTint(member.status),
-                            statusColor: _statusColor(member.status),
-                            canManage: _canManage,
-                            isHighlighted:
-                                _selectedMemberUserId == member.userId,
-                            onEdit: () => _openEditMember(member),
-                            onDelete: () => _deleteMember(member),
-                          ),
-                        );
-                      }),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+
+                // ── Scrollable body ──
+                Expanded(
+                  child: RefreshIndicator(
+                    color: _kProfileBlue,
+                    onRefresh: _refresh,
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      children: [
+                        if (!_accessDenied) ...[
+                          _sectionLabel('Organization'),
+                          const SizedBox(height: 8),
+                          _buildOverview(),
+                          const SizedBox(height: 24),
+                        ],
+                        _sectionLabel(
+                          _members.isEmpty
+                              ? 'Directory'
+                              : 'Directory · ${_members.length}',
+                        ),
+                        const SizedBox(height: 8),
+                        _buildDirectory(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -2946,48 +4708,69 @@ class _TreeConnector extends StatelessWidget {
 
 class _OwnerTreeCard extends StatelessWidget {
   final String title;
+  final String email;
 
-  const _OwnerTreeCard({required this.title});
+  const _OwnerTreeCard({required this.title, required this.email});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 132,
-      height: 52,
-      child: Container(
-        width: 132,
-        height: 52,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFFF8FBFF), Color(0xFFEEF6FF)],
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFDCE7F8)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x120F172A),
-              blurRadius: 12,
-              offset: Offset(0, 5),
-            ),
-          ],
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1E72C8), _kProfileBlue],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x301862A3),
+            blurRadius: 12,
+            offset: Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.person_rounded, color: Colors.white, size: 18),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+          if (email.isNotEmpty) ...[
+            const SizedBox(height: 2),
             Text(
-              title,
+              email,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w400,
+                color: Colors.white.withValues(alpha: 0.65),
               ),
             ),
           ],
-        ),
+          const SizedBox(height: 2),
+          Text(
+            'Owner',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3001,6 +4784,7 @@ class _TeamMemberDirectoryCard extends StatelessWidget {
   final Color statusColor;
   final bool canManage;
   final bool isHighlighted;
+  final bool showDivider;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -3012,6 +4796,7 @@ class _TeamMemberDirectoryCard extends StatelessWidget {
     required this.statusColor,
     required this.canManage,
     required this.isHighlighted,
+    required this.showDivider,
     required this.onEdit,
     required this.onDelete,
   });
@@ -3038,136 +4823,175 @@ class _TeamMemberDirectoryCard extends StatelessWidget {
               .where((part) => part.isNotEmpty)
               .map((part) => part[0].toUpperCase() + part.substring(1))
               .join(' ');
-    final emailLabel = member.email.trim().isEmpty
-        ? member.email
-        : member.email.trim()[0].toUpperCase() +
-              member.email.trim().substring(1);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: isHighlighted
-            ? const Color(0xFFEFF6FF)
-            : const Color(0xFFF8FBFF),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isHighlighted
-              ? const Color(0xFF60A5FA)
-              : const Color(0xFFDCE7F8),
-          width: isHighlighted ? 1.5 : 1,
-        ),
-        boxShadow: isHighlighted
-            ? const [
-                BoxShadow(
-                  color: Color(0x143B82F6),
-                  blurRadius: 14,
-                  offset: Offset(0, 6),
+    return Column(
+      children: [
+        Container(
+          color: isHighlighted ? const Color(0xFFF0F8FF) : Colors.transparent,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+            child: Row(
+              children: [
+                // Avatar circle
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E72C8), _kProfileBlue],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
                 ),
-              ]
-            : null,
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: const Color(0xFFDBEAFE),
-          child: Text(
-            initials,
-            style: const TextStyle(
-              color: Color(0xFF2563EB),
-              fontWeight: FontWeight.w800,
+                const SizedBox(width: 12),
+
+                // Name + subtitle row
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _kTextPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        member.email.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          color: _kTextSecondary,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 7,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusTint,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              statusLabel,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: statusColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              roleLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: _kTextSecondary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Actions
+                if (canManage) ...[
+                  IconButton(
+                    onPressed: onEdit,
+                    icon: const Icon(
+                      Icons.edit_outlined,
+                      size: 18,
+                      color: _kIconBlue,
+                    ),
+                    tooltip: 'Edit',
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
+                  ),
+                  IconButton(
+                    onPressed: onDelete,
+                    icon: const Icon(
+                      Icons.delete_outline_rounded,
+                      size: 18,
+                      color: _kIconRed,
+                    ),
+                    tooltip: 'Delete',
+                    padding: const EdgeInsets.all(8),
+                    constraints: const BoxConstraints(),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
-        title: Text(
-          displayName,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 14.5,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
+        if (showDivider)
+          Padding(
+            padding: const EdgeInsets.only(left: 68),
+            child: Divider(height: 1, thickness: 1, color: _kDivider),
           ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                emailLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF475569),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusTint,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: statusColor,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      roleLabel,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1D4ED8),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        trailing: canManage
-            ? PopupMenuButton<String>(
-                onSelected: (value) {
-                  if (value == 'edit') {
-                    onEdit();
-                  } else if (value == 'delete') {
-                    onDelete();
-                  }
-                },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'edit', child: Text('Edit')),
-                  PopupMenuItem(value: 'delete', child: Text('Delete')),
-                ],
-              )
-            : null,
-      ),
+      ],
     );
   }
+}
+
+InputDecoration _sheetInput(
+  String label, {
+  IconData? icon,
+  String? helper,
+  Widget? suffix,
+}) {
+  return InputDecoration(
+    labelText: label,
+    helperText: helper,
+    helperMaxLines: 2,
+    prefixIcon: icon != null ? Icon(icon, size: 18, color: _kIconBlue) : null,
+    suffixIcon: suffix,
+    filled: true,
+    fillColor: Colors.white,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: _kDivider),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: _kDivider),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: const BorderSide(color: _kIconBlue, width: 1.5),
+    ),
+    labelStyle: const TextStyle(color: _kTextSecondary),
+  );
 }
 
 class _AddTeamUserSheet extends StatefulWidget {
@@ -3296,42 +5120,111 @@ class _AddTeamUserSheetState extends State<_AddTeamUserSheet> {
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          color: _kSettingsBg,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
         ),
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+            padding: EdgeInsets.fromLTRB(
+              18,
+              0,
+              18,
+              MediaQuery.of(context).padding.bottom + 18,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Drag handle
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _kChevron,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Header
                 Row(
                   children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1E72C8), _kProfileBlue],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.person_add_alt_1_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
                     const Expanded(
-                      child: Text(
-                        "Add Team Member",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Add Team Member',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: _kTextPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Create a new team account',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: _kTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _isSubmitting
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: _kTextSecondary,
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: _isSubmitting
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 20),
+
                 TextField(
                   controller: _nameCtrl,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: "Full name",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Full name',
+                    icon: Icons.person_outline_rounded,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -3339,9 +5232,9 @@ class _AddTeamUserSheetState extends State<_AddTeamUserSheet> {
                   controller: _emailCtrl,
                   keyboardType: TextInputType.emailAddress,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: "Email",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Email',
+                    icon: Icons.mail_outline_rounded,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -3349,9 +5242,9 @@ class _AddTeamUserSheetState extends State<_AddTeamUserSheet> {
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: "Phone (optional)",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Phone (optional)',
+                    icon: Icons.phone_outlined,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -3368,11 +5261,11 @@ class _AddTeamUserSheetState extends State<_AddTeamUserSheet> {
                   onChanged: _isSubmitting || _rolesLoading || _roles.isEmpty
                       ? null
                       : (v) => setState(() => _roleId = v),
-                  decoration: const InputDecoration(
-                    labelText: "Role",
-                    helperText:
-                        "Loaded from server roles. If unavailable, backend default role will be used.",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Role',
+                    icon: Icons.badge_outlined,
+                    helper:
+                        'Loaded from server roles. If unavailable, backend default role will be used.',
                   ),
                 ),
                 if (_rolesLoading) ...[
@@ -3391,16 +5284,17 @@ class _AddTeamUserSheetState extends State<_AddTeamUserSheet> {
                   controller: _passwordCtrl,
                   obscureText: _obscurePassword,
                   textInputAction: TextInputAction.next,
-                  decoration: InputDecoration(
-                    labelText: "Temporary password",
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
+                  decoration: _sheetInput(
+                    'Temporary password',
+                    icon: Icons.lock_outline_rounded,
+                    suffix: IconButton(
                       onPressed: () =>
                           setState(() => _obscurePassword = !_obscurePassword),
                       icon: Icon(
                         _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 18,
                       ),
                     ),
                   ),
@@ -3409,37 +5303,104 @@ class _AddTeamUserSheetState extends State<_AddTeamUserSheet> {
                 TextField(
                   controller: _confirmCtrl,
                   obscureText: _obscureConfirm,
-                  decoration: InputDecoration(
-                    labelText: "Confirm password",
-                    border: const OutlineInputBorder(),
-                    suffixIcon: IconButton(
+                  decoration: _sheetInput(
+                    'Confirm password',
+                    icon: Icons.lock_outline_rounded,
+                    suffix: IconButton(
                       onPressed: () =>
                           setState(() => _obscureConfirm = !_obscureConfirm),
                       icon: Icon(
                         _obscureConfirm
-                            ? Icons.visibility_off
-                            : Icons.visibility,
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 18,
                       ),
                     ),
                   ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 10),
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _kIconRedBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFECACA)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: _kIconRed,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: _kIconRed,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: _isSubmitting ? null : _submit,
-                    icon: _isSubmitting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.person_add_alt_1),
-                    label: Text(_isSubmitting ? "Adding..." : "Create User"),
+                const SizedBox(height: 20),
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E72C8), _kProfileBlue],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x441862A3),
+                        blurRadius: 16,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isSubmitting ? null : _submit,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Center(
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.person_add_alt_1,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Create User',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -3611,51 +5572,120 @@ class _EditTeamMemberSheetState extends State<_EditTeamMemberSheet> {
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
         decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          color: _kSettingsBg,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
         ),
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+            padding: EdgeInsets.fromLTRB(
+              18,
+              0,
+              18,
+              MediaQuery.of(context).padding.bottom + 18,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                // Drag handle
+                const SizedBox(height: 12),
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: _kChevron,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Header
                 Row(
                   children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF1E72C8), _kProfileBlue],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.manage_accounts_rounded,
+                        color: Colors.white,
+                        size: 26,
+                      ),
+                    ),
+                    const SizedBox(width: 14),
                     const Expanded(
-                      child: Text(
-                        "Edit Team Member",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Edit Team Member',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              color: _kTextPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Update member details',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              color: _kTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _isSubmitting
+                          ? null
+                          : () => Navigator.of(context).pop(false),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 18,
+                          color: _kTextSecondary,
                         ),
                       ),
                     ),
-                    IconButton(
-                      onPressed: _isSubmitting
-                          ? null
-                          : () => Navigator.of(context).pop(false),
-                      icon: const Icon(Icons.close),
-                    ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 20),
+
                 TextField(
                   controller: _nameCtrl,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: "Full name",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Full name',
+                    icon: Icons.person_outline_rounded,
                   ),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _emailCtrl,
                   readOnly: true,
-                  decoration: const InputDecoration(
-                    labelText: "Email",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Email',
+                    icon: Icons.mail_outline_rounded,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -3663,27 +5693,24 @@ class _EditTeamMemberSheetState extends State<_EditTeamMemberSheet> {
                   controller: _phoneCtrl,
                   keyboardType: TextInputType.phone,
                   textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: "Phone",
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: _sheetInput('Phone', icon: Icons.phone_outlined),
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
                   initialValue: _status,
                   items: const [
-                    DropdownMenuItem(value: "ACTIVE", child: Text("ACTIVE")),
+                    DropdownMenuItem(value: "ACTIVE", child: Text("Active")),
                     DropdownMenuItem(
                       value: "INACTIVE",
-                      child: Text("INACTIVE"),
+                      child: Text("Inactive"),
                     ),
                   ],
                   onChanged: _isSubmitting
                       ? null
                       : (v) => setState(() => _status = v ?? "ACTIVE"),
-                  decoration: const InputDecoration(
-                    labelText: "Status",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Status',
+                    icon: Icons.toggle_on_outlined,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -3703,11 +5730,11 @@ class _EditTeamMemberSheetState extends State<_EditTeamMemberSheet> {
                           _roleId = v;
                           _sendRole = true;
                         }),
-                  decoration: const InputDecoration(
-                    labelText: "Role",
-                    helperText:
-                        "Loaded from server roles. Owner role is intentionally blocked.",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'Role',
+                    icon: Icons.badge_outlined,
+                    helper:
+                        'Loaded from server roles. Owner role is intentionally blocked.',
                   ),
                 ),
                 if (_rolesLoading) ...[
@@ -3725,28 +5752,94 @@ class _EditTeamMemberSheetState extends State<_EditTeamMemberSheet> {
                 TextField(
                   controller: _newPasswordCtrl,
                   obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: "New password (optional)",
-                    border: OutlineInputBorder(),
+                  decoration: _sheetInput(
+                    'New password (optional)',
+                    icon: Icons.lock_outline_rounded,
                   ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 10),
-                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _kIconRedBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFECACA)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline_rounded,
+                          color: _kIconRed,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: _kIconRed,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: _isSubmitting ? null : _save,
-                    icon: _isSubmitting
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.save_outlined),
-                    label: Text(_isSubmitting ? "Saving..." : "Save Changes"),
+                const SizedBox(height: 20),
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF1E72C8), _kProfileBlue],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x441862A3),
+                        blurRadius: 16,
+                        offset: Offset(0, 8),
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isSubmitting ? null : _save,
+                      borderRadius: BorderRadius.circular(16),
+                      child: Center(
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.save_outlined,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Save Changes',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
                   ),
                 ),
               ],
