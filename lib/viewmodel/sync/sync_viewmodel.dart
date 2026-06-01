@@ -435,19 +435,24 @@ class SyncViewModel extends ChangeNotifier {
     return fallbackCompanyId > 0 ? fallbackCompanyId : null;
   }
 
-  Future<void> _logLocalSyncSnapshot(String stage, {int? activeCompanyId}) async {
+  Future<void> _logLocalSyncSnapshot(
+    String stage, {
+    int? activeCompanyId,
+  }) async {
     final repo = syncRepo;
     if (repo == null) return;
 
     try {
-      final companies = await repo.db.customSelect(
-        '''
+      final companies = await repo.db
+          .customSelect(
+            '''
         SELECT CompanyID, CompanyName
         FROM Company
         ORDER BY CompanyID ASC
         ''',
-        readsFrom: {repo.db.companyTable},
-      ).get();
+            readsFrom: {repo.db.companyTable},
+          )
+          .get();
 
       final companyRows = companies
           .map(
@@ -458,16 +463,18 @@ class SyncViewModel extends ChangeNotifier {
 
       int accountCount = 0;
       if ((activeCompanyId ?? 0) > 0) {
-        final accountRow = await repo.db.customSelect(
-          '''
+        final accountRow = await repo.db
+            .customSelect(
+              '''
           SELECT COUNT(*) AS c
           FROM Acc_Personal
           WHERE CompanyID = ?1
             AND COALESCE(IsDeleted, 0) = 0
           ''',
-          variables: [Variable.withInt(activeCompanyId!)],
-          readsFrom: {repo.db.accPersonal},
-        ).getSingle();
+              variables: [Variable.withInt(activeCompanyId!)],
+              readsFrom: {repo.db.accPersonal},
+            )
+            .getSingle();
         accountCount = int.tryParse('${accountRow.data['c'] ?? 0}') ?? 0;
       }
 
@@ -487,7 +494,10 @@ class SyncViewModel extends ChangeNotifier {
     required bool silent,
   }) async {
     final activeCompanyId = await _activeCompanyIdForSync();
-    await _logLocalSyncSnapshot('before-sync', activeCompanyId: activeCompanyId);
+    await _logLocalSyncSnapshot(
+      'before-sync',
+      activeCompanyId: activeCompanyId,
+    );
     _setState(syncing: true, progress: 0.1, message: "Starting sync…");
 
     var readOnlySync = _skipPushDueToMissingSyncWrite;
@@ -556,7 +566,10 @@ class SyncViewModel extends ChangeNotifier {
     }
 
     if (batch == null) {
-      await _logLocalSyncSnapshot('after-sync-empty', activeCompanyId: activeCompanyId);
+      await _logLocalSyncSnapshot(
+        'after-sync-empty',
+        activeCompanyId: activeCompanyId,
+      );
       lastSyncedTime = DateTime.now();
       lastSyncResult = null;
       final msg = pushSummary.pushed > 0
@@ -579,7 +592,10 @@ class SyncViewModel extends ChangeNotifier {
     lastSyncResult = result;
     lastSyncedTime = DateTime.now();
     await _persistRemoteCursor(batch.batchId);
-    await _logLocalSyncSnapshot('after-apply', activeCompanyId: activeCompanyId);
+    await _logLocalSyncSnapshot(
+      'after-apply',
+      activeCompanyId: activeCompanyId,
+    );
     final finalMessage = pushSummary.failed > 0
         ? "⚠ Sync complete, ${pushSummary.failed} upload(s) need retry"
         : "✔ Sync complete";
@@ -625,12 +641,11 @@ class SyncViewModel extends ChangeNotifier {
     final unsyncedAccounts = await repo.collectUnsyncedAccPersonalChanges(
       limit: 900,
     );
-    final pendingHeads = forceMasterSnapshot
-        ? await repo.collectHeadSnapshotChanges(
-            companyId: defaultCompanyId,
-            limit: 500,
-          )
-        : const <PendingMasterChange>[];
+    final pendingHeads = await repo.collectHeadSnapshotChanges(
+      companyId: defaultCompanyId,
+      limit: 500,
+      unsyncedOnly: !forceMasterSnapshot,
+    );
     final pendingTransactions = await repo.collectUnsyncedTransactionChanges(
       limit: 1400,
     );
@@ -673,10 +688,11 @@ class SyncViewModel extends ChangeNotifier {
       if (accTypeId > 0) assignmentAccTypeIds.add(accTypeId);
     }
 
-    final assignmentAccountSnapshots = await repo.collectAccPersonalSnapshotByIds(
-      accIds: assignmentAccIds.toList(growable: false),
-      limit: 900,
-    );
+    final assignmentAccountSnapshots = await repo
+        .collectAccPersonalSnapshotByIds(
+          accIds: assignmentAccIds.toList(growable: false),
+          limit: 900,
+        );
     final assignmentCurrencySnapshots = await repo.collectAccTypeSnapshotByIds(
       fallbackCompanyId: defaultCompanyId,
       accTypeIds: assignmentAccTypeIds.toList(growable: false),
@@ -774,6 +790,9 @@ class SyncViewModel extends ChangeNotifier {
         rows: pendingHeads,
         companyIdOf: (r) => r.companyId,
         payloadOf: (r) => r.payload,
+        onSuccess: (_, successRows) async {
+          await repo.markHeadSnapshotsSynced(successRows);
+        },
         nonBlocking: true,
       ),
     );

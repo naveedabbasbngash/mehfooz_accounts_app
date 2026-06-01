@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:path/path.dart' as p;
 
 import 'tables.dart';
 
@@ -17,6 +16,9 @@ part 'app_database.g.dart';
 
 @DriftDatabase(
   tables: [
+    AccountHeads,
+    AccountSubHeads,
+    ChartOfAccounts,
     AccPersonal,
     AccType,
     CompanyTable,
@@ -41,10 +43,7 @@ class AppDatabase extends _$AppDatabase {
   /// This is the ONLY database your app uses.
   /// -----------------------------------------------------------------------
   static Future<AppDatabase> fromImportedFile(File sqliteFile) async {
-    final executor = NativeDatabase(
-      sqliteFile,
-      logStatements: false,
-    );
+    final executor = NativeDatabase(sqliteFile, logStatements: false);
 
     return AppDatabase(executor);
   }

@@ -340,11 +340,57 @@ class AuthService {
   // ============================================================
   static Future<UserModel?> quickLogin(UserModel account) async {
     LoggerService.info('⚡ [QUICK_LOGIN] email=${account.email}');
-    // Offline-safe quick selection for chooser mode.
-    await LocalStorageService.saveOrUpdateUser(account);
-    await LocalStorageService.setLastUsedUser(account.email);
-    LoggerService.info('✅ [QUICK_LOGIN] Local success | ${account.email}');
-    return account;
+    final refreshed = await refreshCurrentUser(account);
+    final resolved = refreshed ?? account;
+    await LocalStorageService.saveOrUpdateUser(resolved);
+    await LocalStorageService.setLastUsedUser(resolved.email);
+    LoggerService.info('✅ [QUICK_LOGIN] Local success | ${resolved.email}');
+    return resolved;
+  }
+
+  static Future<UserModel?> refreshCurrentUser(UserModel account) async {
+    final token = await LocalStorageService.loadAuthToken(account.email);
+    if (token == null || token.trim().isEmpty) return null;
+
+    for (final endpoint in _meEndpoints) {
+      final uri = Uri.parse(endpoint);
+      http.Response res;
+      try {
+        res = await http.get(
+          uri,
+          headers: {
+            'Authorization': 'Bearer ${token.trim()}',
+            'Accept': 'application/json',
+          },
+        );
+      } catch (_) {
+        continue;
+      }
+
+      if (res.statusCode == 404) continue;
+      if (res.statusCode < 200 || res.statusCode >= 300) continue;
+      if (res.body.trim().isEmpty) continue;
+
+      Map<String, dynamic>? json;
+      try {
+        json = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        continue;
+      }
+      if (json['status'] != true || json['data'] == null) continue;
+
+      final normalized = _normalizeMkbLoginResponse(
+        json,
+        fallbackEmail: account.email,
+      );
+      final refreshed = UserModel.fromApiResponse(normalized);
+      if (refreshed.email.isEmpty) continue;
+
+      await LocalStorageService.saveOrUpdateUser(refreshed);
+      return refreshed;
+    }
+
+    return null;
   }
 
   // ============================================================
@@ -928,8 +974,8 @@ class AuthService {
     final lastName = parts.length > 1
         ? parts.sublist(1).join(' ')
         : (userMap['LastName'] ?? userMap['last_name'] ?? '').toString();
-    final rolesRaw = dataMap['roles'];
-    final permissionsRaw = dataMap['permissions'];
+    final rolesRaw = dataMap['roles'] ?? dataMap['Roles'];
+    final permissionsRaw = dataMap['permissions'] ?? dataMap['Permissions'];
 
     return {
       'status': raw['status'] == true,
@@ -950,6 +996,9 @@ class AuthService {
         'is_login': 1,
         'roles': rolesRaw is List ? rolesRaw : const [],
         'permissions': permissionsRaw is List ? permissionsRaw : const [],
+        'plan_status': dataMap['plan_status'] ?? userMap['plan_status'],
+        'expiry': dataMap['expiry'] ?? userMap['expiry'],
+        'subscription': dataMap['subscription'] ?? userMap['subscription'],
       },
     };
   }
@@ -1218,7 +1267,8 @@ class ManagedUserItem {
       roleId: int.tryParse(
         (json['RoleID'] ?? json['role_id'] ?? json['roleId'] ?? '').toString(),
       ),
-      roleCode: (json['RoleCode'] ?? json['role_code'] ?? '')
+      roleCode:
+          (json['RoleCode'] ?? json['role_code'] ?? '')
               .toString()
               .trim()
               .isEmpty

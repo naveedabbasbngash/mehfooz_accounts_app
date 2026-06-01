@@ -11,7 +11,6 @@ import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../../model/user_model.dart';
 import '../../data/local/database_manager.dart';
 import '../../repository/transactions_repository.dart';
-import '../../services/file_picker_service.dart';
 import '../../services/global_state.dart';
 import '../../services/sqlite_import_service.dart';
 import '../../services/sync/pending_share.dart';
@@ -21,11 +20,13 @@ import '../../viewmodel/profile/profile_view_model.dart';
 
 import '../../viewmodel/sync/sync_viewmodel.dart';
 import '../accounts/accounts_screen.dart';
+import '../chart_of_accounts/chart_of_accounts_screen.dart';
 import '../currencies/currencies_screen.dart';
 import '../drawer/drawer_menu.dart';
 import '../heads/heads_screen.dart';
 import '../profile/profile_screen.dart';
 import '../reports/reports.dart';
+import '../subscription/subscription_status_card.dart';
 import '../accounts/account_trash_screen.dart';
 import '../transcations/transaction_screen.dart';
 import '../transcations/transaction_trash_screen.dart';
@@ -61,6 +62,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
   static const int _currenciesIndex = 4;
   static const int _accountsIndex = 5;
   static const int _headsIndex = 6;
+  static const int _chartOfAccountsIndex = 7;
 
   StreamSubscription<List<SharedMediaFile>>? _intentStream;
 
@@ -76,6 +78,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     "Currencies",
     "Accounts",
     "Heads",
+    "Chart of Accounts",
   ];
 
   final List<Widget> _screens = const [
@@ -86,6 +89,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     CurrenciesScreen(),
     AccountsScreen(),
     HeadsScreen(),
+    ChartOfAccountsScreen(),
   ];
 
   @override
@@ -248,13 +252,18 @@ class _HomeWrapperState extends State<HomeWrapper> {
       return;
     }
 
-    await context.read<HomeViewModel>().confirmAndImportDatabase(
+    if (!mounted) return;
+    final homeVM = context.read<HomeViewModel>();
+    final profileVM = context.read<ProfileViewModel>();
+
+    // ignore: use_build_context_synchronously
+    await homeVM.confirmAndImportDatabase(
       context: context,
       inputPath: savedPath,
       user: widget.user,
     );
 
-    await context.read<ProfileViewModel>().refresh();
+    await profileVM.refresh();
 
     if (mounted) {
       setState(() => _pageIndex = _profileIndex);
@@ -278,31 +287,130 @@ class _HomeWrapperState extends State<HomeWrapper> {
   }
 
   // ============================================================
-  // iOS IMPORT
-  // ============================================================
-  Future<void> _importForIOS() async {
-    final path = await FilePickerService.pickSqliteFile();
-    if (path == null) return;
-
-    await context.read<HomeViewModel>().confirmAndImportDatabase(
-      context: context,
-      inputPath: path,
-      user: widget.user,
-    );
-    await context.read<ProfileViewModel>().refresh();
-
-    if (mounted) setState(() => _pageIndex = _profileIndex);
-  }
-
-  // ============================================================
   // DRAWER ITEM CLICK (FIX-1 APPLIED)
   // ============================================================
   void _onDrawerItemClick(int index) {
     widget.sliderDrawerKey.currentState?.closeSlider();
+    _selectPage(index);
+  }
 
+  void _selectPage(int index) {
     if (_pageIndex == index) return;
 
+    final profileVM = context.read<ProfileViewModel>();
+    if (_isBlockedByRestriction(index, profileVM)) {
+      setState(() => _pageIndex = _profileIndex);
+      _showRestrictedAccessSheet(profileVM);
+      return;
+    }
+
     setState(() => _pageIndex = index);
+  }
+
+  bool _isBlockedByRestriction(int index, ProfileViewModel profileVM) {
+    if (index == _profileIndex) return false;
+    return profileVM.isRestricted || profileVM.isSubscriptionExpired;
+  }
+
+  void _showRestrictedAccessSheet(ProfileViewModel profileVM) {
+    final user = profileVM.loggedInUser;
+    final title = profileVM.isSubscriptionExpired
+        ? 'Package renewal required'
+        : 'Profile action required';
+    final message = profileVM.isSubscriptionExpired
+        ? 'Your package has expired. Profile remains available so you can review status and renew access.'
+        : 'Import or restore your local database from Profile before using this section.';
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: const Color(0xFF12304F),
+          content: Text(message),
+        ),
+      );
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 28,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E8),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.workspace_premium_rounded,
+                      color: Color(0xFFC45A11),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFF102132),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SubscriptionStatusCard(user: user),
+              const SizedBox(height: 14),
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Color(0xFF52677D),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: _kNavBrandBlue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: () => Navigator.of(sheetContext).pop(),
+                child: const Text('Review Profile'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<bool> _handleBackPress() async {
@@ -319,7 +427,8 @@ class _HomeWrapperState extends State<HomeWrapper> {
     }
 
     final now = DateTime.now();
-    final shouldExit = _lastBackPressedAt != null &&
+    final shouldExit =
+        _lastBackPressedAt != null &&
         now.difference(_lastBackPressedAt!) <= const Duration(seconds: 2);
     if (shouldExit) {
       return true;
@@ -345,6 +454,11 @@ class _HomeWrapperState extends State<HomeWrapper> {
   // ============================================================
   @override
   Widget build(BuildContext context) {
+    final profileVM = context.watch<ProfileViewModel>();
+    final visiblePageIndex = _isBlockedByRestriction(_pageIndex, profileVM)
+        ? _profileIndex
+        : _pageIndex;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -363,31 +477,31 @@ class _HomeWrapperState extends State<HomeWrapper> {
             sliderOpenSize: 240,
             appBar: SliderAppBar(
               config: SliderAppBarConfig(
-                backgroundColor: _appBarColor,
+                backgroundColor: _appBarColorFor(visiblePageIndex),
                 title: Text(
-                  _titles[_pageIndex],
+                  _titles[visiblePageIndex],
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                trailing: _buildTopRightMenu(context),
+                trailing: _buildTopRightMenu(context, visiblePageIndex),
               ),
             ),
             slider: DrawerMenu(
-              currentPageIndex: _pageIndex,
+              currentPageIndex: visiblePageIndex,
               drawerKey: widget.sliderDrawerKey,
               onItemClick: _onDrawerItemClick, // ✅ FIX-1
               user: widget.user,
             ),
-            child: _screens[_pageIndex],
+            child: _screens[visiblePageIndex],
           ),
         ),
-        bottomNavigationBar: _pageIndex > _profileIndex
+        bottomNavigationBar: visiblePageIndex > _profileIndex
             ? null
             : SafeArea(
                 child: CurvedNavigationBar(
-                  index: _pageIndex,
+                  index: visiblePageIndex,
                   height: 60,
                   backgroundColor: Colors.transparent,
                   color: _kNavBrandBlue,
@@ -398,7 +512,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
                     Icon(Icons.bar_chart, color: Colors.white),
                     Icon(Icons.person, color: Colors.white),
                   ],
-                  onTap: (i) => setState(() => _pageIndex = i),
+                  onTap: _selectPage,
                 ),
               ),
       ),
@@ -408,8 +522,8 @@ class _HomeWrapperState extends State<HomeWrapper> {
   // ============================================================
   // HELPERS
   // ============================================================
-  Color get _appBarColor {
-    switch (_pageIndex) {
+  Color _appBarColorFor(int pageIndex) {
+    switch (pageIndex) {
       case _homeIndex:
         return AppColors.homeColor;
       case _transactionIndex:
@@ -419,30 +533,15 @@ class _HomeWrapperState extends State<HomeWrapper> {
       case _currenciesIndex:
       case _accountsIndex:
       case _headsIndex:
+      case _chartOfAccountsIndex:
         return AppColors.searchColor;
       default:
         return AppColors.profileColor;
     }
   }
 
-  void _showError(String msg) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Error"),
-        content: Text(msg),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget? _buildTopRightMenu(BuildContext context) {
-    if (_pageIndex == _transactionIndex) {
+  Widget? _buildTopRightMenu(BuildContext context, int pageIndex) {
+    if (pageIndex == _transactionIndex) {
       return PopupMenuButton<String>(
         tooltip: 'More options',
         onSelected: (value) {
@@ -474,7 +573,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
       );
     }
 
-    if (_pageIndex == _accountsIndex) {
+    if (pageIndex == _accountsIndex) {
       return PopupMenuButton<String>(
         tooltip: 'More options',
         onSelected: (value) {

@@ -1,6 +1,75 @@
 import 'package:drift/drift.dart';
 
 /// ========================================================
+/// ACCOUNT HEADS  (top-level accounting groups)
+/// ========================================================
+class AccountHeads extends Table {
+  @override
+  String get tableName => 'AccountHeads';
+
+  IntColumn get accountHeadId => integer().named('AccountHeadID')();
+  TextColumn get accountHeadName => text().named('AccountHeadName')();
+  TextColumn get normalBalance => text().named('NormalBalance').nullable()();
+  IntColumn get isSynced =>
+      integer().named('IsSynced').withDefault(const Constant(1))();
+  TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
+  IntColumn get isDeleted =>
+      integer().named('IsDeleted').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {accountHeadId};
+}
+
+/// ========================================================
+/// ACCOUNT SUB HEADS  (Current Assets, Fixed Assets, etc.)
+/// ========================================================
+class AccountSubHeads extends Table {
+  @override
+  String get tableName => 'AccountSubHeads';
+
+  IntColumn get accountSubHeadId => integer().named('AccountSubHeadID')();
+  IntColumn get accountHeadId => integer()
+      .named('AccountHeadID')
+      .references(AccountHeads, #accountHeadId)();
+  TextColumn get code => text().named('Code').nullable()();
+  TextColumn get accountSubHeadName => text().named('AccountSubHeadName')();
+  IntColumn get isSynced =>
+      integer().named('IsSynced').withDefault(const Constant(1))();
+  TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
+  IntColumn get isDeleted =>
+      integer().named('IsDeleted').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {accountSubHeadId};
+}
+
+/// ========================================================
+/// CHART OF ACCOUNTS  (replaces legacy Accounts_Heads usage)
+/// ========================================================
+class ChartOfAccounts extends Table {
+  @override
+  String get tableName => 'ChartOfAccounts';
+
+  IntColumn get chartOfAccountId => integer().named('ChartOfAccountID')();
+  IntColumn get accountHeadId => integer()
+      .named('AccountHeadID')
+      .references(AccountHeads, #accountHeadId)();
+  IntColumn get accountSubHeadId => integer()
+      .named('AccountSubHeadID')
+      .references(AccountSubHeads, #accountSubHeadId)();
+  TextColumn get chartOfAccountName => text().named('ChartOfAccountName')();
+  TextColumn get code => text().named('Code').nullable()();
+  IntColumn get isSynced =>
+      integer().named('IsSynced').withDefault(const Constant(1))();
+  TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
+  IntColumn get isDeleted =>
+      integer().named('IsDeleted').withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {chartOfAccountId};
+}
+
+/// ========================================================
 /// ACC PERSONAL  (SQLite: Acc_Personal)
 /// ========================================================
 class AccPersonal extends Table {
@@ -22,6 +91,10 @@ class AccPersonal extends Table {
 
   IntColumn get userId => integer().named('UserID').nullable()();
   IntColumn get companyId => integer().named('CompanyID').nullable()();
+  IntColumn get chartOfAccountId => integer()
+      .named('ChartOfAccountID')
+      .nullable()
+      .references(ChartOfAccounts, #chartOfAccountId)();
 
   TextColumn get wName => text().named('WName').nullable()();
 
@@ -33,7 +106,7 @@ class AccPersonal extends Table {
   Set<Column> get primaryKey => {accId};
 }
 
-/// ======================================================== 
+/// ========================================================
 /// ACC TYPE
 /// ========================================================
 class AccType extends Table {

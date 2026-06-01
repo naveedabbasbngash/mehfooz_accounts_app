@@ -174,6 +174,44 @@ class TransactionsRepository {
     return cleanHead;
   }
 
+  int _accountHeadIdForChartName(String name) {
+    final upper = name.trim().toUpperCase();
+    if (upper.contains('EXPENSE')) return 4;
+    if (upper.contains('PAYABLE') ||
+        upper.contains('SUPPLIER') ||
+        upper.contains('LIABILITY')) {
+      return 2;
+    }
+    if (upper.contains('EQUITY') ||
+        upper.contains('CAPITAL') ||
+        upper.contains('DRAWING')) {
+      return 3;
+    }
+    if (upper.contains('SALE') ||
+        upper.contains('INCOME') ||
+        upper.contains('REVENUE')) {
+      return 5;
+    }
+    return 1;
+  }
+
+  int _accountSubHeadIdForChartName(String name, int accountHeadId) {
+    final upper = name.trim().toUpperCase();
+    switch (accountHeadId) {
+      case 2:
+        return 201;
+      case 3:
+        return 301;
+      case 4:
+        return 402;
+      case 5:
+        return 501;
+      case 1:
+      default:
+        return upper.contains('FIXED') ? 102 : 101;
+    }
+  }
+
   Iterable<List<T>> _chunked<T>(List<T> items, {int size = 250}) sync* {
     if (items.isEmpty) return;
     for (var i = 0; i < items.length; i += size) {
@@ -278,24 +316,546 @@ class TransactionsRepository {
   // =========================================================
   // ACCOUNT HEADS
   // =========================================================
-  Future<List<AccountHeadOption>> getAllAccountHeads() async {
+  Future<List<AccountHeadListRow>> getAccountHeadRows() async {
     final rows = await db
         .customSelect(
           '''
-          SELECT acc_head_id, acc_head_name
-          FROM Accounts_Heads
-          ORDER BY acc_head_name COLLATE NOCASE ASC, acc_head_id ASC
+          SELECT
+            AccountHeadID,
+            AccountHeadName,
+            COALESCE(NormalBalance, '') AS NormalBalance
+          FROM AccountHeads
+          WHERE COALESCE(IsDeleted, 0) = 0
+          ORDER BY AccountHeadID ASC
           ''',
-          readsFrom: {db.accountsHeads},
+          readsFrom: {db.accountHeads},
         )
         .get();
 
     return rows
         .map((r) {
-          final id = _toInt(r.data['acc_head_id']);
-          final name = _toText(r.data['acc_head_name']);
+          final id = _toInt(r.data['AccountHeadID']);
+          final name = _toText(r.data['AccountHeadName']);
           if (id <= 0 || name.isEmpty) return null;
-          return AccountHeadOption(accHeadId: id, accHeadName: name);
+          return AccountHeadListRow(
+            accountHeadId: id,
+            accountHeadName: name,
+            normalBalance: _toText(r.data['NormalBalance']),
+          );
+        })
+        .whereType<AccountHeadListRow>()
+        .toList(growable: false);
+  }
+
+  Future<int> getNextAccountHeadRowId() async {
+    final row = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(MAX(CAST(AccountHeadID AS INTEGER)), 0) + 1 AS next_id
+          FROM AccountHeads
+          ''',
+          readsFrom: {db.accountHeads},
+        )
+        .getSingle();
+    return _toInt(row.data['next_id']).clamp(1, _maxSafeVoucherNo).toInt();
+  }
+
+  Future<void> _assertUniqueAccountHeadRow({
+    required int accountHeadId,
+    required String name,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT AccountHeadID
+          FROM AccountHeads
+          WHERE COALESCE(IsDeleted, 0) = 0
+            AND AccountHeadID <> ?1
+            AND LOWER(TRIM(AccountHeadName)) = LOWER(TRIM(?2))
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(accountHeadId),
+            Variable.withString(name),
+          ],
+          readsFrom: {db.accountHeads},
+        )
+        .get();
+    if (rows.isNotEmpty) {
+      throw ArgumentError('Account head already exists with the same name.');
+    }
+  }
+
+  Future<int> createAccountHeadRow({
+    required String accountHeadName,
+    required String normalBalance,
+  }) async {
+    final normalized = accountHeadName.trim();
+    final cleanBalance = normalBalance.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('Account head name cannot be empty.');
+    }
+    if (cleanBalance.isEmpty) {
+      throw ArgumentError('Normal balance is required.');
+    }
+    await _assertUniqueAccountHeadRow(accountHeadId: 0, name: normalized);
+
+    final newId = await getNextAccountHeadRowId();
+    await db.customStatement(
+      '''
+      INSERT INTO AccountHeads
+        (AccountHeadID, AccountHeadName, NormalBalance, IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, 0, 0, ?4)
+      ''',
+      [
+        newId,
+        normalized,
+        cleanBalance,
+        DateTime.now().toUtc().toIso8601String(),
+      ],
+    );
+    return newId;
+  }
+
+  Future<void> updateAccountHeadRow({
+    required int accountHeadId,
+    required String accountHeadName,
+    required String normalBalance,
+  }) async {
+    final normalized = accountHeadName.trim();
+    final cleanBalance = normalBalance.trim();
+    if (accountHeadId <= 0) {
+      throw ArgumentError('Account head id is required.');
+    }
+    if (normalized.isEmpty) {
+      throw ArgumentError('Account head name cannot be empty.');
+    }
+    if (cleanBalance.isEmpty) {
+      throw ArgumentError('Normal balance is required.');
+    }
+    await _assertUniqueAccountHeadRow(
+      accountHeadId: accountHeadId,
+      name: normalized,
+    );
+
+    await db.customStatement(
+      '''
+      UPDATE AccountHeads
+      SET AccountHeadName = ?1,
+          NormalBalance = ?2,
+          IsSynced = 0,
+          UpdatedAt = ?3
+      WHERE AccountHeadID = ?4
+      ''',
+      [
+        normalized,
+        cleanBalance,
+        DateTime.now().toUtc().toIso8601String(),
+        accountHeadId,
+      ],
+    );
+  }
+
+  Future<void> deleteAccountHeadRow({required int accountHeadId}) async {
+    if (accountHeadId <= 0) return;
+    final usage = await db
+        .customSelect(
+          '''
+          SELECT COUNT(*) AS total
+          FROM AccountSubHeads
+          WHERE AccountHeadID = ?1
+            AND COALESCE(IsDeleted, 0) = 0
+          ''',
+          variables: [Variable.withInt(accountHeadId)],
+          readsFrom: {db.accountSubHeads},
+        )
+        .getSingle();
+    if (_toInt(usage.data['total']) > 0) {
+      throw ArgumentError(
+        'Cannot delete account head because sub heads are linked to it.',
+      );
+    }
+
+    await db.customStatement(
+      '''
+      UPDATE AccountHeads
+      SET IsDeleted = 1,
+          IsSynced = 0,
+          UpdatedAt = ?1
+      WHERE AccountHeadID = ?2
+      ''',
+      [DateTime.now().toUtc().toIso8601String(), accountHeadId],
+    );
+  }
+
+  Future<List<AccountSubHeadListRow>> getAccountSubHeadRows() async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT
+            ash.AccountSubHeadID,
+            ash.AccountHeadID,
+            COALESCE(ash.Code, '') AS Code,
+            ash.AccountSubHeadName,
+            COALESCE(ah.AccountHeadName, '') AS AccountHeadName
+          FROM AccountSubHeads ash
+          LEFT JOIN AccountHeads ah ON ah.AccountHeadID = ash.AccountHeadID
+          WHERE COALESCE(ash.IsDeleted, 0) = 0
+          ORDER BY ash.AccountHeadID ASC,
+                   ash.Code COLLATE NOCASE ASC,
+                   ash.AccountSubHeadID ASC
+          ''',
+          readsFrom: {db.accountSubHeads, db.accountHeads},
+        )
+        .get();
+
+    return rows
+        .map((r) {
+          final id = _toInt(r.data['AccountSubHeadID']);
+          final name = _toText(r.data['AccountSubHeadName']);
+          if (id <= 0 || name.isEmpty) return null;
+          return AccountSubHeadListRow(
+            accountSubHeadId: id,
+            accountHeadId: _toInt(r.data['AccountHeadID']),
+            code: _toText(r.data['Code']),
+            accountSubHeadName: name,
+            accountHeadName: _toText(r.data['AccountHeadName']),
+          );
+        })
+        .whereType<AccountSubHeadListRow>()
+        .toList(growable: false);
+  }
+
+  Future<int> getNextAccountSubHeadId() async {
+    final row = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(MAX(CAST(AccountSubHeadID AS INTEGER)), 0) + 1 AS next_id
+          FROM AccountSubHeads
+          ''',
+          readsFrom: {db.accountSubHeads},
+        )
+        .getSingle();
+    final localNext = _toInt(row.data['next_id']);
+    return _nextDistributedIntId(
+      table: 'AccountSubHeads',
+      column: 'AccountSubHeadID',
+      localNext: localNext,
+    );
+  }
+
+  String _accountHeadCode(int accountHeadId) =>
+      accountHeadId.toString().padLeft(2, '0');
+
+  int _hierarchyCodeSuffix(String code, String prefix) {
+    final match = RegExp(
+      '^${RegExp.escape(prefix)}-(\\d+)\$',
+    ).firstMatch(code.trim());
+    if (match == null) return 0;
+    return int.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
+  Future<String> getNextAccountSubHeadCode({
+    required int accountHeadId,
+    int? excludingAccountSubHeadId,
+  }) async {
+    if (accountHeadId <= 0) return '';
+
+    final headCode = _accountHeadCode(accountHeadId);
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(Code, '') AS Code
+          FROM AccountSubHeads
+          WHERE AccountHeadID = ?1
+            AND AccountSubHeadID <> ?2
+            AND COALESCE(IsDeleted, 0) = 0
+          ''',
+          variables: [
+            Variable.withInt(accountHeadId),
+            Variable.withInt(excludingAccountSubHeadId ?? 0),
+          ],
+          readsFrom: {db.accountSubHeads},
+        )
+        .get();
+
+    var maxSuffix = 0;
+    for (final row in rows) {
+      final suffix = _hierarchyCodeSuffix(_toText(row.data['Code']), headCode);
+      if (suffix > maxSuffix) maxSuffix = suffix;
+    }
+    return '$headCode-${(maxSuffix + 1).toString().padLeft(2, '0')}';
+  }
+
+  Future<String> getNextChartAccountCode({
+    required int accountSubHeadId,
+    int? excludingChartOfAccountId,
+  }) async {
+    if (accountSubHeadId <= 0) return '';
+
+    final subHeadRows = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(Code, '') AS Code
+          FROM AccountSubHeads
+          WHERE AccountSubHeadID = ?1
+            AND COALESCE(IsDeleted, 0) = 0
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(accountSubHeadId)],
+          readsFrom: {db.accountSubHeads},
+        )
+        .get();
+    if (subHeadRows.isEmpty) return '';
+
+    final subHeadCode = _toText(subHeadRows.first.data['Code']);
+    if (subHeadCode.isEmpty) return '';
+
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(Code, '') AS Code
+          FROM ChartOfAccounts
+          WHERE AccountSubHeadID = ?1
+            AND ChartOfAccountID <> ?2
+            AND COALESCE(IsDeleted, 0) = 0
+          ''',
+          variables: [
+            Variable.withInt(accountSubHeadId),
+            Variable.withInt(excludingChartOfAccountId ?? 0),
+          ],
+          readsFrom: {db.chartOfAccounts},
+        )
+        .get();
+
+    var maxSuffix = 0;
+    for (final row in rows) {
+      final suffix = _hierarchyCodeSuffix(
+        _toText(row.data['Code']),
+        subHeadCode,
+      );
+      if (suffix > maxSuffix) maxSuffix = suffix;
+    }
+    return '$subHeadCode-${(maxSuffix + 1).toString().padLeft(3, '0')}';
+  }
+
+  Future<void> _assertUniqueSubHead({
+    required int accountSubHeadId,
+    required int accountHeadId,
+    required String code,
+    required String name,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT AccountSubHeadID
+          FROM AccountSubHeads
+          WHERE COALESCE(IsDeleted, 0) = 0
+            AND AccountSubHeadID <> ?1
+            AND (
+              (TRIM(COALESCE(?2, '')) <> '' AND LOWER(TRIM(COALESCE(Code, ''))) = LOWER(TRIM(?2)))
+              OR (AccountHeadID = ?3 AND LOWER(TRIM(AccountSubHeadName)) = LOWER(TRIM(?4)))
+            )
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(accountSubHeadId),
+            Variable.withString(code),
+            Variable.withInt(accountHeadId),
+            Variable.withString(name),
+          ],
+          readsFrom: {db.accountSubHeads},
+        )
+        .get();
+    if (rows.isNotEmpty) {
+      throw ArgumentError(
+        'Sub head already exists with the same code or name.',
+      );
+    }
+  }
+
+  Future<int> createAccountSubHead({
+    required int accountHeadId,
+    required String accountSubHeadName,
+    String code = '',
+  }) async {
+    final normalized = accountSubHeadName.trim();
+    final cleanCode = code.trim();
+    if (accountHeadId <= 0) {
+      throw ArgumentError('Account head is required.');
+    }
+    if (normalized.isEmpty) {
+      throw ArgumentError('Sub head name cannot be empty.');
+    }
+    final resolvedCode = cleanCode.isEmpty
+        ? await getNextAccountSubHeadCode(accountHeadId: accountHeadId)
+        : cleanCode;
+
+    await _assertUniqueSubHead(
+      accountSubHeadId: 0,
+      accountHeadId: accountHeadId,
+      code: resolvedCode,
+      name: normalized,
+    );
+
+    final newId = await getNextAccountSubHeadId();
+    await db.customStatement(
+      '''
+      INSERT INTO AccountSubHeads
+        (AccountSubHeadID, AccountHeadID, Code, AccountSubHeadName,
+         IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+      ''',
+      [
+        newId,
+        accountHeadId,
+        resolvedCode.isEmpty ? null : resolvedCode,
+        normalized,
+        DateTime.now().toUtc().toIso8601String(),
+      ],
+    );
+    return newId;
+  }
+
+  Future<void> updateAccountSubHead({
+    required int accountSubHeadId,
+    required int accountHeadId,
+    required String accountSubHeadName,
+    String code = '',
+  }) async {
+    final normalized = accountSubHeadName.trim();
+    final cleanCode = code.trim();
+    if (accountSubHeadId <= 0) {
+      throw ArgumentError('Sub head id is required.');
+    }
+    if (accountHeadId <= 0) {
+      throw ArgumentError('Account head is required.');
+    }
+    if (normalized.isEmpty) {
+      throw ArgumentError('Sub head name cannot be empty.');
+    }
+    final resolvedCode = cleanCode.isEmpty
+        ? await getNextAccountSubHeadCode(
+            accountHeadId: accountHeadId,
+            excludingAccountSubHeadId: accountSubHeadId,
+          )
+        : cleanCode;
+
+    await _assertUniqueSubHead(
+      accountSubHeadId: accountSubHeadId,
+      accountHeadId: accountHeadId,
+      code: resolvedCode,
+      name: normalized,
+    );
+
+    await db.customStatement(
+      '''
+      UPDATE AccountSubHeads
+      SET AccountHeadID = ?1,
+          Code = ?2,
+          AccountSubHeadName = ?3,
+          IsSynced = 0,
+          UpdatedAt = ?4
+      WHERE AccountSubHeadID = ?5
+      ''',
+      [
+        accountHeadId,
+        resolvedCode.isEmpty ? null : resolvedCode,
+        normalized,
+        DateTime.now().toUtc().toIso8601String(),
+        accountSubHeadId,
+      ],
+    );
+    await db.customStatement(
+      '''
+      UPDATE ChartOfAccounts
+      SET AccountHeadID = ?1,
+          IsSynced = 0,
+          UpdatedAt = ?2
+      WHERE AccountSubHeadID = ?3
+        AND COALESCE(IsDeleted, 0) = 0
+      ''',
+      [
+        accountHeadId,
+        DateTime.now().toUtc().toIso8601String(),
+        accountSubHeadId,
+      ],
+    );
+  }
+
+  Future<void> deleteAccountSubHead({required int accountSubHeadId}) async {
+    if (accountSubHeadId <= 0) return;
+    final usage = await db
+        .customSelect(
+          '''
+          SELECT COUNT(*) AS total
+          FROM ChartOfAccounts
+          WHERE AccountSubHeadID = ?1
+            AND COALESCE(IsDeleted, 0) = 0
+          ''',
+          variables: [Variable.withInt(accountSubHeadId)],
+          readsFrom: {db.chartOfAccounts},
+        )
+        .getSingle();
+    if (_toInt(usage.data['total']) > 0) {
+      throw ArgumentError(
+        'Cannot delete sub head because chart accounts are linked to it.',
+      );
+    }
+
+    await db.customStatement(
+      '''
+      UPDATE AccountSubHeads
+      SET IsDeleted = 1,
+          IsSynced = 0,
+          UpdatedAt = ?1
+      WHERE AccountSubHeadID = ?2
+      ''',
+      [DateTime.now().toUtc().toIso8601String(), accountSubHeadId],
+    );
+  }
+
+  Future<List<AccountHeadOption>> getAllAccountHeads() async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT
+            coa.ChartOfAccountID,
+            coa.ChartOfAccountName,
+            COALESCE(coa.Code, '') AS ChartCode,
+            ah.AccountHeadID,
+            ah.AccountHeadName,
+            ash.AccountSubHeadID,
+            ash.Code AS AccountSubHeadCode,
+            ash.AccountSubHeadName
+          FROM ChartOfAccounts coa
+          LEFT JOIN AccountHeads ah ON ah.AccountHeadID = coa.AccountHeadID
+          LEFT JOIN AccountSubHeads ash
+            ON ash.AccountSubHeadID = coa.AccountSubHeadID
+           AND COALESCE(ash.IsDeleted, 0) = 0
+          WHERE COALESCE(coa.IsDeleted, 0) = 0
+          ORDER BY coa.ChartOfAccountName COLLATE NOCASE ASC,
+                   coa.ChartOfAccountID ASC
+          ''',
+          readsFrom: {db.chartOfAccounts, db.accountHeads, db.accountSubHeads},
+        )
+        .get();
+
+    return rows
+        .map((r) {
+          final id = _toInt(r.data['ChartOfAccountID']);
+          final name = _toText(r.data['ChartOfAccountName']);
+          if (id <= 0 || name.isEmpty) return null;
+          return AccountHeadOption(
+            accHeadId: id,
+            accHeadName: name,
+            accountHeadId: _toInt(r.data['AccountHeadID']),
+            accountHeadName: _toText(r.data['AccountHeadName']),
+            accountSubHeadId: _toInt(r.data['AccountSubHeadID']),
+            accountSubHeadCode: _toText(r.data['AccountSubHeadCode']),
+            accountSubHeadName: _toText(r.data['AccountSubHeadName']),
+            chartCode: _toText(r.data['ChartCode']),
+          );
         })
         .whereType<AccountHeadOption>()
         .toList(growable: false);
@@ -305,18 +865,51 @@ class TransactionsRepository {
     final row = await db
         .customSelect(
           '''
-          SELECT COALESCE(MAX(CAST(acc_head_id AS INTEGER)), 0) + 1 AS next_id
-          FROM Accounts_Heads
+          SELECT COALESCE(MAX(CAST(ChartOfAccountID AS INTEGER)), 0) + 1 AS next_id
+          FROM ChartOfAccounts
           ''',
-          readsFrom: {db.accountsHeads},
+          readsFrom: {db.chartOfAccounts},
         )
         .getSingle();
     final localNext = _toInt(row.data['next_id']);
     return _nextDistributedIntId(
-      table: 'Accounts_Heads',
-      column: 'acc_head_id',
+      table: 'ChartOfAccounts',
+      column: 'ChartOfAccountID',
       localNext: localNext,
     );
+  }
+
+  Future<void> _assertUniqueChartAccount({
+    required int chartOfAccountId,
+    required String chartName,
+    required String code,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT ChartOfAccountID
+          FROM ChartOfAccounts
+          WHERE COALESCE(IsDeleted, 0) = 0
+            AND ChartOfAccountID <> ?1
+            AND (
+              LOWER(TRIM(ChartOfAccountName)) = LOWER(TRIM(?2))
+              OR (TRIM(COALESCE(?3, '')) <> '' AND LOWER(TRIM(COALESCE(Code, ''))) = LOWER(TRIM(?3)))
+            )
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(chartOfAccountId),
+            Variable.withString(chartName),
+            Variable.withString(code),
+          ],
+          readsFrom: {db.chartOfAccounts},
+        )
+        .get();
+    if (rows.isNotEmpty) {
+      throw ArgumentError(
+        'Chart account already exists with the same name or code.',
+      );
+    }
   }
 
   Future<int?> findAccountHeadIdByNameLoose(String accHeadName) async {
@@ -326,18 +919,19 @@ class TransactionsRepository {
     final rows = await db
         .customSelect(
           '''
-          SELECT acc_head_id
-          FROM Accounts_Heads
-          WHERE LOWER(TRIM(COALESCE(acc_head_name, ''))) = LOWER(TRIM(?1))
+          SELECT ChartOfAccountID
+          FROM ChartOfAccounts
+          WHERE LOWER(TRIM(COALESCE(ChartOfAccountName, ''))) = LOWER(TRIM(?1))
+            AND COALESCE(IsDeleted, 0) = 0
           LIMIT 1
           ''',
           variables: [Variable.withString(normalized)],
-          readsFrom: {db.accountsHeads},
+          readsFrom: {db.chartOfAccounts},
         )
         .get();
 
     if (rows.isEmpty) return null;
-    final id = _toInt(rows.first.data['acc_head_id']);
+    final id = _toInt(rows.first.data['ChartOfAccountID']);
     return id > 0 ? id : null;
   }
 
@@ -347,16 +941,61 @@ class TransactionsRepository {
       throw ArgumentError('Head name cannot be empty.');
     }
 
-    final existingId = await findAccountHeadIdByNameLoose(normalized);
-    if (existingId != null) return existingId;
+    final accountHeadId = _accountHeadIdForChartName(normalized);
+    final accountSubHeadId = _accountSubHeadIdForChartName(
+      normalized,
+      accountHeadId,
+    );
+    return createChartAccount(
+      chartAccountName: normalized,
+      accountHeadId: accountHeadId,
+      accountSubHeadId: accountSubHeadId,
+    );
+  }
+
+  Future<int> createChartAccount({
+    required String chartAccountName,
+    required int accountHeadId,
+    required int accountSubHeadId,
+    String code = '',
+  }) async {
+    final normalized = chartAccountName.trim();
+    final cleanCode = code.trim();
+    if (normalized.isEmpty) {
+      throw ArgumentError('Chart account name cannot be empty.');
+    }
+    if (accountHeadId <= 0) {
+      throw ArgumentError('Account head is required.');
+    }
+    if (accountSubHeadId <= 0) {
+      throw ArgumentError('Account sub head is required.');
+    }
+    final resolvedCode = cleanCode.isEmpty
+        ? await getNextChartAccountCode(accountSubHeadId: accountSubHeadId)
+        : cleanCode;
+
+    await _assertUniqueChartAccount(
+      chartOfAccountId: 0,
+      chartName: normalized,
+      code: resolvedCode,
+    );
 
     final newId = await getNextAccountHeadId();
     await db.customStatement(
       '''
-      INSERT INTO Accounts_Heads (acc_head_id, acc_head_name)
-      VALUES (?1, ?2)
+      INSERT INTO ChartOfAccounts
+        (ChartOfAccountID, AccountHeadID, AccountSubHeadID, ChartOfAccountName,
+         Code, IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6)
       ''',
-      [newId, normalized],
+      [
+        newId,
+        accountHeadId,
+        accountSubHeadId,
+        normalized,
+        resolvedCode.isEmpty ? null : resolvedCode,
+        DateTime.now().toUtc().toIso8601String(),
+      ],
     );
     return newId;
   }
@@ -370,23 +1009,124 @@ class TransactionsRepository {
       throw ArgumentError('Head name cannot be empty.');
     }
 
+    final existing = await db
+        .customSelect(
+          '''
+          SELECT AccountHeadID, AccountSubHeadID, COALESCE(Code, '') AS Code
+          FROM ChartOfAccounts
+          WHERE ChartOfAccountID = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(accHeadId)],
+          readsFrom: {db.chartOfAccounts},
+        )
+        .get();
+    final row = existing.isEmpty ? null : existing.first.data;
+    await updateChartAccount(
+      chartOfAccountId: accHeadId,
+      chartAccountName: normalized,
+      accountHeadId: _toInt(row?['AccountHeadID']) > 0
+          ? _toInt(row?['AccountHeadID'])
+          : _accountHeadIdForChartName(normalized),
+      accountSubHeadId: _toInt(row?['AccountSubHeadID']) > 0
+          ? _toInt(row?['AccountSubHeadID'])
+          : _accountSubHeadIdForChartName(
+              normalized,
+              _accountHeadIdForChartName(normalized),
+            ),
+      code: _toText(row?['Code']),
+    );
+  }
+
+  Future<void> updateChartAccount({
+    required int chartOfAccountId,
+    required String chartAccountName,
+    required int accountHeadId,
+    required int accountSubHeadId,
+    String code = '',
+  }) async {
+    final normalized = chartAccountName.trim();
+    final cleanCode = code.trim();
+    if (chartOfAccountId <= 0) {
+      throw ArgumentError('Chart account id is required.');
+    }
+    if (normalized.isEmpty) {
+      throw ArgumentError('Chart account name cannot be empty.');
+    }
+    if (accountHeadId <= 0) {
+      throw ArgumentError('Account head is required.');
+    }
+    if (accountSubHeadId <= 0) {
+      throw ArgumentError('Account sub head is required.');
+    }
+    final resolvedCode = cleanCode.isEmpty
+        ? await getNextChartAccountCode(
+            accountSubHeadId: accountSubHeadId,
+            excludingChartOfAccountId: chartOfAccountId,
+          )
+        : cleanCode;
+
+    await _assertUniqueChartAccount(
+      chartOfAccountId: chartOfAccountId,
+      chartName: normalized,
+      code: resolvedCode,
+    );
+
     await db.customStatement(
       '''
-      UPDATE Accounts_Heads
-      SET acc_head_name = ?1
-      WHERE acc_head_id = ?2
+      UPDATE ChartOfAccounts
+      SET AccountHeadID = ?1,
+          AccountSubHeadID = ?2,
+          ChartOfAccountName = ?3,
+          Code = ?4,
+          IsSynced = 0,
+          UpdatedAt = ?5
+      WHERE ChartOfAccountID = ?6
       ''',
-      [normalized, accHeadId],
+      [
+        accountHeadId,
+        accountSubHeadId,
+        normalized,
+        resolvedCode.isEmpty ? null : resolvedCode,
+        DateTime.now().toUtc().toIso8601String(),
+        chartOfAccountId,
+      ],
     );
   }
 
   Future<void> deleteAccountHead({required int accHeadId}) async {
+    await deleteChartAccount(chartOfAccountId: accHeadId);
+  }
+
+  Future<void> deleteChartAccount({required int chartOfAccountId}) async {
+    if (chartOfAccountId <= 0) return;
+    final usage = await db
+        .customSelect(
+          '''
+          SELECT COUNT(*) AS total
+          FROM Acc_Personal
+          WHERE ChartOfAccountID = ?1
+            AND COALESCE(IsDeleted, 0) = 0
+          ''',
+          variables: [Variable.withInt(chartOfAccountId)],
+          readsFrom: {db.accPersonal},
+        )
+        .getSingle();
+    if (_toInt(usage.data['total']) > 0) {
+      throw ArgumentError(
+        'Cannot delete chart account because accounts are linked to it.',
+      );
+    }
+
     await db.customStatement(
       '''
-      DELETE FROM Accounts_Heads
-      WHERE acc_head_id = ?1
+      UPDATE ChartOfAccounts
+      SET IsDeleted = 1,
+          IsSynced = 0,
+          UpdatedAt = ?1
+      WHERE ChartOfAccountID = ?2
       ''',
-      [accHeadId],
+      [DateTime.now().toUtc().toIso8601String(), chartOfAccountId],
     );
   }
 
@@ -818,6 +1558,7 @@ class TransactionsRepository {
     String? phone,
     String? address,
     String? statusg,
+    int? chartOfAccountId,
   }) async {
     final nextAccId = await getNextAccId();
     final nowIso = DateTime.now().toUtc().toIso8601String();
@@ -838,6 +1579,7 @@ class TransactionsRepository {
               address?.trim().isEmpty == true ? null : address?.trim(),
             ),
             statusg: Value(normalizedHead),
+            chartOfAccountId: Value(chartOfAccountId),
             companyId: Value(companyId),
             isSynced: const Value(0),
             updatedAt: Value(nowIso),
@@ -854,6 +1596,7 @@ class TransactionsRepository {
     String? phone,
     String? address,
     String? statusg,
+    int? chartOfAccountId,
   }) async {
     final nowIso = DateTime.now().toUtc().toIso8601String();
     final normalizedHead = normalizeHeadNameForAccount(
@@ -871,6 +1614,7 @@ class TransactionsRepository {
           address?.trim().isEmpty == true ? null : address?.trim(),
         ),
         statusg: Value(normalizedHead),
+        chartOfAccountId: Value(chartOfAccountId),
         isSynced: const Value(0),
         updatedAt: Value(nowIso),
       ),
@@ -1523,8 +2267,7 @@ class TransactionsRepository {
 
     final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
     return (db.update(db.transactionsP)..where(
-          (t) =>
-              t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
+          (t) => t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
         ))
         .write(
           TransactionsPCompanion(
@@ -1550,8 +2293,7 @@ class TransactionsRepository {
 
     final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
     return (db.update(db.transactionsP)..where(
-          (t) =>
-              t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
+          (t) => t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
         ))
         .write(
           TransactionsPCompanion(
@@ -2192,7 +2934,8 @@ ORDER BY currency COLLATE NOCASE ASC;
       variables.add(Variable.withString(toDate!.trim()));
     }
 
-    final query = """
+    final query =
+        """
 SELECT 
     ap.statusg AS Subgroup,
     ap.Name AS Name,

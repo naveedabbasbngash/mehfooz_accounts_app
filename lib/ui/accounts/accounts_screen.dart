@@ -153,13 +153,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
     String? companyName,
   }) async {
     try {
-      final companies = await _db.customSelect(
-        '''
+      final companies = await _db.customSelect('''
         SELECT CompanyID, CompanyName
         FROM Company
         ORDER BY CompanyID ASC
-        ''',
-      ).get();
+        ''').get();
       final companyRows = companies
           .map(
             (row) =>
@@ -167,8 +165,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
           )
           .join(', ');
 
-      final accounts = await _db.customSelect(
-        '''
+      final accounts = await _db
+          .customSelect(
+            '''
         SELECT AccID, Name
         FROM Acc_Personal
         WHERE CompanyID = ?1
@@ -176,8 +175,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
         ORDER BY AccID ASC
         LIMIT 12
         ''',
-        variables: [Variable.withInt(companyId)],
-      ).get();
+            variables: [Variable.withInt(companyId)],
+          )
+          .get();
       final accountRows = accounts
           .map((row) => '${row.data['AccID']}:${row.data['Name'] ?? '(null)'}')
           .join(', ');
@@ -429,6 +429,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
                 result.phone.trim().isEmpty ? null : result.phone.trim(),
               ),
               statusg: Value(normalizedHead),
+              chartOfAccountId: Value(result.selectedHeadId),
               companyId: Value(companyId),
               userId: Value(
                 creatorUserId != null && creatorUserId > 0
@@ -493,7 +494,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
         heads: heads,
         currencies: currencies,
         initialName: row.name ?? '',
-        initialSelectedHeadId: _findHeadIdByNameLoose(heads, row.statusg),
+        initialSelectedHeadId:
+            row.chartOfAccountId ?? _findHeadIdByNameLoose(heads, row.statusg),
         initialPhone: row.phone ?? '',
         initialSelectedCurrencyIds: selected,
       ),
@@ -527,6 +529,7 @@ class _AccountsScreenState extends State<AccountsScreen> {
             result.phone.trim().isEmpty ? null : result.phone.trim(),
           ),
           statusg: Value(normalizedHead),
+          chartOfAccountId: Value(result.selectedHeadId),
           updatedAt: Value(now),
           isSynced: const Value(0),
         ),
@@ -1021,397 +1024,441 @@ class _AccountsScreenState extends State<AccountsScreen> {
           const _AccountsBackdrop(),
           SafeArea(
             child: StreamBuilder<List<AccPersonalData>>(
-          stream: _watchAccounts(companyId),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+              stream: _watchAccounts(companyId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-            final allRows = snapshot.data ?? const <AccPersonalData>[];
-            final addedCount = allRows.where(_isAddedAccount).length;
+                final allRows = snapshot.data ?? const <AccPersonalData>[];
+                final addedCount = allRows.where(_isAddedAccount).length;
 
-            return Column(
-              children: [
-                Container(
-                  margin: const EdgeInsets.fromLTRB(14, 10, 14, 8),
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_kAccountsBlue, _kAccountsBlueDark],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x261862A3),
-                        blurRadius: 20,
-                        offset: Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
+                return Column(
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(14, 10, 14, 8),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [_kAccountsBlue, _kAccountsBlueDark],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                         ),
-                        child: const Icon(Icons.groups_rounded, color: Colors.white),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              companyName.isEmpty
-                                  ? 'Company #$companyId'
-                                  : companyName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              'Accounts',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              '${allRows.length}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            const Text(
-                              'Total',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-                  child: ValueListenableBuilder<String>(
-                    valueListenable: _searchQueryNotifier,
-                    builder: (context, searchQuery, _) => TextField(
-                      controller: _searchController,
-                      focusNode: _searchFocusNode,
-                      onChanged: (value) => _searchQueryNotifier.value = value,
-                      decoration: InputDecoration(
-                        hintText: 'Search by name, status, phone or ID',
-                        prefixIcon: const Icon(Icons.search, color: _kAccountsBlue),
-                        suffixIcon: searchQuery.trim().isEmpty
-                            ? null
-                            : IconButton(
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _searchQueryNotifier.value = '';
-                                  if (!_searchFocusNode.hasFocus) {
-                                    _searchFocusNode.requestFocus();
-                                  }
-                                },
-                                icon: const Icon(Icons.close, color: _kAccountsBlue),
-                              ),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE2E8F0),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x261862A3),
+                            blurRadius: 20,
+                            offset: Offset(0, 10),
                           ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFDCE7F8),
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          borderSide: const BorderSide(
-                            color: _kAccountsBlue,
-                            width: 1.3,
-                          ),
-                        ),
+                        ],
                       ),
-                    ),
-                  ),
-                ),
-                ValueListenableBuilder<String>(
-                  valueListenable: _searchQueryNotifier,
-                  builder: (context, searchQuery, _) {
-                    final rows = allRows
-                        .where(_matchesActivePill)
-                        .where((row) => _matchesSearch(row, searchQuery))
-                        .toList();
-                    final emptyMessage = searchQuery.trim().isNotEmpty
-                        ? 'No account found for this search.'
-                        : _activePill == _AccountListPill.added
-                        ? 'No accounts added from app yet.'
-                        : 'No accounts for this company yet.';
-
-                    return Expanded(
-                      child: Column(
+                      child: Row(
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 2, 14, 6),
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                ChoiceChip(
-                                  label: Text('All (${allRows.length})'),
-                                  selected: _activePill == _AccountListPill.all,
-                                  selectedColor: const Color(0xFFE9F3FF),
-                                  backgroundColor: Colors.white,
-                                  side: const BorderSide(color: Color(0xFFDCE7F8)),
-                                  labelStyle: TextStyle(
-                                    color: _activePill == _AccountListPill.all
-                                        ? _kAccountsBlue
-                                        : const Color(0xFF475569),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  onSelected: (_) {
-                                    setState(() {
-                                      _activePill = _AccountListPill.all;
-                                      _selectedAccountIds.clear();
-                                    });
-                                  },
-                                ),
-                                ChoiceChip(
-                                  label: Text('Added Accounts ($addedCount)'),
-                                  selected:
-                                      _activePill == _AccountListPill.added,
-                                  selectedColor: const Color(0xFFE9F3FF),
-                                  backgroundColor: Colors.white,
-                                  side: const BorderSide(color: Color(0xFFDCE7F8)),
-                                  labelStyle: TextStyle(
-                                    color:
-                                        _activePill == _AccountListPill.added
-                                        ? _kAccountsBlue
-                                        : const Color(0xFF475569),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                  onSelected: (_) {
-                                    setState(() {
-                                      _activePill = _AccountListPill.added;
-                                      _selectedAccountIds.clear();
-                                    });
-                                  },
-                                ),
-                              ],
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.groups_rounded,
+                              color: Colors.white,
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(14, 4, 14, 6),
-                            child: Row(
-                              children: [
-                                const Text(
-                                  'Account List',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                _AccountMetaChip(
-                                  icon: Icons.manage_search_rounded,
-                                  label: '${rows.length} shown',
-                                ),
-                                if (_isSelectionMode) ...[
-                                  const Spacer(),
-                                  TextButton(
-                                    onPressed: _busy
-                                        ? null
-                                        : () => setState(
-                                            () => _selectedAccountIds.clear(),
-                                          ),
-                                    child: const Text('Clear'),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  FilledButton.icon(
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                    ),
-                                    onPressed: _busy
-                                        ? null
-                                        : () => _deleteSelectedAccounts(
-                                            companyId,
-                                          ),
-                                    icon: _busy
-                                        ? const SizedBox(
-                                            width: 14,
-                                            height: 14,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(Icons.delete_outline),
-                                    label: Text(
-                                      'Delete (${_selectedAccountIds.length})',
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                          const SizedBox(width: 12),
                           Expanded(
-                            child: RefreshIndicator(
-                              color: _kAccountsBlue,
-                              onRefresh: () async {
-                                await _logAccountsRefreshSnapshot(
-                                  'before-refresh',
-                                  companyId,
-                                  companyName: companyName,
-                                );
-                                await context
-                                    .read<SyncViewModel>()
-                                    .syncNowSingleFlight(silent: true);
-                                await _logAccountsRefreshSnapshot(
-                                  'after-refresh',
-                                  companyId,
-                                  companyName: companyName,
-                                );
-                              },
-                              child: rows.isEmpty
-                                  ? ListView(
-                                      physics:
-                                          const AlwaysScrollableScrollPhysics(),
-                                      padding: const EdgeInsets.fromLTRB(
-                                        14,
-                                        24,
-                                        14,
-                                        96,
-                                      ),
-                                      children: [
-                                        ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            minHeight: 280,
-                                          ),
-                                          child: Center(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Container(
-                                                  width: 64,
-                                                  height: 64,
-                                                  decoration: BoxDecoration(
-                                                    color: const Color(
-                                                      0xFFE2E8F0,
-                                                    ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          18,
-                                                        ),
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons
-                                                        .account_balance_wallet_outlined,
-                                                    color: Color(0xFF475569),
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 14),
-                                                Text(
-                                                  emptyMessage,
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF475569),
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 12),
-                                                if (searchQuery.trim().isEmpty)
-                                                  FilledButton.icon(
-                                                      onPressed: _busy ||
-                                                              !_canCreateAccounts
-                                                          ? null
-                                                          : () => _addAccount(
-                                                              companyId,
-                                                          ),
-                                                    style: FilledButton.styleFrom(
-                                                      backgroundColor:
-                                                          _kAccountsBlue,
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                    ),
-                                                    icon: const Icon(
-                                                      Icons.person_add_alt_1,
-                                                    ),
-                                                    label: const Text(
-                                                      'Create First Account',
-                                                    ),
-                                                  ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    )
-                                  : ListView.separated(
-                                      physics:
-                                          const AlwaysScrollableScrollPhysics(),
-                                      padding: const EdgeInsets.fromLTRB(
-                                        14,
-                                        0,
-                                        14,
-                                        96,
-                                      ),
-                                      itemCount: rows.length,
-                                      separatorBuilder: (_, index) =>
-                                          const SizedBox(height: 10),
-                                      itemBuilder: (context, index) =>
-                                          _buildAccountCard(
-                                            row: rows[index],
-                                            companyId: companyId,
-                                            isSelected: _selectedAccountIds
-                                                .contains(rows[index].accId),
-                                          ),
-                                    ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  companyName.isEmpty
+                                      ? 'Company #$companyId'
+                                      : companyName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Accounts',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '${allRows.length}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const Text(
+                                  'Total',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    );
-                  },
-                ),
-              ],
-            );
-          },
-        ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _searchQueryNotifier,
+                        builder: (context, searchQuery, _) => TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          onChanged: (value) =>
+                              _searchQueryNotifier.value = value,
+                          decoration: InputDecoration(
+                            hintText: 'Search by name, status, phone or ID',
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: _kAccountsBlue,
+                            ),
+                            suffixIcon: searchQuery.trim().isEmpty
+                                ? null
+                                : IconButton(
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      _searchQueryNotifier.value = '';
+                                      if (!_searchFocusNode.hasFocus) {
+                                        _searchFocusNode.requestFocus();
+                                      }
+                                    },
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: _kAccountsBlue,
+                                    ),
+                                  ),
+                            filled: true,
+                            fillColor: Colors.white,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: Color(0xFFDCE7F8),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              borderSide: const BorderSide(
+                                color: _kAccountsBlue,
+                                width: 1.3,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    ValueListenableBuilder<String>(
+                      valueListenable: _searchQueryNotifier,
+                      builder: (context, searchQuery, _) {
+                        final rows = allRows
+                            .where(_matchesActivePill)
+                            .where((row) => _matchesSearch(row, searchQuery))
+                            .toList();
+                        final emptyMessage = searchQuery.trim().isNotEmpty
+                            ? 'No account found for this search.'
+                            : _activePill == _AccountListPill.added
+                            ? 'No accounts added from app yet.'
+                            : 'No accounts for this company yet.';
+
+                        return Expanded(
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  2,
+                                  14,
+                                  6,
+                                ),
+                                child: Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    ChoiceChip(
+                                      label: Text('All (${allRows.length})'),
+                                      selected:
+                                          _activePill == _AccountListPill.all,
+                                      selectedColor: const Color(0xFFE9F3FF),
+                                      backgroundColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Color(0xFFDCE7F8),
+                                      ),
+                                      labelStyle: TextStyle(
+                                        color:
+                                            _activePill == _AccountListPill.all
+                                            ? _kAccountsBlue
+                                            : const Color(0xFF475569),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      onSelected: (_) {
+                                        setState(() {
+                                          _activePill = _AccountListPill.all;
+                                          _selectedAccountIds.clear();
+                                        });
+                                      },
+                                    ),
+                                    ChoiceChip(
+                                      label: Text(
+                                        'Added Accounts ($addedCount)',
+                                      ),
+                                      selected:
+                                          _activePill == _AccountListPill.added,
+                                      selectedColor: const Color(0xFFE9F3FF),
+                                      backgroundColor: Colors.white,
+                                      side: const BorderSide(
+                                        color: Color(0xFFDCE7F8),
+                                      ),
+                                      labelStyle: TextStyle(
+                                        color:
+                                            _activePill ==
+                                                _AccountListPill.added
+                                            ? _kAccountsBlue
+                                            : const Color(0xFF475569),
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                      onSelected: (_) {
+                                        setState(() {
+                                          _activePill = _AccountListPill.added;
+                                          _selectedAccountIds.clear();
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  4,
+                                  14,
+                                  6,
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Text(
+                                      'Account List',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    _AccountMetaChip(
+                                      icon: Icons.manage_search_rounded,
+                                      label: '${rows.length} shown',
+                                    ),
+                                    if (_isSelectionMode) ...[
+                                      const Spacer(),
+                                      TextButton(
+                                        onPressed: _busy
+                                            ? null
+                                            : () => setState(
+                                                () =>
+                                                    _selectedAccountIds.clear(),
+                                              ),
+                                        child: const Text('Clear'),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      FilledButton.icon(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: Colors.red,
+                                        ),
+                                        onPressed: _busy
+                                            ? null
+                                            : () => _deleteSelectedAccounts(
+                                                companyId,
+                                              ),
+                                        icon: _busy
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : const Icon(Icons.delete_outline),
+                                        label: Text(
+                                          'Delete (${_selectedAccountIds.length})',
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              Expanded(
+                                child: RefreshIndicator(
+                                  color: _kAccountsBlue,
+                                  onRefresh: () async {
+                                    await _logAccountsRefreshSnapshot(
+                                      'before-refresh',
+                                      companyId,
+                                      companyName: companyName,
+                                    );
+                                    await context
+                                        .read<SyncViewModel>()
+                                        .syncNowSingleFlight(silent: true);
+                                    await _logAccountsRefreshSnapshot(
+                                      'after-refresh',
+                                      companyId,
+                                      companyName: companyName,
+                                    );
+                                  },
+                                  child: rows.isEmpty
+                                      ? ListView(
+                                          physics:
+                                              const AlwaysScrollableScrollPhysics(),
+                                          padding: const EdgeInsets.fromLTRB(
+                                            14,
+                                            24,
+                                            14,
+                                            96,
+                                          ),
+                                          children: [
+                                            ConstrainedBox(
+                                              constraints: const BoxConstraints(
+                                                minHeight: 280,
+                                              ),
+                                              child: Center(
+                                                child: Column(
+                                                  mainAxisSize:
+                                                      MainAxisSize.min,
+                                                  children: [
+                                                    Container(
+                                                      width: 64,
+                                                      height: 64,
+                                                      decoration: BoxDecoration(
+                                                        color: const Color(
+                                                          0xFFE2E8F0,
+                                                        ),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              18,
+                                                            ),
+                                                      ),
+                                                      child: const Icon(
+                                                        Icons
+                                                            .account_balance_wallet_outlined,
+                                                        color: Color(
+                                                          0xFF475569,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 14),
+                                                    Text(
+                                                      emptyMessage,
+                                                      style: const TextStyle(
+                                                        color: Color(
+                                                          0xFF475569,
+                                                        ),
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(height: 12),
+                                                    if (searchQuery
+                                                        .trim()
+                                                        .isEmpty)
+                                                      FilledButton.icon(
+                                                        onPressed:
+                                                            _busy ||
+                                                                !_canCreateAccounts
+                                                            ? null
+                                                            : () => _addAccount(
+                                                                companyId,
+                                                              ),
+                                                        style:
+                                                            FilledButton.styleFrom(
+                                                              backgroundColor:
+                                                                  _kAccountsBlue,
+                                                              foregroundColor:
+                                                                  Colors.white,
+                                                            ),
+                                                        icon: const Icon(
+                                                          Icons
+                                                              .person_add_alt_1,
+                                                        ),
+                                                        label: const Text(
+                                                          'Create First Account',
+                                                        ),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : ListView.separated(
+                                          physics:
+                                              const AlwaysScrollableScrollPhysics(),
+                                          padding: const EdgeInsets.fromLTRB(
+                                            14,
+                                            0,
+                                            14,
+                                            96,
+                                          ),
+                                          itemCount: rows.length,
+                                          separatorBuilder: (_, index) =>
+                                              const SizedBox(height: 10),
+                                          itemBuilder: (context, index) =>
+                                              _buildAccountCard(
+                                                row: rows[index],
+                                                companyId: companyId,
+                                                isSelected: _selectedAccountIds
+                                                    .contains(
+                                                      rows[index].accId,
+                                                    ),
+                                              ),
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -1753,7 +1800,7 @@ class _AccountEditorSheetState extends State<_AccountEditorSheet> {
                               ),
                               const Spacer(),
                               TextButton(
-                              onPressed: () => _toggleAll(true),
+                                onPressed: () => _toggleAll(true),
                                 child: const Text(
                                   'Select all',
                                   style: TextStyle(color: _kAccountsBlue),

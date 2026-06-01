@@ -82,6 +82,45 @@ class DatabaseManager {
   Future<void> _ensureBaseSchema(AppDatabase db) async {
     // These are safe to run repeatedly.
     await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS AccountHeads (
+        AccountHeadID INTEGER PRIMARY KEY,
+        AccountHeadName TEXT NOT NULL,
+        NormalBalance TEXT,
+        IsDeleted INTEGER DEFAULT 0,
+        IsSynced INTEGER DEFAULT 1,
+        UpdatedAt TEXT
+      );
+    ''');
+
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS AccountSubHeads (
+        AccountSubHeadID INTEGER PRIMARY KEY,
+        AccountHeadID INTEGER NOT NULL,
+        Code TEXT,
+        AccountSubHeadName TEXT NOT NULL,
+        IsDeleted INTEGER DEFAULT 0,
+        IsSynced INTEGER DEFAULT 1,
+        UpdatedAt TEXT,
+        FOREIGN KEY (AccountHeadID) REFERENCES AccountHeads(AccountHeadID)
+      );
+    ''');
+
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS ChartOfAccounts (
+        ChartOfAccountID INTEGER PRIMARY KEY,
+        AccountHeadID INTEGER NOT NULL,
+        AccountSubHeadID INTEGER NOT NULL,
+        ChartOfAccountName TEXT NOT NULL,
+        Code TEXT,
+        IsDeleted INTEGER DEFAULT 0,
+        IsSynced INTEGER DEFAULT 1,
+        UpdatedAt TEXT,
+        FOREIGN KEY (AccountHeadID) REFERENCES AccountHeads(AccountHeadID),
+        FOREIGN KEY (AccountSubHeadID) REFERENCES AccountSubHeads(AccountSubHeadID)
+      );
+    ''');
+
+    await db.customStatement('''
       CREATE TABLE IF NOT EXISTS Acc_Personal (
         AccID INTEGER PRIMARY KEY,
         RDate TEXT,
@@ -94,11 +133,13 @@ class DatabaseManager {
         statusg TEXT,
         UserID INTEGER,
         CompanyID INTEGER,
+        ChartOfAccountID INTEGER,
         WName TEXT,
         SMS INTEGER DEFAULT 0,
         IsSynced INTEGER DEFAULT 0,
         UpdatedAt TEXT,
-        IsDeleted INTEGER DEFAULT 0
+        IsDeleted INTEGER DEFAULT 0,
+        FOREIGN KEY (ChartOfAccountID) REFERENCES ChartOfAccounts(ChartOfAccountID)
       );
     ''');
 
@@ -275,6 +316,13 @@ class DatabaseManager {
       "INTEGER DEFAULT 0",
     );
     await _ensureColumnExists(db, "Acc_Personal", "SMS", "INTEGER DEFAULT 0");
+    await _ensureColumnExists(
+      db,
+      "Acc_Personal",
+      "ChartOfAccountID",
+      "INTEGER",
+    );
+    await _ensureColumnExists(db, "AccountSubHeads", "Code", "TEXT");
 
     await _ensureColumnExists(db, "AccType", "IsDeleted", "INTEGER DEFAULT 0");
     await _ensureColumnExists(db, "AccType", "IsSynced", "INTEGER DEFAULT 0");
@@ -350,11 +398,32 @@ class DatabaseManager {
     ''');
 
     await db.customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_account_heads_name
+      ON AccountHeads (LOWER(TRIM(AccountHeadName)));
+    ''');
+
+    await db.customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_account_sub_heads_parent_name
+      ON AccountSubHeads (AccountHeadID, LOWER(TRIM(AccountSubHeadName)));
+    ''');
+
+    await db.customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_chart_accounts_name
+      ON ChartOfAccounts (LOWER(TRIM(ChartOfAccountName)));
+    ''');
+
+    await db.customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_acc_personal_chart
+      ON Acc_Personal (ChartOfAccountID);
+    ''');
+
+    await db.customStatement('''
       CREATE INDEX IF NOT EXISTS idx_assignment_sync_state
       ON Account_PCurrencyAssignment (IsSynced, AccID, AccountTypeID);
     ''');
 
     await _migrateCashHeadsFromAccountNameIfNeeded(db);
+    await _ensureChartOfAccountsFromLegacyData(db);
 
     _log.i("✅ Auto-migration done.");
   }
@@ -543,52 +612,307 @@ class DatabaseManager {
     return result;
   }
 
-  Future<void> _ensureAccountHeadsFromAccPersonal(AppDatabase db) async {
-    final existingRows = await db.customSelect('''
-          SELECT acc_head_id, acc_head_name
-          FROM Accounts_Heads
-          ''').get();
+  int _accountHeadIdForChartName(String name) {
+    final upper = name.trim().toUpperCase();
+    if (upper.contains('EXPENSE')) return 4;
+    if (upper.contains('PAYABLE') ||
+        upper.contains('SUPPLIER') ||
+        upper.contains('LIABILITY')) {
+      return 2;
+    }
+    if (upper.contains('EQUITY') ||
+        upper.contains('CAPITAL') ||
+        upper.contains('DRAWING')) {
+      return 3;
+    }
+    if (upper.contains('SALE') ||
+        upper.contains('INCOME') ||
+        upper.contains('REVENUE')) {
+      return 5;
+    }
+    return 1;
+  }
 
-    final existingNames = <String>{};
-    var nextId = 1;
+  int _accountSubHeadIdForChartName(String name, int accountHeadId) {
+    final upper = name.trim().toUpperCase();
+    switch (accountHeadId) {
+      case 2:
+        return 201;
+      case 3:
+        return 301;
+      case 4:
+        return 402;
+      case 5:
+        return 501;
+      case 1:
+      default:
+        return upper.contains('FIXED') ? 102 : 101;
+    }
+  }
 
-    for (final row in existingRows) {
-      final id = _asInt(row.data['acc_head_id']);
-      if (id >= nextId) nextId = id + 1;
-      final name = (row.data['acc_head_name'] ?? '').toString().trim();
-      if (name.isNotEmpty) existingNames.add(name.toLowerCase());
+  Future<void> _ensureDefaultAccountTaxonomy(AppDatabase db) async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    const heads = <List<Object>>[
+      [1, 'Assets', 'Debit'],
+      [2, 'Liabilities', 'Credit'],
+      [3, 'Capital', 'Credit'],
+      [4, 'Expenses', 'Debit'],
+      [5, 'Revenue', 'Credit'],
+    ];
+    const subHeads = <List<Object>>[
+      [101, 1, '01-01', 'Current Assets'],
+      [102, 1, '01-02', 'Fixed Assets'],
+      [201, 2, '02-01', 'Other Liabilities'],
+      [301, 3, '03-01', 'Owner Equity'],
+      [402, 4, '04-02', 'Other Expenses'],
+      [501, 5, '05-01', 'Other Revenue'],
+    ];
+
+    for (final head in heads) {
+      await db.customStatement(
+        '''
+        INSERT OR IGNORE INTO AccountHeads
+          (AccountHeadID, AccountHeadName, NormalBalance, IsDeleted, IsSynced, UpdatedAt)
+        VALUES (?1, ?2, ?3, 0, 1, ?4)
+        ''',
+        [head[0], head[1], head[2], nowIso],
+      );
+      await db.customStatement(
+        '''
+        UPDATE AccountHeads
+        SET AccountHeadName = ?2,
+            NormalBalance = ?3,
+            IsDeleted = 0,
+            IsSynced = 1,
+            UpdatedAt = ?4
+        WHERE AccountHeadID = ?1
+        ''',
+        [head[0], head[1], head[2], nowIso],
+      );
     }
 
-    final statusRows = await db.customSelect('''
-          SELECT DISTINCT TRIM(COALESCE(statusg, '')) AS head_name
-          FROM Acc_Personal
-          WHERE TRIM(COALESCE(statusg, '')) <> ''
+    for (final subHead in subHeads) {
+      await db.customStatement(
+        '''
+        INSERT OR IGNORE INTO AccountSubHeads
+          (AccountSubHeadID, AccountHeadID, Code, AccountSubHeadName, IsDeleted, IsSynced, UpdatedAt)
+        VALUES (?1, ?2, ?3, ?4, 0, 1, ?5)
+        ''',
+        [subHead[0], subHead[1], subHead[2], subHead[3], nowIso],
+      );
+      await db.customStatement(
+        '''
+        UPDATE AccountSubHeads
+        SET AccountHeadID = ?2,
+            Code = ?3,
+            AccountSubHeadName = ?4,
+            IsDeleted = 0,
+            IsSynced = 1,
+            UpdatedAt = ?5
+        WHERE AccountSubHeadID = ?1
+        ''',
+        [subHead[0], subHead[1], subHead[2], subHead[3], nowIso],
+      );
+    }
+
+    await db.customStatement(
+      '''
+      UPDATE AccountSubHeads
+      SET IsDeleted = 1,
+          IsSynced = 1,
+          UpdatedAt = ?1
+      WHERE AccountSubHeadID IN (202, 401)
+        AND AccountSubHeadName IN ('Long Term Liability', 'Operating Revenue')
+      ''',
+      [nowIso],
+    );
+  }
+
+  Future<int?> _findChartOfAccountIdByName(AppDatabase db, String name) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty) return null;
+
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT ChartOfAccountID
+          FROM ChartOfAccounts
+          WHERE LOWER(TRIM(COALESCE(ChartOfAccountName, ''))) = LOWER(TRIM(?1))
             AND COALESCE(IsDeleted, 0) = 0
-          ORDER BY head_name COLLATE NOCASE ASC
+          ORDER BY ChartOfAccountID ASC
+          LIMIT 1
+          ''',
+          variables: [Variable.withString(normalized)],
+        )
+        .get();
+    if (rows.isEmpty) return null;
+    final id = _asInt(rows.first.data['ChartOfAccountID']);
+    return id > 0 ? id : null;
+  }
+
+  Future<int> _nextChartOfAccountId(AppDatabase db) async {
+    final row = await db.customSelect('''
+          SELECT COALESCE(MAX(ChartOfAccountID), 0) + 1 AS next_id
+          FROM ChartOfAccounts
+          ''').getSingle();
+    final id = _asInt(row.data['next_id']);
+    return id > 0 ? id : 1;
+  }
+
+  Future<int> _ensureChartOfAccount(
+    AppDatabase db,
+    String name, {
+    int? preferredId,
+  }) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty) return 0;
+
+    final existing = await _findChartOfAccountIdByName(db, normalized);
+    if (existing != null) return existing;
+
+    var chartId = preferredId != null && preferredId > 0
+        ? preferredId
+        : await _nextChartOfAccountId(db);
+    final idTaken = await db
+        .customSelect(
+          '''
+          SELECT 1
+          FROM ChartOfAccounts
+          WHERE ChartOfAccountID = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(chartId)],
+        )
+        .get();
+    if (idTaken.isNotEmpty) {
+      chartId = await _nextChartOfAccountId(db);
+    }
+
+    final accountHeadId = _accountHeadIdForChartName(normalized);
+    final accountSubHeadId = _accountSubHeadIdForChartName(
+      normalized,
+      accountHeadId,
+    );
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    await db.customStatement(
+      '''
+      INSERT INTO ChartOfAccounts
+        (ChartOfAccountID, AccountHeadID, AccountSubHeadID, ChartOfAccountName,
+         IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, 0, 1, ?5)
+      ''',
+      [chartId, accountHeadId, accountSubHeadId, normalized, nowIso],
+    );
+
+    return chartId;
+  }
+
+  Future<void> _normalizeExistingChartAccountTaxonomy(AppDatabase db) async {
+    final rows = await db.customSelect('''
+          SELECT ChartOfAccountID, ChartOfAccountName, AccountHeadID, AccountSubHeadID
+          FROM ChartOfAccounts
+          WHERE COALESCE(IsDeleted, 0) = 0
+            AND TRIM(COALESCE(ChartOfAccountName, '')) <> ''
           ''').get();
 
-    var inserted = 0;
-    for (final row in statusRows) {
-      final name = (row.data['head_name'] ?? '').toString().trim();
-      if (name.isEmpty) continue;
-      final normalized = name.toLowerCase();
-      if (existingNames.contains(normalized)) continue;
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    var updated = 0;
+    for (final row in rows) {
+      final id = _asInt(row.data['ChartOfAccountID']);
+      final name = (row.data['ChartOfAccountName'] ?? '').toString().trim();
+      if (id <= 0 || name.isEmpty) continue;
+
+      final accountHeadId = _accountHeadIdForChartName(name);
+      final accountSubHeadId = _accountSubHeadIdForChartName(
+        name,
+        accountHeadId,
+      );
+      if (_asInt(row.data['AccountHeadID']) == accountHeadId &&
+          _asInt(row.data['AccountSubHeadID']) == accountSubHeadId) {
+        continue;
+      }
 
       await db.customStatement(
         '''
-        INSERT INTO Accounts_Heads (acc_head_id, acc_head_name)
-        VALUES (?1, ?2)
+        UPDATE ChartOfAccounts
+        SET AccountHeadID = ?1,
+            AccountSubHeadID = ?2,
+            UpdatedAt = ?3
+        WHERE ChartOfAccountID = ?4
         ''',
-        [nextId, name],
+        [accountHeadId, accountSubHeadId, nowIso, id],
       );
-      existingNames.add(normalized);
-      nextId += 1;
-      inserted += 1;
+      updated += 1;
     }
 
-    if (inserted > 0) {
-      _log.i("✅ Synced $inserted account head(s) from Acc_Personal.statusg");
+    if (updated > 0) {
+      _log.i("✅ Normalized $updated chart account taxonomy row(s)");
     }
+  }
+
+  Future<void> _ensureChartOfAccountsFromLegacyData(AppDatabase db) async {
+    await _ensureDefaultAccountTaxonomy(db);
+
+    final legacyRows = await db.customSelect('''
+          SELECT acc_head_id, acc_head_name
+          FROM Accounts_Heads
+          WHERE TRIM(COALESCE(acc_head_name, '')) <> ''
+          ORDER BY acc_head_id ASC
+          ''').get();
+
+    var inserted = 0;
+    for (final row in legacyRows) {
+      final id = _asInt(row.data['acc_head_id']);
+      final name = (row.data['acc_head_name'] ?? '').toString().trim();
+      final before = await _findChartOfAccountIdByName(db, name);
+      final chartId = await _ensureChartOfAccount(
+        db,
+        name,
+        preferredId: id > 0 ? id : null,
+      );
+      if (before == null && chartId > 0) inserted += 1;
+    }
+
+    final statusRows = await db.customSelect('''
+          SELECT DISTINCT TRIM(COALESCE(statusg, '')) AS chart_name
+          FROM Acc_Personal
+          WHERE TRIM(COALESCE(statusg, '')) <> ''
+            AND COALESCE(IsDeleted, 0) = 0
+          ORDER BY chart_name COLLATE NOCASE ASC
+          ''').get();
+
+    for (final row in statusRows) {
+      final name = (row.data['chart_name'] ?? '').toString().trim();
+      final before = await _findChartOfAccountIdByName(db, name);
+      final chartId = await _ensureChartOfAccount(db, name);
+      if (before == null && chartId > 0) inserted += 1;
+    }
+
+    await _normalizeExistingChartAccountTaxonomy(db);
+
+    await db.customStatement('''
+      UPDATE Acc_Personal
+      SET ChartOfAccountID = (
+        SELECT coa.ChartOfAccountID
+        FROM ChartOfAccounts coa
+        WHERE LOWER(TRIM(COALESCE(coa.ChartOfAccountName, ''))) =
+              LOWER(TRIM(COALESCE(Acc_Personal.statusg, '')))
+          AND COALESCE(coa.IsDeleted, 0) = 0
+        ORDER BY coa.ChartOfAccountID ASC
+        LIMIT 1
+      )
+      WHERE (ChartOfAccountID IS NULL OR ChartOfAccountID <= 0)
+        AND TRIM(COALESCE(statusg, '')) <> ''
+    ''');
+
+    if (inserted > 0) {
+      _log.i("✅ Synced $inserted chart account(s) from legacy account heads");
+    }
+  }
+
+  Future<void> _ensureAccountHeadsFromAccPersonal(AppDatabase db) async {
+    await _ensureChartOfAccountsFromLegacyData(db);
   }
 
   Future<void> _seedFromBundledAssetIfNeeded(AppDatabase db) async {

@@ -68,14 +68,19 @@ class UserModel {
           : int.tryParse(data["is_login"]?.toString() ?? "0") ?? 0,
       roleCodes: _extractRoleCodes(data),
       permissions: _extractStringList(data["permissions"]),
-      planStatus: data["plan_status"] != null
-          ? PlanStatus.fromJson(data["plan_status"])
+      planStatus: _mapOrNull(data["plan_status"] ?? data["PlanStatus"]) != null
+          ? PlanStatus.fromJson(
+              _mapOrNull(data["plan_status"] ?? data["PlanStatus"])!,
+            )
           : null,
-      expiry: data["expiry"] != null
-          ? ExpiryInfo.fromJson(data["expiry"])
+      expiry: _mapOrNull(data["expiry"] ?? data["Expiry"]) != null
+          ? ExpiryInfo.fromJson(_mapOrNull(data["expiry"] ?? data["Expiry"])!)
           : null,
-      subscription: data["subscription"] != null
-          ? SubscriptionInfo.fromJson(data["subscription"])
+      subscription:
+          _mapOrNull(data["subscription"] ?? data["Subscription"]) != null
+          ? SubscriptionInfo.fromJson(
+              _mapOrNull(data["subscription"] ?? data["Subscription"])!,
+            )
           : null,
     );
   }
@@ -102,14 +107,19 @@ class UserModel {
           : int.tryParse(data["is_login"]?.toString() ?? "0") ?? 0,
       roleCodes: _extractRoleCodes(data),
       permissions: _extractStringList(data["permissions"]),
-      planStatus: data["plan_status"] != null
-          ? PlanStatus.fromJson(data["plan_status"])
+      planStatus: _mapOrNull(data["plan_status"] ?? data["PlanStatus"]) != null
+          ? PlanStatus.fromJson(
+              _mapOrNull(data["plan_status"] ?? data["PlanStatus"])!,
+            )
           : null,
-      expiry: data["expiry"] != null
-          ? ExpiryInfo.fromJson(data["expiry"])
+      expiry: _mapOrNull(data["expiry"] ?? data["Expiry"]) != null
+          ? ExpiryInfo.fromJson(_mapOrNull(data["expiry"] ?? data["Expiry"])!)
           : null,
-      subscription: data["subscription"] != null
-          ? SubscriptionInfo.fromJson(data["subscription"])
+      subscription:
+          _mapOrNull(data["subscription"] ?? data["Subscription"]) != null
+          ? SubscriptionInfo.fromJson(
+              _mapOrNull(data["subscription"] ?? data["Subscription"])!,
+            )
           : null,
     );
   }
@@ -182,6 +192,31 @@ class UserModel {
     return out.toSet().toList(growable: false);
   }
 
+  static Map<String, dynamic>? _mapOrNull(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return null;
+  }
+
+  String get packageStatusCode {
+    final code = planStatus?.statusCode.trim().toUpperCase() ?? '';
+    if (code.isNotEmpty) return code;
+    if (expiry?.isExpired == true) return 'EXPIRED';
+    return 'UNKNOWN';
+  }
+
+  String get packageStatusText {
+    final text = planStatus?.statusText.trim() ?? '';
+    if (text.isNotEmpty) return text;
+    if (expiry?.isExpired == true) return 'Expired';
+    return 'Status unavailable';
+  }
+
+  bool get hasPackageStatus =>
+      planStatus != null || expiry != null || subscription != null;
+
   /// ============================================================
   /// DEBUG
   /// ============================================================
@@ -216,16 +251,18 @@ class PlanStatus {
 
   factory PlanStatus.fromJson(Map<String, dynamic> json) {
     return PlanStatus(
-      statusCode: json["status_code"]?.toString() ?? "",
-      statusText: json["status_text"]?.toString() ?? "",
+      statusCode:
+          (json["status_code"] ?? json["StatusCode"] ?? json["Status"] ?? "")
+              .toString(),
+      statusText:
+          (json["status_text"] ?? json["StatusText"] ?? json["status"] ?? "")
+              .toString(),
 
       // ========================================================
       // 🔥 BACKWARD SAFE LOGIC
       // If backend does NOT send canSync → ALLOW SYNC
       // ========================================================
-      canSync: json.containsKey("canSync")
-          ? json["canSync"].toString() == "1"
-          : true,
+      canSync: _truthy(json["canSync"] ?? json["can_sync"] ?? json["CanSync"]),
 
       // 👉 TEMP OVERRIDE (uncomment if needed)
       // canSync: true,
@@ -237,6 +274,13 @@ class PlanStatus {
     "status_text": statusText,
     "canSync": canSync ? "1" : "0",
   };
+
+  static bool _truthy(dynamic value) {
+    if (value == null) return true;
+    if (value is bool) return value;
+    final normalized = value.toString().trim().toLowerCase();
+    return normalized == '1' || normalized == 'true' || normalized == 'yes';
+  }
 }
 
 /// ============================================================
@@ -254,9 +298,13 @@ class ExpiryInfo {
   });
 
   factory ExpiryInfo.fromJson(Map<String, dynamic> json) => ExpiryInfo(
-    isExpired: json["is_expired"] ?? false,
-    remainingDays: json["remaining_days"] ?? 0,
-    message: json["message"] ?? "",
+    isExpired: _truthy(json["is_expired"] ?? json["isExpired"]),
+    remainingDays:
+        int.tryParse(
+          (json["remaining_days"] ?? json["remainingDays"] ?? 0).toString(),
+        ) ??
+        0,
+    message: (json["message"] ?? "").toString(),
   );
 
   Map<String, dynamic> toJson() => {
@@ -264,6 +312,12 @@ class ExpiryInfo {
     "remaining_days": remainingDays,
     "message": message,
   };
+
+  static bool _truthy(dynamic value) {
+    if (value is bool) return value;
+    final normalized = value?.toString().trim().toLowerCase() ?? '';
+    return normalized == '1' || normalized == 'true' || normalized == 'yes';
+  }
 }
 
 /// ============================================================
@@ -286,15 +340,18 @@ class SubscriptionInfo {
     required this.endDate,
   });
 
-  factory SubscriptionInfo.fromJson(Map<String, dynamic> json) =>
-      SubscriptionInfo(
-        planTitle: json["plan_title"] ?? "",
-        planDescription: json["plan_description"] ?? "",
-        planPrice: json["plan_price"] ?? "",
-        durationMonths: json["duration_months"]?.toString() ?? "",
-        startDate: json["start_date"] ?? "",
-        endDate: json["end_date"] ?? "",
-      );
+  factory SubscriptionInfo.fromJson(
+    Map<String, dynamic> json,
+  ) => SubscriptionInfo(
+    planTitle: (json["plan_title"] ?? json["planTitle"] ?? "").toString(),
+    planDescription: (json["plan_description"] ?? json["planDescription"] ?? "")
+        .toString(),
+    planPrice: (json["plan_price"] ?? json["planPrice"] ?? "").toString(),
+    durationMonths: (json["duration_months"] ?? json["durationMonths"] ?? "")
+        .toString(),
+    startDate: (json["start_date"] ?? json["startDate"] ?? "").toString(),
+    endDate: (json["end_date"] ?? json["endDate"] ?? "").toString(),
+  );
 
   Map<String, dynamic> toJson() => {
     "plan_title": planTitle,

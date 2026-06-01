@@ -3,6 +3,1422 @@
 part of 'app_database.dart';
 
 // ignore_for_file: type=lint
+class $AccountHeadsTable extends AccountHeads
+    with TableInfo<$AccountHeadsTable, AccountHead> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AccountHeadsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountHeadIdMeta = const VerificationMeta(
+    'accountHeadId',
+  );
+  @override
+  late final GeneratedColumn<int> accountHeadId = GeneratedColumn<int>(
+    'AccountHeadID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accountHeadNameMeta = const VerificationMeta(
+    'accountHeadName',
+  );
+  @override
+  late final GeneratedColumn<String> accountHeadName = GeneratedColumn<String>(
+    'AccountHeadName',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _normalBalanceMeta = const VerificationMeta(
+    'normalBalance',
+  );
+  @override
+  late final GeneratedColumn<String> normalBalance = GeneratedColumn<String>(
+    'NormalBalance',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<int> isSynced = GeneratedColumn<int>(
+    'IsSynced',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+    'UpdatedAt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
+    'IsDeleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountHeadId,
+    accountHeadName,
+    normalBalance,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'AccountHeads';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AccountHead> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('AccountHeadID')) {
+      context.handle(
+        _accountHeadIdMeta,
+        accountHeadId.isAcceptableOrUnknown(
+          data['AccountHeadID']!,
+          _accountHeadIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('AccountHeadName')) {
+      context.handle(
+        _accountHeadNameMeta,
+        accountHeadName.isAcceptableOrUnknown(
+          data['AccountHeadName']!,
+          _accountHeadNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountHeadNameMeta);
+    }
+    if (data.containsKey('NormalBalance')) {
+      context.handle(
+        _normalBalanceMeta,
+        normalBalance.isAcceptableOrUnknown(
+          data['NormalBalance']!,
+          _normalBalanceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('IsSynced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['IsSynced']!, _isSyncedMeta),
+      );
+    }
+    if (data.containsKey('UpdatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['UpdatedAt']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('IsDeleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['IsDeleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountHeadId};
+  @override
+  AccountHead map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AccountHead(
+      accountHeadId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccountHeadID'],
+      )!,
+      accountHeadName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}AccountHeadName'],
+      )!,
+      normalBalance: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}NormalBalance'],
+      ),
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsSynced'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}UpdatedAt'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsDeleted'],
+      )!,
+    );
+  }
+
+  @override
+  $AccountHeadsTable createAlias(String alias) {
+    return $AccountHeadsTable(attachedDatabase, alias);
+  }
+}
+
+class AccountHead extends DataClass implements Insertable<AccountHead> {
+  final int accountHeadId;
+  final String accountHeadName;
+  final String? normalBalance;
+  final int isSynced;
+  final String? updatedAt;
+  final int isDeleted;
+  const AccountHead({
+    required this.accountHeadId,
+    required this.accountHeadName,
+    this.normalBalance,
+    required this.isSynced,
+    this.updatedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['AccountHeadID'] = Variable<int>(accountHeadId);
+    map['AccountHeadName'] = Variable<String>(accountHeadName);
+    if (!nullToAbsent || normalBalance != null) {
+      map['NormalBalance'] = Variable<String>(normalBalance);
+    }
+    map['IsSynced'] = Variable<int>(isSynced);
+    if (!nullToAbsent || updatedAt != null) {
+      map['UpdatedAt'] = Variable<String>(updatedAt);
+    }
+    map['IsDeleted'] = Variable<int>(isDeleted);
+    return map;
+  }
+
+  AccountHeadsCompanion toCompanion(bool nullToAbsent) {
+    return AccountHeadsCompanion(
+      accountHeadId: Value(accountHeadId),
+      accountHeadName: Value(accountHeadName),
+      normalBalance: normalBalance == null && nullToAbsent
+          ? const Value.absent()
+          : Value(normalBalance),
+      isSynced: Value(isSynced),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory AccountHead.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AccountHead(
+      accountHeadId: serializer.fromJson<int>(json['accountHeadId']),
+      accountHeadName: serializer.fromJson<String>(json['accountHeadName']),
+      normalBalance: serializer.fromJson<String?>(json['normalBalance']),
+      isSynced: serializer.fromJson<int>(json['isSynced']),
+      updatedAt: serializer.fromJson<String?>(json['updatedAt']),
+      isDeleted: serializer.fromJson<int>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountHeadId': serializer.toJson<int>(accountHeadId),
+      'accountHeadName': serializer.toJson<String>(accountHeadName),
+      'normalBalance': serializer.toJson<String?>(normalBalance),
+      'isSynced': serializer.toJson<int>(isSynced),
+      'updatedAt': serializer.toJson<String?>(updatedAt),
+      'isDeleted': serializer.toJson<int>(isDeleted),
+    };
+  }
+
+  AccountHead copyWith({
+    int? accountHeadId,
+    String? accountHeadName,
+    Value<String?> normalBalance = const Value.absent(),
+    int? isSynced,
+    Value<String?> updatedAt = const Value.absent(),
+    int? isDeleted,
+  }) => AccountHead(
+    accountHeadId: accountHeadId ?? this.accountHeadId,
+    accountHeadName: accountHeadName ?? this.accountHeadName,
+    normalBalance: normalBalance.present
+        ? normalBalance.value
+        : this.normalBalance,
+    isSynced: isSynced ?? this.isSynced,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  AccountHead copyWithCompanion(AccountHeadsCompanion data) {
+    return AccountHead(
+      accountHeadId: data.accountHeadId.present
+          ? data.accountHeadId.value
+          : this.accountHeadId,
+      accountHeadName: data.accountHeadName.present
+          ? data.accountHeadName.value
+          : this.accountHeadName,
+      normalBalance: data.normalBalance.present
+          ? data.normalBalance.value
+          : this.normalBalance,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountHead(')
+          ..write('accountHeadId: $accountHeadId, ')
+          ..write('accountHeadName: $accountHeadName, ')
+          ..write('normalBalance: $normalBalance, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountHeadId,
+    accountHeadName,
+    normalBalance,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AccountHead &&
+          other.accountHeadId == this.accountHeadId &&
+          other.accountHeadName == this.accountHeadName &&
+          other.normalBalance == this.normalBalance &&
+          other.isSynced == this.isSynced &&
+          other.updatedAt == this.updatedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class AccountHeadsCompanion extends UpdateCompanion<AccountHead> {
+  final Value<int> accountHeadId;
+  final Value<String> accountHeadName;
+  final Value<String?> normalBalance;
+  final Value<int> isSynced;
+  final Value<String?> updatedAt;
+  final Value<int> isDeleted;
+  const AccountHeadsCompanion({
+    this.accountHeadId = const Value.absent(),
+    this.accountHeadName = const Value.absent(),
+    this.normalBalance = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  });
+  AccountHeadsCompanion.insert({
+    this.accountHeadId = const Value.absent(),
+    required String accountHeadName,
+    this.normalBalance = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  }) : accountHeadName = Value(accountHeadName);
+  static Insertable<AccountHead> custom({
+    Expression<int>? accountHeadId,
+    Expression<String>? accountHeadName,
+    Expression<String>? normalBalance,
+    Expression<int>? isSynced,
+    Expression<String>? updatedAt,
+    Expression<int>? isDeleted,
+  }) {
+    return RawValuesInsertable({
+      if (accountHeadId != null) 'AccountHeadID': accountHeadId,
+      if (accountHeadName != null) 'AccountHeadName': accountHeadName,
+      if (normalBalance != null) 'NormalBalance': normalBalance,
+      if (isSynced != null) 'IsSynced': isSynced,
+      if (updatedAt != null) 'UpdatedAt': updatedAt,
+      if (isDeleted != null) 'IsDeleted': isDeleted,
+    });
+  }
+
+  AccountHeadsCompanion copyWith({
+    Value<int>? accountHeadId,
+    Value<String>? accountHeadName,
+    Value<String?>? normalBalance,
+    Value<int>? isSynced,
+    Value<String?>? updatedAt,
+    Value<int>? isDeleted,
+  }) {
+    return AccountHeadsCompanion(
+      accountHeadId: accountHeadId ?? this.accountHeadId,
+      accountHeadName: accountHeadName ?? this.accountHeadName,
+      normalBalance: normalBalance ?? this.normalBalance,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountHeadId.present) {
+      map['AccountHeadID'] = Variable<int>(accountHeadId.value);
+    }
+    if (accountHeadName.present) {
+      map['AccountHeadName'] = Variable<String>(accountHeadName.value);
+    }
+    if (normalBalance.present) {
+      map['NormalBalance'] = Variable<String>(normalBalance.value);
+    }
+    if (isSynced.present) {
+      map['IsSynced'] = Variable<int>(isSynced.value);
+    }
+    if (updatedAt.present) {
+      map['UpdatedAt'] = Variable<String>(updatedAt.value);
+    }
+    if (isDeleted.present) {
+      map['IsDeleted'] = Variable<int>(isDeleted.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountHeadsCompanion(')
+          ..write('accountHeadId: $accountHeadId, ')
+          ..write('accountHeadName: $accountHeadName, ')
+          ..write('normalBalance: $normalBalance, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $AccountSubHeadsTable extends AccountSubHeads
+    with TableInfo<$AccountSubHeadsTable, AccountSubHead> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $AccountSubHeadsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _accountSubHeadIdMeta = const VerificationMeta(
+    'accountSubHeadId',
+  );
+  @override
+  late final GeneratedColumn<int> accountSubHeadId = GeneratedColumn<int>(
+    'AccountSubHeadID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accountHeadIdMeta = const VerificationMeta(
+    'accountHeadId',
+  );
+  @override
+  late final GeneratedColumn<int> accountHeadId = GeneratedColumn<int>(
+    'AccountHeadID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES AccountHeads (AccountHeadID)',
+    ),
+  );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'Code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accountSubHeadNameMeta =
+      const VerificationMeta('accountSubHeadName');
+  @override
+  late final GeneratedColumn<String> accountSubHeadName =
+      GeneratedColumn<String>(
+        'AccountSubHeadName',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<int> isSynced = GeneratedColumn<int>(
+    'IsSynced',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+    'UpdatedAt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
+    'IsDeleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    accountSubHeadId,
+    accountHeadId,
+    code,
+    accountSubHeadName,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'AccountSubHeads';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<AccountSubHead> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('AccountSubHeadID')) {
+      context.handle(
+        _accountSubHeadIdMeta,
+        accountSubHeadId.isAcceptableOrUnknown(
+          data['AccountSubHeadID']!,
+          _accountSubHeadIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('AccountHeadID')) {
+      context.handle(
+        _accountHeadIdMeta,
+        accountHeadId.isAcceptableOrUnknown(
+          data['AccountHeadID']!,
+          _accountHeadIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountHeadIdMeta);
+    }
+    if (data.containsKey('Code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['Code']!, _codeMeta),
+      );
+    }
+    if (data.containsKey('AccountSubHeadName')) {
+      context.handle(
+        _accountSubHeadNameMeta,
+        accountSubHeadName.isAcceptableOrUnknown(
+          data['AccountSubHeadName']!,
+          _accountSubHeadNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountSubHeadNameMeta);
+    }
+    if (data.containsKey('IsSynced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['IsSynced']!, _isSyncedMeta),
+      );
+    }
+    if (data.containsKey('UpdatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['UpdatedAt']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('IsDeleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['IsDeleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {accountSubHeadId};
+  @override
+  AccountSubHead map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return AccountSubHead(
+      accountSubHeadId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccountSubHeadID'],
+      )!,
+      accountHeadId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccountHeadID'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Code'],
+      ),
+      accountSubHeadName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}AccountSubHeadName'],
+      )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsSynced'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}UpdatedAt'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsDeleted'],
+      )!,
+    );
+  }
+
+  @override
+  $AccountSubHeadsTable createAlias(String alias) {
+    return $AccountSubHeadsTable(attachedDatabase, alias);
+  }
+}
+
+class AccountSubHead extends DataClass implements Insertable<AccountSubHead> {
+  final int accountSubHeadId;
+  final int accountHeadId;
+  final String? code;
+  final String accountSubHeadName;
+  final int isSynced;
+  final String? updatedAt;
+  final int isDeleted;
+  const AccountSubHead({
+    required this.accountSubHeadId,
+    required this.accountHeadId,
+    this.code,
+    required this.accountSubHeadName,
+    required this.isSynced,
+    this.updatedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['AccountSubHeadID'] = Variable<int>(accountSubHeadId);
+    map['AccountHeadID'] = Variable<int>(accountHeadId);
+    if (!nullToAbsent || code != null) {
+      map['Code'] = Variable<String>(code);
+    }
+    map['AccountSubHeadName'] = Variable<String>(accountSubHeadName);
+    map['IsSynced'] = Variable<int>(isSynced);
+    if (!nullToAbsent || updatedAt != null) {
+      map['UpdatedAt'] = Variable<String>(updatedAt);
+    }
+    map['IsDeleted'] = Variable<int>(isDeleted);
+    return map;
+  }
+
+  AccountSubHeadsCompanion toCompanion(bool nullToAbsent) {
+    return AccountSubHeadsCompanion(
+      accountSubHeadId: Value(accountSubHeadId),
+      accountHeadId: Value(accountHeadId),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      accountSubHeadName: Value(accountSubHeadName),
+      isSynced: Value(isSynced),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory AccountSubHead.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return AccountSubHead(
+      accountSubHeadId: serializer.fromJson<int>(json['accountSubHeadId']),
+      accountHeadId: serializer.fromJson<int>(json['accountHeadId']),
+      code: serializer.fromJson<String?>(json['code']),
+      accountSubHeadName: serializer.fromJson<String>(
+        json['accountSubHeadName'],
+      ),
+      isSynced: serializer.fromJson<int>(json['isSynced']),
+      updatedAt: serializer.fromJson<String?>(json['updatedAt']),
+      isDeleted: serializer.fromJson<int>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'accountSubHeadId': serializer.toJson<int>(accountSubHeadId),
+      'accountHeadId': serializer.toJson<int>(accountHeadId),
+      'code': serializer.toJson<String?>(code),
+      'accountSubHeadName': serializer.toJson<String>(accountSubHeadName),
+      'isSynced': serializer.toJson<int>(isSynced),
+      'updatedAt': serializer.toJson<String?>(updatedAt),
+      'isDeleted': serializer.toJson<int>(isDeleted),
+    };
+  }
+
+  AccountSubHead copyWith({
+    int? accountSubHeadId,
+    int? accountHeadId,
+    Value<String?> code = const Value.absent(),
+    String? accountSubHeadName,
+    int? isSynced,
+    Value<String?> updatedAt = const Value.absent(),
+    int? isDeleted,
+  }) => AccountSubHead(
+    accountSubHeadId: accountSubHeadId ?? this.accountSubHeadId,
+    accountHeadId: accountHeadId ?? this.accountHeadId,
+    code: code.present ? code.value : this.code,
+    accountSubHeadName: accountSubHeadName ?? this.accountSubHeadName,
+    isSynced: isSynced ?? this.isSynced,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  AccountSubHead copyWithCompanion(AccountSubHeadsCompanion data) {
+    return AccountSubHead(
+      accountSubHeadId: data.accountSubHeadId.present
+          ? data.accountSubHeadId.value
+          : this.accountSubHeadId,
+      accountHeadId: data.accountHeadId.present
+          ? data.accountHeadId.value
+          : this.accountHeadId,
+      code: data.code.present ? data.code.value : this.code,
+      accountSubHeadName: data.accountSubHeadName.present
+          ? data.accountSubHeadName.value
+          : this.accountSubHeadName,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountSubHead(')
+          ..write('accountSubHeadId: $accountSubHeadId, ')
+          ..write('accountHeadId: $accountHeadId, ')
+          ..write('code: $code, ')
+          ..write('accountSubHeadName: $accountSubHeadName, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    accountSubHeadId,
+    accountHeadId,
+    code,
+    accountSubHeadName,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is AccountSubHead &&
+          other.accountSubHeadId == this.accountSubHeadId &&
+          other.accountHeadId == this.accountHeadId &&
+          other.code == this.code &&
+          other.accountSubHeadName == this.accountSubHeadName &&
+          other.isSynced == this.isSynced &&
+          other.updatedAt == this.updatedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class AccountSubHeadsCompanion extends UpdateCompanion<AccountSubHead> {
+  final Value<int> accountSubHeadId;
+  final Value<int> accountHeadId;
+  final Value<String?> code;
+  final Value<String> accountSubHeadName;
+  final Value<int> isSynced;
+  final Value<String?> updatedAt;
+  final Value<int> isDeleted;
+  const AccountSubHeadsCompanion({
+    this.accountSubHeadId = const Value.absent(),
+    this.accountHeadId = const Value.absent(),
+    this.code = const Value.absent(),
+    this.accountSubHeadName = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  });
+  AccountSubHeadsCompanion.insert({
+    this.accountSubHeadId = const Value.absent(),
+    required int accountHeadId,
+    this.code = const Value.absent(),
+    required String accountSubHeadName,
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  }) : accountHeadId = Value(accountHeadId),
+       accountSubHeadName = Value(accountSubHeadName);
+  static Insertable<AccountSubHead> custom({
+    Expression<int>? accountSubHeadId,
+    Expression<int>? accountHeadId,
+    Expression<String>? code,
+    Expression<String>? accountSubHeadName,
+    Expression<int>? isSynced,
+    Expression<String>? updatedAt,
+    Expression<int>? isDeleted,
+  }) {
+    return RawValuesInsertable({
+      if (accountSubHeadId != null) 'AccountSubHeadID': accountSubHeadId,
+      if (accountHeadId != null) 'AccountHeadID': accountHeadId,
+      if (code != null) 'Code': code,
+      if (accountSubHeadName != null) 'AccountSubHeadName': accountSubHeadName,
+      if (isSynced != null) 'IsSynced': isSynced,
+      if (updatedAt != null) 'UpdatedAt': updatedAt,
+      if (isDeleted != null) 'IsDeleted': isDeleted,
+    });
+  }
+
+  AccountSubHeadsCompanion copyWith({
+    Value<int>? accountSubHeadId,
+    Value<int>? accountHeadId,
+    Value<String?>? code,
+    Value<String>? accountSubHeadName,
+    Value<int>? isSynced,
+    Value<String?>? updatedAt,
+    Value<int>? isDeleted,
+  }) {
+    return AccountSubHeadsCompanion(
+      accountSubHeadId: accountSubHeadId ?? this.accountSubHeadId,
+      accountHeadId: accountHeadId ?? this.accountHeadId,
+      code: code ?? this.code,
+      accountSubHeadName: accountSubHeadName ?? this.accountSubHeadName,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (accountSubHeadId.present) {
+      map['AccountSubHeadID'] = Variable<int>(accountSubHeadId.value);
+    }
+    if (accountHeadId.present) {
+      map['AccountHeadID'] = Variable<int>(accountHeadId.value);
+    }
+    if (code.present) {
+      map['Code'] = Variable<String>(code.value);
+    }
+    if (accountSubHeadName.present) {
+      map['AccountSubHeadName'] = Variable<String>(accountSubHeadName.value);
+    }
+    if (isSynced.present) {
+      map['IsSynced'] = Variable<int>(isSynced.value);
+    }
+    if (updatedAt.present) {
+      map['UpdatedAt'] = Variable<String>(updatedAt.value);
+    }
+    if (isDeleted.present) {
+      map['IsDeleted'] = Variable<int>(isDeleted.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('AccountSubHeadsCompanion(')
+          ..write('accountSubHeadId: $accountSubHeadId, ')
+          ..write('accountHeadId: $accountHeadId, ')
+          ..write('code: $code, ')
+          ..write('accountSubHeadName: $accountSubHeadName, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $ChartOfAccountsTable extends ChartOfAccounts
+    with TableInfo<$ChartOfAccountsTable, ChartOfAccount> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $ChartOfAccountsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _chartOfAccountIdMeta = const VerificationMeta(
+    'chartOfAccountId',
+  );
+  @override
+  late final GeneratedColumn<int> chartOfAccountId = GeneratedColumn<int>(
+    'ChartOfAccountID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _accountHeadIdMeta = const VerificationMeta(
+    'accountHeadId',
+  );
+  @override
+  late final GeneratedColumn<int> accountHeadId = GeneratedColumn<int>(
+    'AccountHeadID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES AccountHeads (AccountHeadID)',
+    ),
+  );
+  static const VerificationMeta _accountSubHeadIdMeta = const VerificationMeta(
+    'accountSubHeadId',
+  );
+  @override
+  late final GeneratedColumn<int> accountSubHeadId = GeneratedColumn<int>(
+    'AccountSubHeadID',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES AccountSubHeads (AccountSubHeadID)',
+    ),
+  );
+  static const VerificationMeta _chartOfAccountNameMeta =
+      const VerificationMeta('chartOfAccountName');
+  @override
+  late final GeneratedColumn<String> chartOfAccountName =
+      GeneratedColumn<String>(
+        'ChartOfAccountName',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _codeMeta = const VerificationMeta('code');
+  @override
+  late final GeneratedColumn<String> code = GeneratedColumn<String>(
+    'Code',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<int> isSynced = GeneratedColumn<int>(
+    'IsSynced',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(1),
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+    'UpdatedAt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
+    'IsDeleted',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    chartOfAccountId,
+    accountHeadId,
+    accountSubHeadId,
+    chartOfAccountName,
+    code,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'ChartOfAccounts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ChartOfAccount> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('ChartOfAccountID')) {
+      context.handle(
+        _chartOfAccountIdMeta,
+        chartOfAccountId.isAcceptableOrUnknown(
+          data['ChartOfAccountID']!,
+          _chartOfAccountIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('AccountHeadID')) {
+      context.handle(
+        _accountHeadIdMeta,
+        accountHeadId.isAcceptableOrUnknown(
+          data['AccountHeadID']!,
+          _accountHeadIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountHeadIdMeta);
+    }
+    if (data.containsKey('AccountSubHeadID')) {
+      context.handle(
+        _accountSubHeadIdMeta,
+        accountSubHeadId.isAcceptableOrUnknown(
+          data['AccountSubHeadID']!,
+          _accountSubHeadIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_accountSubHeadIdMeta);
+    }
+    if (data.containsKey('ChartOfAccountName')) {
+      context.handle(
+        _chartOfAccountNameMeta,
+        chartOfAccountName.isAcceptableOrUnknown(
+          data['ChartOfAccountName']!,
+          _chartOfAccountNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_chartOfAccountNameMeta);
+    }
+    if (data.containsKey('Code')) {
+      context.handle(
+        _codeMeta,
+        code.isAcceptableOrUnknown(data['Code']!, _codeMeta),
+      );
+    }
+    if (data.containsKey('IsSynced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['IsSynced']!, _isSyncedMeta),
+      );
+    }
+    if (data.containsKey('UpdatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['UpdatedAt']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('IsDeleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['IsDeleted']!, _isDeletedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {chartOfAccountId};
+  @override
+  ChartOfAccount map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ChartOfAccount(
+      chartOfAccountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ChartOfAccountID'],
+      )!,
+      accountHeadId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccountHeadID'],
+      )!,
+      accountSubHeadId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}AccountSubHeadID'],
+      )!,
+      chartOfAccountName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}ChartOfAccountName'],
+      )!,
+      code: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}Code'],
+      ),
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsSynced'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}UpdatedAt'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsDeleted'],
+      )!,
+    );
+  }
+
+  @override
+  $ChartOfAccountsTable createAlias(String alias) {
+    return $ChartOfAccountsTable(attachedDatabase, alias);
+  }
+}
+
+class ChartOfAccount extends DataClass implements Insertable<ChartOfAccount> {
+  final int chartOfAccountId;
+  final int accountHeadId;
+  final int accountSubHeadId;
+  final String chartOfAccountName;
+  final String? code;
+  final int isSynced;
+  final String? updatedAt;
+  final int isDeleted;
+  const ChartOfAccount({
+    required this.chartOfAccountId,
+    required this.accountHeadId,
+    required this.accountSubHeadId,
+    required this.chartOfAccountName,
+    this.code,
+    required this.isSynced,
+    this.updatedAt,
+    required this.isDeleted,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['ChartOfAccountID'] = Variable<int>(chartOfAccountId);
+    map['AccountHeadID'] = Variable<int>(accountHeadId);
+    map['AccountSubHeadID'] = Variable<int>(accountSubHeadId);
+    map['ChartOfAccountName'] = Variable<String>(chartOfAccountName);
+    if (!nullToAbsent || code != null) {
+      map['Code'] = Variable<String>(code);
+    }
+    map['IsSynced'] = Variable<int>(isSynced);
+    if (!nullToAbsent || updatedAt != null) {
+      map['UpdatedAt'] = Variable<String>(updatedAt);
+    }
+    map['IsDeleted'] = Variable<int>(isDeleted);
+    return map;
+  }
+
+  ChartOfAccountsCompanion toCompanion(bool nullToAbsent) {
+    return ChartOfAccountsCompanion(
+      chartOfAccountId: Value(chartOfAccountId),
+      accountHeadId: Value(accountHeadId),
+      accountSubHeadId: Value(accountSubHeadId),
+      chartOfAccountName: Value(chartOfAccountName),
+      code: code == null && nullToAbsent ? const Value.absent() : Value(code),
+      isSynced: Value(isSynced),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
+      isDeleted: Value(isDeleted),
+    );
+  }
+
+  factory ChartOfAccount.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ChartOfAccount(
+      chartOfAccountId: serializer.fromJson<int>(json['chartOfAccountId']),
+      accountHeadId: serializer.fromJson<int>(json['accountHeadId']),
+      accountSubHeadId: serializer.fromJson<int>(json['accountSubHeadId']),
+      chartOfAccountName: serializer.fromJson<String>(
+        json['chartOfAccountName'],
+      ),
+      code: serializer.fromJson<String?>(json['code']),
+      isSynced: serializer.fromJson<int>(json['isSynced']),
+      updatedAt: serializer.fromJson<String?>(json['updatedAt']),
+      isDeleted: serializer.fromJson<int>(json['isDeleted']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'chartOfAccountId': serializer.toJson<int>(chartOfAccountId),
+      'accountHeadId': serializer.toJson<int>(accountHeadId),
+      'accountSubHeadId': serializer.toJson<int>(accountSubHeadId),
+      'chartOfAccountName': serializer.toJson<String>(chartOfAccountName),
+      'code': serializer.toJson<String?>(code),
+      'isSynced': serializer.toJson<int>(isSynced),
+      'updatedAt': serializer.toJson<String?>(updatedAt),
+      'isDeleted': serializer.toJson<int>(isDeleted),
+    };
+  }
+
+  ChartOfAccount copyWith({
+    int? chartOfAccountId,
+    int? accountHeadId,
+    int? accountSubHeadId,
+    String? chartOfAccountName,
+    Value<String?> code = const Value.absent(),
+    int? isSynced,
+    Value<String?> updatedAt = const Value.absent(),
+    int? isDeleted,
+  }) => ChartOfAccount(
+    chartOfAccountId: chartOfAccountId ?? this.chartOfAccountId,
+    accountHeadId: accountHeadId ?? this.accountHeadId,
+    accountSubHeadId: accountSubHeadId ?? this.accountSubHeadId,
+    chartOfAccountName: chartOfAccountName ?? this.chartOfAccountName,
+    code: code.present ? code.value : this.code,
+    isSynced: isSynced ?? this.isSynced,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
+    isDeleted: isDeleted ?? this.isDeleted,
+  );
+  ChartOfAccount copyWithCompanion(ChartOfAccountsCompanion data) {
+    return ChartOfAccount(
+      chartOfAccountId: data.chartOfAccountId.present
+          ? data.chartOfAccountId.value
+          : this.chartOfAccountId,
+      accountHeadId: data.accountHeadId.present
+          ? data.accountHeadId.value
+          : this.accountHeadId,
+      accountSubHeadId: data.accountSubHeadId.present
+          ? data.accountSubHeadId.value
+          : this.accountSubHeadId,
+      chartOfAccountName: data.chartOfAccountName.present
+          ? data.chartOfAccountName.value
+          : this.chartOfAccountName,
+      code: data.code.present ? data.code.value : this.code,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChartOfAccount(')
+          ..write('chartOfAccountId: $chartOfAccountId, ')
+          ..write('accountHeadId: $accountHeadId, ')
+          ..write('accountSubHeadId: $accountSubHeadId, ')
+          ..write('chartOfAccountName: $chartOfAccountName, ')
+          ..write('code: $code, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    chartOfAccountId,
+    accountHeadId,
+    accountSubHeadId,
+    chartOfAccountName,
+    code,
+    isSynced,
+    updatedAt,
+    isDeleted,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ChartOfAccount &&
+          other.chartOfAccountId == this.chartOfAccountId &&
+          other.accountHeadId == this.accountHeadId &&
+          other.accountSubHeadId == this.accountSubHeadId &&
+          other.chartOfAccountName == this.chartOfAccountName &&
+          other.code == this.code &&
+          other.isSynced == this.isSynced &&
+          other.updatedAt == this.updatedAt &&
+          other.isDeleted == this.isDeleted);
+}
+
+class ChartOfAccountsCompanion extends UpdateCompanion<ChartOfAccount> {
+  final Value<int> chartOfAccountId;
+  final Value<int> accountHeadId;
+  final Value<int> accountSubHeadId;
+  final Value<String> chartOfAccountName;
+  final Value<String?> code;
+  final Value<int> isSynced;
+  final Value<String?> updatedAt;
+  final Value<int> isDeleted;
+  const ChartOfAccountsCompanion({
+    this.chartOfAccountId = const Value.absent(),
+    this.accountHeadId = const Value.absent(),
+    this.accountSubHeadId = const Value.absent(),
+    this.chartOfAccountName = const Value.absent(),
+    this.code = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  });
+  ChartOfAccountsCompanion.insert({
+    this.chartOfAccountId = const Value.absent(),
+    required int accountHeadId,
+    required int accountSubHeadId,
+    required String chartOfAccountName,
+    this.code = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+  }) : accountHeadId = Value(accountHeadId),
+       accountSubHeadId = Value(accountSubHeadId),
+       chartOfAccountName = Value(chartOfAccountName);
+  static Insertable<ChartOfAccount> custom({
+    Expression<int>? chartOfAccountId,
+    Expression<int>? accountHeadId,
+    Expression<int>? accountSubHeadId,
+    Expression<String>? chartOfAccountName,
+    Expression<String>? code,
+    Expression<int>? isSynced,
+    Expression<String>? updatedAt,
+    Expression<int>? isDeleted,
+  }) {
+    return RawValuesInsertable({
+      if (chartOfAccountId != null) 'ChartOfAccountID': chartOfAccountId,
+      if (accountHeadId != null) 'AccountHeadID': accountHeadId,
+      if (accountSubHeadId != null) 'AccountSubHeadID': accountSubHeadId,
+      if (chartOfAccountName != null) 'ChartOfAccountName': chartOfAccountName,
+      if (code != null) 'Code': code,
+      if (isSynced != null) 'IsSynced': isSynced,
+      if (updatedAt != null) 'UpdatedAt': updatedAt,
+      if (isDeleted != null) 'IsDeleted': isDeleted,
+    });
+  }
+
+  ChartOfAccountsCompanion copyWith({
+    Value<int>? chartOfAccountId,
+    Value<int>? accountHeadId,
+    Value<int>? accountSubHeadId,
+    Value<String>? chartOfAccountName,
+    Value<String?>? code,
+    Value<int>? isSynced,
+    Value<String?>? updatedAt,
+    Value<int>? isDeleted,
+  }) {
+    return ChartOfAccountsCompanion(
+      chartOfAccountId: chartOfAccountId ?? this.chartOfAccountId,
+      accountHeadId: accountHeadId ?? this.accountHeadId,
+      accountSubHeadId: accountSubHeadId ?? this.accountSubHeadId,
+      chartOfAccountName: chartOfAccountName ?? this.chartOfAccountName,
+      code: code ?? this.code,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isDeleted: isDeleted ?? this.isDeleted,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (chartOfAccountId.present) {
+      map['ChartOfAccountID'] = Variable<int>(chartOfAccountId.value);
+    }
+    if (accountHeadId.present) {
+      map['AccountHeadID'] = Variable<int>(accountHeadId.value);
+    }
+    if (accountSubHeadId.present) {
+      map['AccountSubHeadID'] = Variable<int>(accountSubHeadId.value);
+    }
+    if (chartOfAccountName.present) {
+      map['ChartOfAccountName'] = Variable<String>(chartOfAccountName.value);
+    }
+    if (code.present) {
+      map['Code'] = Variable<String>(code.value);
+    }
+    if (isSynced.present) {
+      map['IsSynced'] = Variable<int>(isSynced.value);
+    }
+    if (updatedAt.present) {
+      map['UpdatedAt'] = Variable<String>(updatedAt.value);
+    }
+    if (isDeleted.present) {
+      map['IsDeleted'] = Variable<int>(isDeleted.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ChartOfAccountsCompanion(')
+          ..write('chartOfAccountId: $chartOfAccountId, ')
+          ..write('accountHeadId: $accountHeadId, ')
+          ..write('accountSubHeadId: $accountSubHeadId, ')
+          ..write('chartOfAccountName: $chartOfAccountName, ')
+          ..write('code: $code, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isDeleted: $isDeleted')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $AccPersonalTable extends AccPersonal
     with TableInfo<$AccPersonalTable, AccPersonalData> {
   @override
@@ -118,6 +1534,20 @@ class $AccPersonalTable extends AccPersonal
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _chartOfAccountIdMeta = const VerificationMeta(
+    'chartOfAccountId',
+  );
+  @override
+  late final GeneratedColumn<int> chartOfAccountId = GeneratedColumn<int>(
+    'ChartOfAccountID',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES ChartOfAccounts (ChartOfAccountID)',
+    ),
+  );
   static const VerificationMeta _wNameMeta = const VerificationMeta('wName');
   @override
   late final GeneratedColumn<String> wName = GeneratedColumn<String>(
@@ -173,6 +1603,7 @@ class $AccPersonalTable extends AccPersonal
     statusg,
     userId,
     companyId,
+    chartOfAccountId,
     wName,
     isSynced,
     updatedAt,
@@ -259,6 +1690,15 @@ class $AccPersonalTable extends AccPersonal
         companyId.isAcceptableOrUnknown(data['CompanyID']!, _companyIdMeta),
       );
     }
+    if (data.containsKey('ChartOfAccountID')) {
+      context.handle(
+        _chartOfAccountIdMeta,
+        chartOfAccountId.isAcceptableOrUnknown(
+          data['ChartOfAccountID']!,
+          _chartOfAccountIdMeta,
+        ),
+      );
+    }
     if (data.containsKey('WName')) {
       context.handle(
         _wNameMeta,
@@ -336,6 +1776,10 @@ class $AccPersonalTable extends AccPersonal
         DriftSqlType.int,
         data['${effectivePrefix}CompanyID'],
       ),
+      chartOfAccountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}ChartOfAccountID'],
+      ),
       wName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}WName'],
@@ -375,6 +1819,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   final String? statusg;
   final int? userId;
   final int? companyId;
+  final int? chartOfAccountId;
   final String? wName;
   final int? isSynced;
   final String? updatedAt;
@@ -391,6 +1836,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     this.statusg,
     this.userId,
     this.companyId,
+    this.chartOfAccountId,
     this.wName,
     this.isSynced,
     this.updatedAt,
@@ -429,6 +1875,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     }
     if (!nullToAbsent || companyId != null) {
       map['CompanyID'] = Variable<int>(companyId);
+    }
+    if (!nullToAbsent || chartOfAccountId != null) {
+      map['ChartOfAccountID'] = Variable<int>(chartOfAccountId);
     }
     if (!nullToAbsent || wName != null) {
       map['WName'] = Variable<String>(wName);
@@ -474,6 +1923,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
       companyId: companyId == null && nullToAbsent
           ? const Value.absent()
           : Value(companyId),
+      chartOfAccountId: chartOfAccountId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(chartOfAccountId),
       wName: wName == null && nullToAbsent
           ? const Value.absent()
           : Value(wName),
@@ -506,6 +1958,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
       statusg: serializer.fromJson<String?>(json['statusg']),
       userId: serializer.fromJson<int?>(json['userId']),
       companyId: serializer.fromJson<int?>(json['companyId']),
+      chartOfAccountId: serializer.fromJson<int?>(json['chartOfAccountId']),
       wName: serializer.fromJson<String?>(json['wName']),
       isSynced: serializer.fromJson<int?>(json['isSynced']),
       updatedAt: serializer.fromJson<String?>(json['updatedAt']),
@@ -527,6 +1980,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
       'statusg': serializer.toJson<String?>(statusg),
       'userId': serializer.toJson<int?>(userId),
       'companyId': serializer.toJson<int?>(companyId),
+      'chartOfAccountId': serializer.toJson<int?>(chartOfAccountId),
       'wName': serializer.toJson<String?>(wName),
       'isSynced': serializer.toJson<int?>(isSynced),
       'updatedAt': serializer.toJson<String?>(updatedAt),
@@ -546,6 +2000,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     Value<String?> statusg = const Value.absent(),
     Value<int?> userId = const Value.absent(),
     Value<int?> companyId = const Value.absent(),
+    Value<int?> chartOfAccountId = const Value.absent(),
     Value<String?> wName = const Value.absent(),
     Value<int?> isSynced = const Value.absent(),
     Value<String?> updatedAt = const Value.absent(),
@@ -562,6 +2017,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     statusg: statusg.present ? statusg.value : this.statusg,
     userId: userId.present ? userId.value : this.userId,
     companyId: companyId.present ? companyId.value : this.companyId,
+    chartOfAccountId: chartOfAccountId.present
+        ? chartOfAccountId.value
+        : this.chartOfAccountId,
     wName: wName.present ? wName.value : this.wName,
     isSynced: isSynced.present ? isSynced.value : this.isSynced,
     updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
@@ -582,6 +2040,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
       statusg: data.statusg.present ? data.statusg.value : this.statusg,
       userId: data.userId.present ? data.userId.value : this.userId,
       companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      chartOfAccountId: data.chartOfAccountId.present
+          ? data.chartOfAccountId.value
+          : this.chartOfAccountId,
       wName: data.wName.present ? data.wName.value : this.wName,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -603,6 +2064,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
           ..write('statusg: $statusg, ')
           ..write('userId: $userId, ')
           ..write('companyId: $companyId, ')
+          ..write('chartOfAccountId: $chartOfAccountId, ')
           ..write('wName: $wName, ')
           ..write('isSynced: $isSynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -624,6 +2086,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     statusg,
     userId,
     companyId,
+    chartOfAccountId,
     wName,
     isSynced,
     updatedAt,
@@ -644,6 +2107,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
           other.statusg == this.statusg &&
           other.userId == this.userId &&
           other.companyId == this.companyId &&
+          other.chartOfAccountId == this.chartOfAccountId &&
           other.wName == this.wName &&
           other.isSynced == this.isSynced &&
           other.updatedAt == this.updatedAt &&
@@ -662,6 +2126,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   final Value<String?> statusg;
   final Value<int?> userId;
   final Value<int?> companyId;
+  final Value<int?> chartOfAccountId;
   final Value<String?> wName;
   final Value<int?> isSynced;
   final Value<String?> updatedAt;
@@ -678,6 +2143,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
     this.statusg = const Value.absent(),
     this.userId = const Value.absent(),
     this.companyId = const Value.absent(),
+    this.chartOfAccountId = const Value.absent(),
     this.wName = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -695,6 +2161,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
     this.statusg = const Value.absent(),
     this.userId = const Value.absent(),
     this.companyId = const Value.absent(),
+    this.chartOfAccountId = const Value.absent(),
     this.wName = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -712,6 +2179,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
     Expression<String>? statusg,
     Expression<int>? userId,
     Expression<int>? companyId,
+    Expression<int>? chartOfAccountId,
     Expression<String>? wName,
     Expression<int>? isSynced,
     Expression<String>? updatedAt,
@@ -729,6 +2197,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
       if (statusg != null) 'statusg': statusg,
       if (userId != null) 'UserID': userId,
       if (companyId != null) 'CompanyID': companyId,
+      if (chartOfAccountId != null) 'ChartOfAccountID': chartOfAccountId,
       if (wName != null) 'WName': wName,
       if (isSynced != null) 'IsSynced': isSynced,
       if (updatedAt != null) 'UpdatedAt': updatedAt,
@@ -748,6 +2217,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
     Value<String?>? statusg,
     Value<int?>? userId,
     Value<int?>? companyId,
+    Value<int?>? chartOfAccountId,
     Value<String?>? wName,
     Value<int?>? isSynced,
     Value<String?>? updatedAt,
@@ -765,6 +2235,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
       statusg: statusg ?? this.statusg,
       userId: userId ?? this.userId,
       companyId: companyId ?? this.companyId,
+      chartOfAccountId: chartOfAccountId ?? this.chartOfAccountId,
       wName: wName ?? this.wName,
       isSynced: isSynced ?? this.isSynced,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -808,6 +2279,9 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
     if (companyId.present) {
       map['CompanyID'] = Variable<int>(companyId.value);
     }
+    if (chartOfAccountId.present) {
+      map['ChartOfAccountID'] = Variable<int>(chartOfAccountId.value);
+    }
     if (wName.present) {
       map['WName'] = Variable<String>(wName.value);
     }
@@ -837,6 +2311,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
           ..write('statusg: $statusg, ')
           ..write('userId: $userId, ')
           ..write('companyId: $companyId, ')
+          ..write('chartOfAccountId: $chartOfAccountId, ')
           ..write('wName: $wName, ')
           ..write('isSynced: $isSynced, ')
           ..write('updatedAt: $updatedAt, ')
@@ -4984,6 +6459,13 @@ class TblCashTransCompanion extends UpdateCompanion<TblCashTran> {
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
+  late final $AccountHeadsTable accountHeads = $AccountHeadsTable(this);
+  late final $AccountSubHeadsTable accountSubHeads = $AccountSubHeadsTable(
+    this,
+  );
+  late final $ChartOfAccountsTable chartOfAccounts = $ChartOfAccountsTable(
+    this,
+  );
   late final $AccPersonalTable accPersonal = $AccPersonalTable(this);
   late final $AccTypeTable accType = $AccTypeTable(this);
   late final $CompanyTableTable companyTable = $CompanyTableTable(this);
@@ -4998,6 +6480,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
   List<DatabaseSchemaEntity> get allSchemaEntities => [
+    accountHeads,
+    accountSubHeads,
+    chartOfAccounts,
     accPersonal,
     accType,
     companyTable,
@@ -5009,6 +6494,1499 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   ];
 }
 
+typedef $$AccountHeadsTableCreateCompanionBuilder =
+    AccountHeadsCompanion Function({
+      Value<int> accountHeadId,
+      required String accountHeadName,
+      Value<String?> normalBalance,
+      Value<int> isSynced,
+      Value<String?> updatedAt,
+      Value<int> isDeleted,
+    });
+typedef $$AccountHeadsTableUpdateCompanionBuilder =
+    AccountHeadsCompanion Function({
+      Value<int> accountHeadId,
+      Value<String> accountHeadName,
+      Value<String?> normalBalance,
+      Value<int> isSynced,
+      Value<String?> updatedAt,
+      Value<int> isDeleted,
+    });
+
+final class $$AccountHeadsTableReferences
+    extends BaseReferences<_$AppDatabase, $AccountHeadsTable, AccountHead> {
+  $$AccountHeadsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static MultiTypedResultKey<$AccountSubHeadsTable, List<AccountSubHead>>
+  _accountSubHeadsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.accountSubHeads,
+    aliasName: $_aliasNameGenerator(
+      db.accountHeads.accountHeadId,
+      db.accountSubHeads.accountHeadId,
+    ),
+  );
+
+  $$AccountSubHeadsTableProcessedTableManager get accountSubHeadsRefs {
+    final manager =
+        $$AccountSubHeadsTableTableManager($_db, $_db.accountSubHeads).filter(
+          (f) => f.accountHeadId.accountHeadId.sqlEquals(
+            $_itemColumn<int>('AccountHeadID')!,
+          ),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _accountSubHeadsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$ChartOfAccountsTable, List<ChartOfAccount>>
+  _chartOfAccountsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.chartOfAccounts,
+    aliasName: $_aliasNameGenerator(
+      db.accountHeads.accountHeadId,
+      db.chartOfAccounts.accountHeadId,
+    ),
+  );
+
+  $$ChartOfAccountsTableProcessedTableManager get chartOfAccountsRefs {
+    final manager =
+        $$ChartOfAccountsTableTableManager($_db, $_db.chartOfAccounts).filter(
+          (f) => f.accountHeadId.accountHeadId.sqlEquals(
+            $_itemColumn<int>('AccountHeadID')!,
+          ),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _chartOfAccountsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$AccountHeadsTableFilterComposer
+    extends Composer<_$AppDatabase, $AccountHeadsTable> {
+  $$AccountHeadsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get accountHeadId => $composableBuilder(
+    column: $table.accountHeadId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountHeadName => $composableBuilder(
+    column: $table.accountHeadName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get normalBalance => $composableBuilder(
+    column: $table.normalBalance,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  Expression<bool> accountSubHeadsRefs(
+    Expression<bool> Function($$AccountSubHeadsTableFilterComposer f) f,
+  ) {
+    final $$AccountSubHeadsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountSubHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountSubHeadsTableFilterComposer(
+            $db: $db,
+            $table: $db.accountSubHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> chartOfAccountsRefs(
+    Expression<bool> Function($$ChartOfAccountsTableFilterComposer f) f,
+  ) {
+    final $$ChartOfAccountsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableFilterComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$AccountHeadsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AccountHeadsTable> {
+  $$AccountHeadsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get accountHeadId => $composableBuilder(
+    column: $table.accountHeadId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accountHeadName => $composableBuilder(
+    column: $table.accountHeadName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get normalBalance => $composableBuilder(
+    column: $table.normalBalance,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$AccountHeadsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AccountHeadsTable> {
+  $$AccountHeadsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get accountHeadId => $composableBuilder(
+    column: $table.accountHeadId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get accountHeadName => $composableBuilder(
+    column: $table.accountHeadName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get normalBalance => $composableBuilder(
+    column: $table.normalBalance,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  Expression<T> accountSubHeadsRefs<T extends Object>(
+    Expression<T> Function($$AccountSubHeadsTableAnnotationComposer a) f,
+  ) {
+    final $$AccountSubHeadsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountSubHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountSubHeadsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accountSubHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<T> chartOfAccountsRefs<T extends Object>(
+    Expression<T> Function($$ChartOfAccountsTableAnnotationComposer a) f,
+  ) {
+    final $$ChartOfAccountsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$AccountHeadsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AccountHeadsTable,
+          AccountHead,
+          $$AccountHeadsTableFilterComposer,
+          $$AccountHeadsTableOrderingComposer,
+          $$AccountHeadsTableAnnotationComposer,
+          $$AccountHeadsTableCreateCompanionBuilder,
+          $$AccountHeadsTableUpdateCompanionBuilder,
+          (AccountHead, $$AccountHeadsTableReferences),
+          AccountHead,
+          PrefetchHooks Function({
+            bool accountSubHeadsRefs,
+            bool chartOfAccountsRefs,
+          })
+        > {
+  $$AccountHeadsTableTableManager(_$AppDatabase db, $AccountHeadsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AccountHeadsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AccountHeadsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AccountHeadsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> accountHeadId = const Value.absent(),
+                Value<String> accountHeadName = const Value.absent(),
+                Value<String?> normalBalance = const Value.absent(),
+                Value<int> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int> isDeleted = const Value.absent(),
+              }) => AccountHeadsCompanion(
+                accountHeadId: accountHeadId,
+                accountHeadName: accountHeadName,
+                normalBalance: normalBalance,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> accountHeadId = const Value.absent(),
+                required String accountHeadName,
+                Value<String?> normalBalance = const Value.absent(),
+                Value<int> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int> isDeleted = const Value.absent(),
+              }) => AccountHeadsCompanion.insert(
+                accountHeadId: accountHeadId,
+                accountHeadName: accountHeadName,
+                normalBalance: normalBalance,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AccountHeadsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({accountSubHeadsRefs = false, chartOfAccountsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (accountSubHeadsRefs) db.accountSubHeads,
+                    if (chartOfAccountsRefs) db.chartOfAccounts,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (accountSubHeadsRefs)
+                        await $_getPrefetchedData<
+                          AccountHead,
+                          $AccountHeadsTable,
+                          AccountSubHead
+                        >(
+                          currentTable: table,
+                          referencedTable: $$AccountHeadsTableReferences
+                              ._accountSubHeadsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AccountHeadsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).accountSubHeadsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.accountHeadId == item.accountHeadId,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (chartOfAccountsRefs)
+                        await $_getPrefetchedData<
+                          AccountHead,
+                          $AccountHeadsTable,
+                          ChartOfAccount
+                        >(
+                          currentTable: table,
+                          referencedTable: $$AccountHeadsTableReferences
+                              ._chartOfAccountsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AccountHeadsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).chartOfAccountsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.accountHeadId == item.accountHeadId,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$AccountHeadsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AccountHeadsTable,
+      AccountHead,
+      $$AccountHeadsTableFilterComposer,
+      $$AccountHeadsTableOrderingComposer,
+      $$AccountHeadsTableAnnotationComposer,
+      $$AccountHeadsTableCreateCompanionBuilder,
+      $$AccountHeadsTableUpdateCompanionBuilder,
+      (AccountHead, $$AccountHeadsTableReferences),
+      AccountHead,
+      PrefetchHooks Function({
+        bool accountSubHeadsRefs,
+        bool chartOfAccountsRefs,
+      })
+    >;
+typedef $$AccountSubHeadsTableCreateCompanionBuilder =
+    AccountSubHeadsCompanion Function({
+      Value<int> accountSubHeadId,
+      required int accountHeadId,
+      Value<String?> code,
+      required String accountSubHeadName,
+      Value<int> isSynced,
+      Value<String?> updatedAt,
+      Value<int> isDeleted,
+    });
+typedef $$AccountSubHeadsTableUpdateCompanionBuilder =
+    AccountSubHeadsCompanion Function({
+      Value<int> accountSubHeadId,
+      Value<int> accountHeadId,
+      Value<String?> code,
+      Value<String> accountSubHeadName,
+      Value<int> isSynced,
+      Value<String?> updatedAt,
+      Value<int> isDeleted,
+    });
+
+final class $$AccountSubHeadsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $AccountSubHeadsTable, AccountSubHead> {
+  $$AccountSubHeadsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $AccountHeadsTable _accountHeadIdTable(_$AppDatabase db) =>
+      db.accountHeads.createAlias(
+        $_aliasNameGenerator(
+          db.accountSubHeads.accountHeadId,
+          db.accountHeads.accountHeadId,
+        ),
+      );
+
+  $$AccountHeadsTableProcessedTableManager get accountHeadId {
+    final $_column = $_itemColumn<int>('AccountHeadID')!;
+
+    final manager = $$AccountHeadsTableTableManager(
+      $_db,
+      $_db.accountHeads,
+    ).filter((f) => f.accountHeadId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_accountHeadIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$ChartOfAccountsTable, List<ChartOfAccount>>
+  _chartOfAccountsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.chartOfAccounts,
+    aliasName: $_aliasNameGenerator(
+      db.accountSubHeads.accountSubHeadId,
+      db.chartOfAccounts.accountSubHeadId,
+    ),
+  );
+
+  $$ChartOfAccountsTableProcessedTableManager get chartOfAccountsRefs {
+    final manager =
+        $$ChartOfAccountsTableTableManager($_db, $_db.chartOfAccounts).filter(
+          (f) => f.accountSubHeadId.accountSubHeadId.sqlEquals(
+            $_itemColumn<int>('AccountSubHeadID')!,
+          ),
+        );
+
+    final cache = $_typedResult.readTableOrNull(
+      _chartOfAccountsRefsTable($_db),
+    );
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$AccountSubHeadsTableFilterComposer
+    extends Composer<_$AppDatabase, $AccountSubHeadsTable> {
+  $$AccountSubHeadsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get accountSubHeadId => $composableBuilder(
+    column: $table.accountSubHeadId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountSubHeadName => $composableBuilder(
+    column: $table.accountSubHeadName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$AccountHeadsTableFilterComposer get accountHeadId {
+    final $$AccountHeadsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountHeadsTableFilterComposer(
+            $db: $db,
+            $table: $db.accountHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> chartOfAccountsRefs(
+    Expression<bool> Function($$ChartOfAccountsTableFilterComposer f) f,
+  ) {
+    final $$ChartOfAccountsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountSubHeadId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.accountSubHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableFilterComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$AccountSubHeadsTableOrderingComposer
+    extends Composer<_$AppDatabase, $AccountSubHeadsTable> {
+  $$AccountSubHeadsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get accountSubHeadId => $composableBuilder(
+    column: $table.accountSubHeadId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get accountSubHeadName => $composableBuilder(
+    column: $table.accountSubHeadName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$AccountHeadsTableOrderingComposer get accountHeadId {
+    final $$AccountHeadsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountHeadsTableOrderingComposer(
+            $db: $db,
+            $table: $db.accountHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$AccountSubHeadsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $AccountSubHeadsTable> {
+  $$AccountSubHeadsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get accountSubHeadId => $composableBuilder(
+    column: $table.accountSubHeadId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<String> get accountSubHeadName => $composableBuilder(
+    column: $table.accountSubHeadName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  $$AccountHeadsTableAnnotationComposer get accountHeadId {
+    final $$AccountHeadsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountHeadsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accountHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> chartOfAccountsRefs<T extends Object>(
+    Expression<T> Function($$ChartOfAccountsTableAnnotationComposer a) f,
+  ) {
+    final $$ChartOfAccountsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountSubHeadId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.accountSubHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$AccountSubHeadsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $AccountSubHeadsTable,
+          AccountSubHead,
+          $$AccountSubHeadsTableFilterComposer,
+          $$AccountSubHeadsTableOrderingComposer,
+          $$AccountSubHeadsTableAnnotationComposer,
+          $$AccountSubHeadsTableCreateCompanionBuilder,
+          $$AccountSubHeadsTableUpdateCompanionBuilder,
+          (AccountSubHead, $$AccountSubHeadsTableReferences),
+          AccountSubHead,
+          PrefetchHooks Function({bool accountHeadId, bool chartOfAccountsRefs})
+        > {
+  $$AccountSubHeadsTableTableManager(
+    _$AppDatabase db,
+    $AccountSubHeadsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$AccountSubHeadsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$AccountSubHeadsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$AccountSubHeadsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> accountSubHeadId = const Value.absent(),
+                Value<int> accountHeadId = const Value.absent(),
+                Value<String?> code = const Value.absent(),
+                Value<String> accountSubHeadName = const Value.absent(),
+                Value<int> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int> isDeleted = const Value.absent(),
+              }) => AccountSubHeadsCompanion(
+                accountSubHeadId: accountSubHeadId,
+                accountHeadId: accountHeadId,
+                code: code,
+                accountSubHeadName: accountSubHeadName,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> accountSubHeadId = const Value.absent(),
+                required int accountHeadId,
+                Value<String?> code = const Value.absent(),
+                required String accountSubHeadName,
+                Value<int> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int> isDeleted = const Value.absent(),
+              }) => AccountSubHeadsCompanion.insert(
+                accountSubHeadId: accountSubHeadId,
+                accountHeadId: accountHeadId,
+                code: code,
+                accountSubHeadName: accountSubHeadName,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AccountSubHeadsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({accountHeadId = false, chartOfAccountsRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (chartOfAccountsRefs) db.chartOfAccounts,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (accountHeadId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.accountHeadId,
+                                    referencedTable:
+                                        $$AccountSubHeadsTableReferences
+                                            ._accountHeadIdTable(db),
+                                    referencedColumn:
+                                        $$AccountSubHeadsTableReferences
+                                            ._accountHeadIdTable(db)
+                                            .accountHeadId,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (chartOfAccountsRefs)
+                        await $_getPrefetchedData<
+                          AccountSubHead,
+                          $AccountSubHeadsTable,
+                          ChartOfAccount
+                        >(
+                          currentTable: table,
+                          referencedTable: $$AccountSubHeadsTableReferences
+                              ._chartOfAccountsRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$AccountSubHeadsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).chartOfAccountsRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) =>
+                                    e.accountSubHeadId == item.accountSubHeadId,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$AccountSubHeadsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $AccountSubHeadsTable,
+      AccountSubHead,
+      $$AccountSubHeadsTableFilterComposer,
+      $$AccountSubHeadsTableOrderingComposer,
+      $$AccountSubHeadsTableAnnotationComposer,
+      $$AccountSubHeadsTableCreateCompanionBuilder,
+      $$AccountSubHeadsTableUpdateCompanionBuilder,
+      (AccountSubHead, $$AccountSubHeadsTableReferences),
+      AccountSubHead,
+      PrefetchHooks Function({bool accountHeadId, bool chartOfAccountsRefs})
+    >;
+typedef $$ChartOfAccountsTableCreateCompanionBuilder =
+    ChartOfAccountsCompanion Function({
+      Value<int> chartOfAccountId,
+      required int accountHeadId,
+      required int accountSubHeadId,
+      required String chartOfAccountName,
+      Value<String?> code,
+      Value<int> isSynced,
+      Value<String?> updatedAt,
+      Value<int> isDeleted,
+    });
+typedef $$ChartOfAccountsTableUpdateCompanionBuilder =
+    ChartOfAccountsCompanion Function({
+      Value<int> chartOfAccountId,
+      Value<int> accountHeadId,
+      Value<int> accountSubHeadId,
+      Value<String> chartOfAccountName,
+      Value<String?> code,
+      Value<int> isSynced,
+      Value<String?> updatedAt,
+      Value<int> isDeleted,
+    });
+
+final class $$ChartOfAccountsTableReferences
+    extends
+        BaseReferences<_$AppDatabase, $ChartOfAccountsTable, ChartOfAccount> {
+  $$ChartOfAccountsTableReferences(
+    super.$_db,
+    super.$_table,
+    super.$_typedResult,
+  );
+
+  static $AccountHeadsTable _accountHeadIdTable(_$AppDatabase db) =>
+      db.accountHeads.createAlias(
+        $_aliasNameGenerator(
+          db.chartOfAccounts.accountHeadId,
+          db.accountHeads.accountHeadId,
+        ),
+      );
+
+  $$AccountHeadsTableProcessedTableManager get accountHeadId {
+    final $_column = $_itemColumn<int>('AccountHeadID')!;
+
+    final manager = $$AccountHeadsTableTableManager(
+      $_db,
+      $_db.accountHeads,
+    ).filter((f) => f.accountHeadId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_accountHeadIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static $AccountSubHeadsTable _accountSubHeadIdTable(_$AppDatabase db) =>
+      db.accountSubHeads.createAlias(
+        $_aliasNameGenerator(
+          db.chartOfAccounts.accountSubHeadId,
+          db.accountSubHeads.accountSubHeadId,
+        ),
+      );
+
+  $$AccountSubHeadsTableProcessedTableManager get accountSubHeadId {
+    final $_column = $_itemColumn<int>('AccountSubHeadID')!;
+
+    final manager = $$AccountSubHeadsTableTableManager(
+      $_db,
+      $_db.accountSubHeads,
+    ).filter((f) => f.accountSubHeadId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_accountSubHeadIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+
+  static MultiTypedResultKey<$AccPersonalTable, List<AccPersonalData>>
+  _accPersonalRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.accPersonal,
+    aliasName: $_aliasNameGenerator(
+      db.chartOfAccounts.chartOfAccountId,
+      db.accPersonal.chartOfAccountId,
+    ),
+  );
+
+  $$AccPersonalTableProcessedTableManager get accPersonalRefs {
+    final manager = $$AccPersonalTableTableManager($_db, $_db.accPersonal)
+        .filter(
+          (f) => f.chartOfAccountId.chartOfAccountId.sqlEquals(
+            $_itemColumn<int>('ChartOfAccountID')!,
+          ),
+        );
+
+    final cache = $_typedResult.readTableOrNull(_accPersonalRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+}
+
+class $$ChartOfAccountsTableFilterComposer
+    extends Composer<_$AppDatabase, $ChartOfAccountsTable> {
+  $$ChartOfAccountsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get chartOfAccountId => $composableBuilder(
+    column: $table.chartOfAccountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get chartOfAccountName => $composableBuilder(
+    column: $table.chartOfAccountName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$AccountHeadsTableFilterComposer get accountHeadId {
+    final $$AccountHeadsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountHeadsTableFilterComposer(
+            $db: $db,
+            $table: $db.accountHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AccountSubHeadsTableFilterComposer get accountSubHeadId {
+    final $$AccountSubHeadsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountSubHeadId,
+      referencedTable: $db.accountSubHeads,
+      getReferencedColumn: (t) => t.accountSubHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountSubHeadsTableFilterComposer(
+            $db: $db,
+            $table: $db.accountSubHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<bool> accPersonalRefs(
+    Expression<bool> Function($$AccPersonalTableFilterComposer f) f,
+  ) {
+    final $$AccPersonalTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.chartOfAccountId,
+      referencedTable: $db.accPersonal,
+      getReferencedColumn: (t) => t.chartOfAccountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccPersonalTableFilterComposer(
+            $db: $db,
+            $table: $db.accPersonal,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ChartOfAccountsTableOrderingComposer
+    extends Composer<_$AppDatabase, $ChartOfAccountsTable> {
+  $$ChartOfAccountsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get chartOfAccountId => $composableBuilder(
+    column: $table.chartOfAccountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get chartOfAccountName => $composableBuilder(
+    column: $table.chartOfAccountName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get code => $composableBuilder(
+    column: $table.code,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$AccountHeadsTableOrderingComposer get accountHeadId {
+    final $$AccountHeadsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountHeadsTableOrderingComposer(
+            $db: $db,
+            $table: $db.accountHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AccountSubHeadsTableOrderingComposer get accountSubHeadId {
+    final $$AccountSubHeadsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountSubHeadId,
+      referencedTable: $db.accountSubHeads,
+      getReferencedColumn: (t) => t.accountSubHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountSubHeadsTableOrderingComposer(
+            $db: $db,
+            $table: $db.accountSubHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$ChartOfAccountsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $ChartOfAccountsTable> {
+  $$ChartOfAccountsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get chartOfAccountId => $composableBuilder(
+    column: $table.chartOfAccountId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get chartOfAccountName => $composableBuilder(
+    column: $table.chartOfAccountName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get code =>
+      $composableBuilder(column: $table.code, builder: (column) => column);
+
+  GeneratedColumn<int> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<int> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  $$AccountHeadsTableAnnotationComposer get accountHeadId {
+    final $$AccountHeadsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountHeadId,
+      referencedTable: $db.accountHeads,
+      getReferencedColumn: (t) => t.accountHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountHeadsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accountHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  $$AccountSubHeadsTableAnnotationComposer get accountSubHeadId {
+    final $$AccountSubHeadsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.accountSubHeadId,
+      referencedTable: $db.accountSubHeads,
+      getReferencedColumn: (t) => t.accountSubHeadId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccountSubHeadsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accountSubHeads,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+
+  Expression<T> accPersonalRefs<T extends Object>(
+    Expression<T> Function($$AccPersonalTableAnnotationComposer a) f,
+  ) {
+    final $$AccPersonalTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.chartOfAccountId,
+      referencedTable: $db.accPersonal,
+      getReferencedColumn: (t) => t.chartOfAccountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$AccPersonalTableAnnotationComposer(
+            $db: $db,
+            $table: $db.accPersonal,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+}
+
+class $$ChartOfAccountsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $ChartOfAccountsTable,
+          ChartOfAccount,
+          $$ChartOfAccountsTableFilterComposer,
+          $$ChartOfAccountsTableOrderingComposer,
+          $$ChartOfAccountsTableAnnotationComposer,
+          $$ChartOfAccountsTableCreateCompanionBuilder,
+          $$ChartOfAccountsTableUpdateCompanionBuilder,
+          (ChartOfAccount, $$ChartOfAccountsTableReferences),
+          ChartOfAccount,
+          PrefetchHooks Function({
+            bool accountHeadId,
+            bool accountSubHeadId,
+            bool accPersonalRefs,
+          })
+        > {
+  $$ChartOfAccountsTableTableManager(
+    _$AppDatabase db,
+    $ChartOfAccountsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$ChartOfAccountsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$ChartOfAccountsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$ChartOfAccountsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> chartOfAccountId = const Value.absent(),
+                Value<int> accountHeadId = const Value.absent(),
+                Value<int> accountSubHeadId = const Value.absent(),
+                Value<String> chartOfAccountName = const Value.absent(),
+                Value<String?> code = const Value.absent(),
+                Value<int> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int> isDeleted = const Value.absent(),
+              }) => ChartOfAccountsCompanion(
+                chartOfAccountId: chartOfAccountId,
+                accountHeadId: accountHeadId,
+                accountSubHeadId: accountSubHeadId,
+                chartOfAccountName: chartOfAccountName,
+                code: code,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> chartOfAccountId = const Value.absent(),
+                required int accountHeadId,
+                required int accountSubHeadId,
+                required String chartOfAccountName,
+                Value<String?> code = const Value.absent(),
+                Value<int> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
+                Value<int> isDeleted = const Value.absent(),
+              }) => ChartOfAccountsCompanion.insert(
+                chartOfAccountId: chartOfAccountId,
+                accountHeadId: accountHeadId,
+                accountSubHeadId: accountSubHeadId,
+                chartOfAccountName: chartOfAccountName,
+                code: code,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
+                isDeleted: isDeleted,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$ChartOfAccountsTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback:
+              ({
+                accountHeadId = false,
+                accountSubHeadId = false,
+                accPersonalRefs = false,
+              }) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (accPersonalRefs) db.accPersonal,
+                  ],
+                  addJoins:
+                      <
+                        T extends TableManagerState<
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic,
+                          dynamic
+                        >
+                      >(state) {
+                        if (accountHeadId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.accountHeadId,
+                                    referencedTable:
+                                        $$ChartOfAccountsTableReferences
+                                            ._accountHeadIdTable(db),
+                                    referencedColumn:
+                                        $$ChartOfAccountsTableReferences
+                                            ._accountHeadIdTable(db)
+                                            .accountHeadId,
+                                  )
+                                  as T;
+                        }
+                        if (accountSubHeadId) {
+                          state =
+                              state.withJoin(
+                                    currentTable: table,
+                                    currentColumn: table.accountSubHeadId,
+                                    referencedTable:
+                                        $$ChartOfAccountsTableReferences
+                                            ._accountSubHeadIdTable(db),
+                                    referencedColumn:
+                                        $$ChartOfAccountsTableReferences
+                                            ._accountSubHeadIdTable(db)
+                                            .accountSubHeadId,
+                                  )
+                                  as T;
+                        }
+
+                        return state;
+                      },
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (accPersonalRefs)
+                        await $_getPrefetchedData<
+                          ChartOfAccount,
+                          $ChartOfAccountsTable,
+                          AccPersonalData
+                        >(
+                          currentTable: table,
+                          referencedTable: $$ChartOfAccountsTableReferences
+                              ._accPersonalRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$ChartOfAccountsTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).accPersonalRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) =>
+                                    e.chartOfAccountId == item.chartOfAccountId,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
+              },
+        ),
+      );
+}
+
+typedef $$ChartOfAccountsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $ChartOfAccountsTable,
+      ChartOfAccount,
+      $$ChartOfAccountsTableFilterComposer,
+      $$ChartOfAccountsTableOrderingComposer,
+      $$ChartOfAccountsTableAnnotationComposer,
+      $$ChartOfAccountsTableCreateCompanionBuilder,
+      $$ChartOfAccountsTableUpdateCompanionBuilder,
+      (ChartOfAccount, $$ChartOfAccountsTableReferences),
+      ChartOfAccount,
+      PrefetchHooks Function({
+        bool accountHeadId,
+        bool accountSubHeadId,
+        bool accPersonalRefs,
+      })
+    >;
 typedef $$AccPersonalTableCreateCompanionBuilder =
     AccPersonalCompanion Function({
       Value<int> accId,
@@ -5022,6 +8000,7 @@ typedef $$AccPersonalTableCreateCompanionBuilder =
       Value<String?> statusg,
       Value<int?> userId,
       Value<int?> companyId,
+      Value<int?> chartOfAccountId,
       Value<String?> wName,
       Value<int?> isSynced,
       Value<String?> updatedAt,
@@ -5040,11 +8019,39 @@ typedef $$AccPersonalTableUpdateCompanionBuilder =
       Value<String?> statusg,
       Value<int?> userId,
       Value<int?> companyId,
+      Value<int?> chartOfAccountId,
       Value<String?> wName,
       Value<int?> isSynced,
       Value<String?> updatedAt,
       Value<int?> isDeleted,
     });
+
+final class $$AccPersonalTableReferences
+    extends BaseReferences<_$AppDatabase, $AccPersonalTable, AccPersonalData> {
+  $$AccPersonalTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $ChartOfAccountsTable _chartOfAccountIdTable(_$AppDatabase db) =>
+      db.chartOfAccounts.createAlias(
+        $_aliasNameGenerator(
+          db.accPersonal.chartOfAccountId,
+          db.chartOfAccounts.chartOfAccountId,
+        ),
+      );
+
+  $$ChartOfAccountsTableProcessedTableManager? get chartOfAccountId {
+    final $_column = $_itemColumn<int>('ChartOfAccountID');
+    if ($_column == null) return null;
+    final manager = $$ChartOfAccountsTableTableManager(
+      $_db,
+      $_db.chartOfAccounts,
+    ).filter((f) => f.chartOfAccountId.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_chartOfAccountIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
 
 class $$AccPersonalTableFilterComposer
     extends Composer<_$AppDatabase, $AccPersonalTable> {
@@ -5129,6 +8136,29 @@ class $$AccPersonalTableFilterComposer
     column: $table.isDeleted,
     builder: (column) => ColumnFilters(column),
   );
+
+  $$ChartOfAccountsTableFilterComposer get chartOfAccountId {
+    final $$ChartOfAccountsTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.chartOfAccountId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.chartOfAccountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableFilterComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AccPersonalTableOrderingComposer
@@ -5214,6 +8244,29 @@ class $$AccPersonalTableOrderingComposer
     column: $table.isDeleted,
     builder: (column) => ColumnOrderings(column),
   );
+
+  $$ChartOfAccountsTableOrderingComposer get chartOfAccountId {
+    final $$ChartOfAccountsTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.chartOfAccountId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.chartOfAccountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableOrderingComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AccPersonalTableAnnotationComposer
@@ -5271,6 +8324,29 @@ class $$AccPersonalTableAnnotationComposer
 
   GeneratedColumn<int> get isDeleted =>
       $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  $$ChartOfAccountsTableAnnotationComposer get chartOfAccountId {
+    final $$ChartOfAccountsTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.chartOfAccountId,
+      referencedTable: $db.chartOfAccounts,
+      getReferencedColumn: (t) => t.chartOfAccountId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$ChartOfAccountsTableAnnotationComposer(
+            $db: $db,
+            $table: $db.chartOfAccounts,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
 }
 
 class $$AccPersonalTableTableManager
@@ -5284,12 +8360,9 @@ class $$AccPersonalTableTableManager
           $$AccPersonalTableAnnotationComposer,
           $$AccPersonalTableCreateCompanionBuilder,
           $$AccPersonalTableUpdateCompanionBuilder,
-          (
-            AccPersonalData,
-            BaseReferences<_$AppDatabase, $AccPersonalTable, AccPersonalData>,
-          ),
+          (AccPersonalData, $$AccPersonalTableReferences),
           AccPersonalData,
-          PrefetchHooks Function()
+          PrefetchHooks Function({bool chartOfAccountId})
         > {
   $$AccPersonalTableTableManager(_$AppDatabase db, $AccPersonalTable table)
     : super(
@@ -5315,6 +8388,7 @@ class $$AccPersonalTableTableManager
                 Value<String?> statusg = const Value.absent(),
                 Value<int?> userId = const Value.absent(),
                 Value<int?> companyId = const Value.absent(),
+                Value<int?> chartOfAccountId = const Value.absent(),
                 Value<String?> wName = const Value.absent(),
                 Value<int?> isSynced = const Value.absent(),
                 Value<String?> updatedAt = const Value.absent(),
@@ -5331,6 +8405,7 @@ class $$AccPersonalTableTableManager
                 statusg: statusg,
                 userId: userId,
                 companyId: companyId,
+                chartOfAccountId: chartOfAccountId,
                 wName: wName,
                 isSynced: isSynced,
                 updatedAt: updatedAt,
@@ -5349,6 +8424,7 @@ class $$AccPersonalTableTableManager
                 Value<String?> statusg = const Value.absent(),
                 Value<int?> userId = const Value.absent(),
                 Value<int?> companyId = const Value.absent(),
+                Value<int?> chartOfAccountId = const Value.absent(),
                 Value<String?> wName = const Value.absent(),
                 Value<int?> isSynced = const Value.absent(),
                 Value<String?> updatedAt = const Value.absent(),
@@ -5365,15 +8441,61 @@ class $$AccPersonalTableTableManager
                 statusg: statusg,
                 userId: userId,
                 companyId: companyId,
+                chartOfAccountId: chartOfAccountId,
                 wName: wName,
                 isSynced: isSynced,
                 updatedAt: updatedAt,
                 isDeleted: isDeleted,
               ),
           withReferenceMapper: (p0) => p0
-              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$AccPersonalTableReferences(db, table, e),
+                ),
+              )
               .toList(),
-          prefetchHooksCallback: null,
+          prefetchHooksCallback: ({chartOfAccountId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (chartOfAccountId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.chartOfAccountId,
+                                referencedTable: $$AccPersonalTableReferences
+                                    ._chartOfAccountIdTable(db),
+                                referencedColumn: $$AccPersonalTableReferences
+                                    ._chartOfAccountIdTable(db)
+                                    .chartOfAccountId,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
         ),
       );
 }
@@ -5388,12 +8510,9 @@ typedef $$AccPersonalTableProcessedTableManager =
       $$AccPersonalTableAnnotationComposer,
       $$AccPersonalTableCreateCompanionBuilder,
       $$AccPersonalTableUpdateCompanionBuilder,
-      (
-        AccPersonalData,
-        BaseReferences<_$AppDatabase, $AccPersonalTable, AccPersonalData>,
-      ),
+      (AccPersonalData, $$AccPersonalTableReferences),
       AccPersonalData,
-      PrefetchHooks Function()
+      PrefetchHooks Function({bool chartOfAccountId})
     >;
 typedef $$AccTypeTableCreateCompanionBuilder =
     AccTypeCompanion Function({
@@ -7440,6 +10559,12 @@ typedef $$TblCashTransTableProcessedTableManager =
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
+  $$AccountHeadsTableTableManager get accountHeads =>
+      $$AccountHeadsTableTableManager(_db, _db.accountHeads);
+  $$AccountSubHeadsTableTableManager get accountSubHeads =>
+      $$AccountSubHeadsTableTableManager(_db, _db.accountSubHeads);
+  $$ChartOfAccountsTableTableManager get chartOfAccounts =>
+      $$ChartOfAccountsTableTableManager(_db, _db.chartOfAccounts);
   $$AccPersonalTableTableManager get accPersonal =>
       $$AccPersonalTableTableManager(_db, _db.accPersonal);
   $$AccTypeTableTableManager get accType =>

@@ -4,6 +4,7 @@ import '../../../data/local/database_manager.dart';
 import '../../../model/user_model.dart';
 import '../../../services/local_storage.dart';
 import '../../../viewmodel/home/home_view_model.dart';
+import '../../subscription/subscription_status_card.dart';
 
 const _kHomeBrandBlue = Color(0xFF1862A3);
 const _kHomeBrandBlueDark = Color(0xFF0D4C81);
@@ -107,7 +108,10 @@ class HomeHeader extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 7),
-              Container(height: 0.5, color: Colors.white.withValues(alpha: 0.15)),
+              Container(
+                height: 0.5,
+                color: Colors.white.withValues(alpha: 0.15),
+              ),
               const SizedBox(height: 8),
               // ── Main: app icon + welcome + company name ──
               Row(
@@ -166,7 +170,10 @@ class HomeHeader extends StatelessWidget {
               ),
               if (email.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                Container(height: 0.5, color: Colors.white.withValues(alpha: 0.20)),
+                Container(
+                  height: 0.5,
+                  color: Colors.white.withValues(alpha: 0.20),
+                ),
                 const SizedBox(height: 7),
                 Row(
                   children: [
@@ -197,26 +204,40 @@ class HomeHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 3,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.18),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.25),
-                        ),
-                      ),
-                      child: Text(
-                        roleLabel,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.2,
-                        ),
+                    Flexible(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.25),
+                              ),
+                            ),
+                            child: Text(
+                              roleLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: SubscriptionMiniBadge(
+                              user: data?.user,
+                              onDark: true,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

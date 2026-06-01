@@ -2213,13 +2213,18 @@ class _AccountUpsertScreenState extends State<_AccountUpsertScreen> {
         );
         selected.addAll(assigned.map((e) => e.accTypeId));
 
-        final existingHeadName = (existing.statusg ?? '').trim();
-        if (existingHeadName.isNotEmpty) {
-          for (final head in heads) {
-            if (head.accHeadName.toLowerCase() ==
-                existingHeadName.toLowerCase()) {
-              selectedHeadId = head.accHeadId;
-              break;
+        if (existing.chartOfAccountId != null &&
+            existing.chartOfAccountId! > 0) {
+          selectedHeadId = existing.chartOfAccountId;
+        } else {
+          final existingHeadName = (existing.statusg ?? '').trim();
+          if (existingHeadName.isNotEmpty) {
+            for (final head in heads) {
+              if (head.accHeadName.toLowerCase() ==
+                  existingHeadName.toLowerCase()) {
+                selectedHeadId = head.accHeadId;
+                break;
+              }
             }
           }
         }
@@ -2407,8 +2412,14 @@ class _AccountUpsertScreenState extends State<_AccountUpsertScreen> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
     final selectedHead = _selectedHeadOption();
-    final headName = selectedHead?.accHeadName.trim();
-    if (headName == null || headName.isEmpty) {
+    if (selectedHead == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select account head')),
+      );
+      return;
+    }
+    final headName = selectedHead.accHeadName.trim();
+    if (headName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select account head')),
       );
@@ -2431,6 +2442,7 @@ class _AccountUpsertScreenState extends State<_AccountUpsertScreen> {
           phone: _phoneCtrl.text.trim(),
           address: _addressCtrl.text.trim(),
           statusg: headName,
+          chartOfAccountId: selectedHead.accHeadId,
         );
         await widget.repo.replaceAccountCurrencies(
           accId: accId,
@@ -2444,6 +2456,7 @@ class _AccountUpsertScreenState extends State<_AccountUpsertScreen> {
           phone: _phoneCtrl.text.trim(),
           address: _addressCtrl.text.trim(),
           statusg: headName,
+          chartOfAccountId: selectedHead.accHeadId,
         );
         await widget.repo.replaceAccountCurrencies(
           accId: newAccId,

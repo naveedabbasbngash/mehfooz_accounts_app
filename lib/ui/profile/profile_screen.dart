@@ -13,6 +13,7 @@ import '../../services/local_storage.dart';
 import '../../services/report_preferences_service.dart';
 import '../auth/auth_screen.dart';
 import '../home/widgets/google_sync_icon.dart';
+import '../subscription/subscription_status_card.dart';
 
 // Brand colors (used in header card + dialogs)
 const Color _kProfileBlue = Color(0xFF1862A3);
@@ -35,12 +36,8 @@ const Color _kIconOrange = Color(0xFFFF9500);
 const Color _kIconOrangeBg = Color(0xFFFFF3E0);
 const Color _kIconRed = Color(0xFFFF3B30);
 const Color _kIconRedBg = Color(0xFFFFEBEA);
-const Color _kIconYellow = Color(0xFFFFCC00);
-const Color _kIconYellowBg = Color(0xFFFFFCE0);
 const Color _kIconGray = Color(0xFF8E8E93);
 const Color _kIconGrayBg = Color(0xFFEEEEF0);
-const Color _kIconPurple = Color(0xFFAF52DE);
-const Color _kIconPurpleBg = Color(0xFFF3E8FF);
 
 class _TeamMembersSnapshot {
   final bool accessDenied;
@@ -203,15 +200,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _userHeaderCard(context, user, svm),
+                      const SizedBox(height: 14),
+                      SubscriptionStatusCard(
+                        user: user,
+                        actionLabel: 'Renew / Refresh Status',
+                        onRenew: () => _showRenewalInfo(context, user),
+                      ),
                       const SizedBox(height: 28),
-
-                      if (user.planStatus != null ||
-                          user.expiry != null ||
-                          user.subscription != null) ...[
-                        _iosSectionHeader('Subscription'),
-                        _iosPlanSection(user),
-                        const SizedBox(height: 28),
-                      ],
 
                       if (vm.companies.isNotEmpty) ...[
                         _iosSectionHeader('Company / Business'),
@@ -245,6 +240,201 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _showRenewalInfo(BuildContext context, UserModel user) async {
+    final vm = context.read<ProfileViewModel>();
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return Container(
+          margin: const EdgeInsets.all(12),
+          padding: EdgeInsets.fromLTRB(
+            18,
+            18,
+            18,
+            MediaQuery.of(sheetContext).padding.bottom + 18,
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x24000000),
+                blurRadius: 30,
+                offset: Offset(0, 18),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: _kIconOrangeBg,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.workspace_premium_rounded,
+                  color: _kIconOrange,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'Renew Package',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: _kTextPrimary,
+                  letterSpacing: -0.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Your account is currently ${user.packageStatusText}. Package renewal is activated by the admin dashboard. After activation, refresh your status here or log in again.',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _renewalDetailRow(
+                icon: Icons.email_outlined,
+                label: 'Account',
+                value: user.email,
+              ),
+              const SizedBox(height: 8),
+              _renewalDetailRow(
+                icon: Icons.inventory_2_outlined,
+                label: 'Package',
+                value: user.subscription?.planTitle ?? 'Not assigned',
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.pop(sheetContext),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF475569),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        final refreshed = await AuthService.quickLogin(
+                          vm.loggedInUser,
+                        );
+                        if (!sheetContext.mounted) return;
+                        if (refreshed == null) {
+                          ScaffoldMessenger.of(sheetContext).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Unable to refresh package status.',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+
+                        vm.loggedInUser = refreshed;
+                        await vm.refresh();
+                        if (!sheetContext.mounted) return;
+                        Navigator.pop(sheetContext);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Package status refreshed.'),
+                            backgroundColor: AppColors.darkgreen,
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Refresh Status'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _kProfileBlue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _renewalDetailRow({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: _kProfileBlue, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -376,63 +566,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       ),
     );
-  }
-
-  // ─────────────── PLAN SECTION ───────────────
-
-  Widget _iosPlanSection(UserModel user) {
-    final items = <Widget>[];
-
-    if (user.planStatus != null) {
-      items.add(
-        _iosRow(
-          icon: Icons.workspace_premium_rounded,
-          iconBg: _kIconYellowBg,
-          iconColor: _kIconYellow,
-          title: 'Plan Status',
-          trailing: Text(
-            user.planStatus!.statusText,
-            style: const TextStyle(color: _kTextSecondary, fontSize: 15),
-          ),
-          showChevron: false,
-        ),
-      );
-    }
-
-    if (user.expiry != null) {
-      items.add(
-        _iosRow(
-          icon: Icons.timer_outlined,
-          iconBg: _kIconOrangeBg,
-          iconColor: _kIconOrange,
-          title: 'Remaining Days',
-          trailing: Text(
-            '${user.expiry!.remainingDays} days',
-            style: const TextStyle(color: _kTextSecondary, fontSize: 15),
-          ),
-          showChevron: false,
-        ),
-      );
-    }
-
-    if (user.subscription != null) {
-      items.add(
-        _iosRow(
-          icon: Icons.calendar_month_rounded,
-          iconBg: _kIconBlueBg,
-          iconColor: _kIconBlue,
-          title: 'Subscription',
-          trailing: Text(
-            user.subscription!.planTitle,
-            style: const TextStyle(color: _kTextSecondary, fontSize: 15),
-          ),
-          showChevron: false,
-        ),
-      );
-    }
-
-    if (items.isEmpty) return const SizedBox.shrink();
-    return _iosCard(items);
   }
 
   // ─────────────── COMPANY SECTION ───────────────
@@ -782,29 +915,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  BoxDecoration _panelDecoration({bool highlighted = false}) {
-    return BoxDecoration(
-      gradient: LinearGradient(
-        colors: highlighted
-            ? const [Color(0xFFF9FCFF), Color(0xFFF2F8FF)]
-            : const [Colors.white, Color(0xFFFAFCFF)],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ),
-      borderRadius: BorderRadius.circular(24),
-      border: Border.all(
-        color: highlighted ? const Color(0xFFCFE1F7) : const Color(0xFFDCE7F8),
-      ),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x140F172A),
-          blurRadius: 22,
-          offset: Offset(0, 10),
-        ),
-      ],
-    );
-  }
-
   Future<void> _smartLogout(BuildContext context) async {
     await LocalStorageService.clearLoginStateOnly();
     if (!context.mounted) return;
@@ -1078,106 +1188,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ───────────────────────── SYNC CARD ─────────────────────────
-
-  Widget _syncCard(
-    BuildContext context,
-    SyncViewModel svm,
-    ProfileViewModel vm,
-  ) {
-    return Container(
-      decoration: _panelDecoration(highlighted: true),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE9F3FF),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Icon(
-                    Icons.sync_rounded,
-                    color: _kProfileBlue,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    "Sync",
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ),
-                _pendingCountChip(svm),
-                const SizedBox(width: 8),
-                _pendingToggleButton(svm),
-                const SizedBox(width: 8),
-                _syncCapsule(svm),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            _syncStatusText(svm),
-            const SizedBox(height: 8),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeInOut,
-              child: _showPendingBatches
-                  ? _pendingBatchesPanel(context, svm)
-                  : const SizedBox.shrink(),
-            ),
-
-            if (svm.isSyncing) ...[
-              const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: LinearProgressIndicator(
-                  value: svm.syncProgress,
-                  minHeight: 6,
-                  color: _kProfileBlue,
-                  backgroundColor: const Color(0xFFDCE7F8),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: svm.cancelSync,
-                  child: const Text("Cancel"),
-                ),
-              ),
-            ],
-
-            if (svm.lastSyncedTime != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                "Last synced: ${_timeAgo(svm.lastSyncedTime!)}",
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 8),
-            _autoSyncSelector(context, svm),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _pendingCountChip(SyncViewModel svm) {
     final count = svm.pendingBatchCount;
     return Container(
@@ -1349,23 +1359,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           );
         }).toList(),
-      ),
-    );
-  }
-
-  // ───────────────────────── STATUS TEXT ─────────────────────────
-
-  Widget _syncStatusText(SyncViewModel svm) {
-    if (svm.canSync) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Text(
-        svm.syncBlockReason,
-        style: const TextStyle(
-          color: Color(0xFFB45309),
-          fontWeight: FontWeight.w600,
-        ),
       ),
     );
   }
@@ -1704,247 +1697,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ───────────────────────── LOCAL DATA ─────────────────────────
-
-  Widget _localDataCard(BuildContext context, ProfileViewModel vm) {
-    return Container(
-      decoration: _panelDecoration(),
-      child: Padding(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Local Data",
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.file_open),
-                  label: const Text("Import Local Database"),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _kProfileBlue,
-                    side: const BorderSide(color: Color(0xFFCFE1F7)),
-                    backgroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: vm.canImport
-                      ? () async {
-                          final homeVM = context.read<HomeViewModel>();
-                          final user = vm.loggedInUser;
-                          final path = await FilePickerService.pickSqliteFile();
-                          if (path == null || !context.mounted) return;
-
-                          await homeVM.confirmAndImportDatabase(
-                            context: context,
-                            inputPath: path,
-                            user: user,
-                          );
-                        }
-                      : null,
-                ),
-                FilledButton.icon(
-                  icon: vm.isExportingDatabase
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.ios_share_rounded),
-                  label: Text(
-                    vm.isExportingDatabase
-                        ? "Preparing..."
-                        : "Export & Share Database",
-                  ),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _kProfileBlue,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                  ),
-                  onPressed: vm.isExportingDatabase
-                      ? null
-                      : () async {
-                          final error = await vm.exportAndShareDatabase();
-                          if (!context.mounted) return;
-                          if (error != null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(error),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  "Database ready to share via WhatsApp or any app.",
-                                ),
-                                backgroundColor: AppColors.darkgreen,
-                              ),
-                            );
-                          }
-                        },
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────── PLAN CARD ─────────────────────────
-
-  Widget _planCards(UserModel user) {
-    return Container(
-      decoration: _panelDecoration(),
-      child: Column(
-        children: [
-          if (user.planStatus != null)
-            ListTile(
-              leading: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.workspace_premium_rounded,
-                  color: _kProfileBlue,
-                ),
-              ),
-              title: const Text("Plan Status"),
-              subtitle: Text(user.planStatus!.statusText),
-            ),
-          if (user.expiry != null)
-            ListTile(
-              leading: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.timer_outlined, color: _kProfileBlue),
-              ),
-              title: const Text("Remaining Days"),
-              subtitle: Text("${user.expiry!.remainingDays} days"),
-            ),
-          if (user.subscription != null)
-            ListTile(
-              leading: Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.calendar_month_rounded,
-                  color: _kProfileBlue,
-                ),
-              ),
-              title: const Text("Subscription"),
-              subtitle: Text(user.subscription!.planTitle),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _appSettingsCard(BuildContext context) {
-    return Container(
-      decoration: _panelDecoration(),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: () => _showAppSettingsSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.all(18),
-          child: Row(
-            children: [
-              Container(
-                width: 46,
-                height: 46,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF5FF),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Icon(
-                  Icons.settings_outlined,
-                  color: _kProfileBlue,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      "App Settings",
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      _trailBalanceFiltersEnabled
-                          ? "Trail Balance opens filter selections before export."
-                          : "Trail Balance exports directly. Add future app permissions here.",
-                      style: const TextStyle(
-                        fontSize: 12.6,
-                        height: 1.45,
-                        color: Color(0xFF64748B),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.arrow_forward_rounded,
-                  color: _kProfileBlue,
-                  size: 20,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _showAppSettingsSheet(BuildContext context) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -2133,658 +1885,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return value.length > 16 ? value.substring(0, 16) : value;
   }
 
-  Widget _companySelectorAnimated(
-    BuildContext context,
-    ProfileViewModel vm,
-    HomeViewModel homeVM, {
-    required bool canManageCompanies,
-  }) {
-    final selectedId = homeVM.selectedCompanyId;
-    final selected = selectedId == null
-        ? null
-        : vm.companies.firstWhere(
-            (c) => c.companyId == selectedId,
-            orElse: () => vm.companies.first,
-          );
-
-    return Card(
-      color: Colors.transparent,
-      elevation: 0,
-      child: Container(
-        decoration: _panelDecoration(),
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Text(
-                  "Companies",
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const Spacer(),
-                if (canManageCompanies)
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _kProfileBlue,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                    onPressed: () => _showAddCompanyDialog(context, vm),
-                    icon: const Icon(Icons.add_business_outlined, size: 18),
-                    label: const Text("Add"),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            InkWell(
-              onTap: () => setState(() => expandCompanies = !expandCompanies),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 14,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  border: Border.all(color: const Color(0xFFCFE1F7)),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEAF5FF),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(
-                        Icons.business_center_rounded,
-                        color: _kProfileBlue,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        selected?.companyName ?? "Select Company",
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                    AnimatedRotation(
-                      turns: expandCompanies ? 0.5 : 0,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: Color(0xFF475569),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            AnimatedSize(
-              duration: const Duration(milliseconds: 250),
-              child: expandCompanies
-                  ? Column(
-                      children: vm.companies.map((c) {
-                        final isSelected = c.companyId == selectedId;
-                        return Container(
-                          margin: const EdgeInsets.only(top: 10),
-                          decoration: BoxDecoration(
-                            gradient: isSelected
-                                ? const LinearGradient(
-                                    colors: [
-                                      Color(0xFFEFF6FF),
-                                      Color(0xFFE6F0FF),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  )
-                                : const LinearGradient(
-                                    colors: [
-                                      Color(0xFFFCFEFF),
-                                      Color(0xFFF7FBFF),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: isSelected
-                                  ? const Color(0xFF93C5FD)
-                                  : const Color(0xFFDCE7F8),
-                            ),
-                            boxShadow: isSelected
-                                ? const [
-                                    BoxShadow(
-                                      color: Color(0x183B82F6),
-                                      blurRadius: 14,
-                                      offset: Offset(0, 6),
-                                    ),
-                                  ]
-                                : const [
-                                    BoxShadow(
-                                      color: Color(0x0D0F172A),
-                                      blurRadius: 10,
-                                      offset: Offset(0, 4),
-                                    ),
-                                  ],
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            borderRadius: BorderRadius.circular(18),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(18),
-                              onTap: () async {
-                                await homeVM.setCompany(c.companyId);
-                                setState(() => expandCompanies = false);
-                              },
-                              child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  14,
-                                  12,
-                                  8,
-                                  12,
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 40,
-                                      height: 40,
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFFDCEBFF)
-                                            : const Color(0xFFEAF5FF),
-                                        borderRadius: BorderRadius.circular(14),
-                                      ),
-                                      child: Icon(
-                                        isSelected
-                                            ? Icons.business_rounded
-                                            : Icons.apartment_rounded,
-                                        color: _kProfileBlue,
-                                        size: 20,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            c.companyName ?? "Unnamed",
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              fontSize: 14.5,
-                                              fontWeight: FontWeight.w800,
-                                              color: Color(0xFF0F172A),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            isSelected
-                                                ? 'Active workspace'
-                                                : 'Tap to switch workspace',
-                                            style: TextStyle(
-                                              fontSize: 11.5,
-                                              fontWeight: FontWeight.w600,
-                                              color: isSelected
-                                                  ? _kProfileBlue
-                                                  : const Color(0xFF64748B),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    if (canManageCompanies)
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            tooltip: "Edit Company",
-                                            icon: const Icon(
-                                              Icons.edit_outlined,
-                                              size: 18,
-                                              color: Color(0xFF334155),
-                                            ),
-                                            onPressed: () =>
-                                                _showEditCompanyDialog(
-                                                  context,
-                                                  vm,
-                                                  c,
-                                                ),
-                                          ),
-                                          IconButton(
-                                            tooltip: "Delete Company",
-                                            icon: const Icon(
-                                              Icons.delete_outline,
-                                              size: 18,
-                                              color: Colors.red,
-                                            ),
-                                            onPressed: () =>
-                                                _confirmDeleteCompany(
-                                                  context,
-                                                  vm,
-                                                  c,
-                                                ),
-                                          ),
-                                        ],
-                                      )
-                                    else
-                                      const Padding(
-                                        padding: EdgeInsets.only(right: 8),
-                                        child: Icon(
-                                          Icons.chevron_right_rounded,
-                                          color: Color(0xFF94A3B8),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showAddCompanyDialog(
-    BuildContext context,
-    ProfileViewModel vm,
-  ) async {
-    if (!_canManageCompanies(vm.loggedInUser)) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Viewer role has read-only access to companies'),
-        ),
-      );
-      return;
-    }
-    if (vm.companies.length >= 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'You already have 2 companies. New companies cannot be added.',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    final payload = await _showCompanyEditorSheet(
-      context,
-      title: 'Add Company',
-      actionLabel: 'Add Company',
-      nameHint: 'e.g. Mahfooz Accounts',
-    );
-
-    if (payload == null || !context.mounted) return;
-    final normalizedName = payload.$1.trim().toLowerCase();
-    final exists = vm.companies.any(
-      (c) => (c.companyName ?? '').trim().toLowerCase() == normalizedName,
-    );
-    if (exists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Company name already exists.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    final error = await vm.addCompany(
-      context: context,
-      name: payload.$1,
-      remarks: payload.$2,
-    );
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error ?? "Company added and seeded successfully."),
-        backgroundColor: error == null ? AppColors.darkgreen : Colors.red,
-      ),
-    );
-  }
-
-  Future<void> _showEditCompanyDialog(
-    BuildContext context,
-    ProfileViewModel vm,
-    CompanyTableData company,
-  ) async {
-    if (!_canManageCompanies(vm.loggedInUser)) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Viewer role has read-only access to companies'),
-        ),
-      );
-      return;
-    }
-
-    final nameController = TextEditingController(
-      text: company.companyName ?? "",
-    );
-    final remarksController = TextEditingController(
-      text: company.remarks ?? "",
-    );
-
-    final payload = await _showCompanyEditorSheet(
-      context,
-      title: 'Edit Company / Business',
-      actionLabel: 'Save Changes',
-      initialName: nameController.text,
-      initialRemarks: remarksController.text,
-    );
-
-    if (payload == null || !context.mounted) return;
-    final error = await vm.updateCompany(
-      context: context,
-      companyId: company.companyId,
-      name: payload.$1,
-      remarks: payload.$2,
-    );
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error ?? "Company updated."),
-        backgroundColor: error == null ? AppColors.darkgreen : Colors.red,
-      ),
-    );
-  }
-
-  Future<(String, String)?> _showCompanyEditorSheet(
-    BuildContext context, {
-    required String title,
-    required String actionLabel,
-    String initialName = '',
-    String initialRemarks = '',
-    String? nameHint,
-  }) async {
-    final nameController = TextEditingController(text: initialName);
-    final remarksController = TextEditingController(text: initialRemarks);
-    final formKey = GlobalKey<FormState>();
-
-    return showModalBottomSheet<(String, String)>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(sheetContext).viewInsets.bottom,
-          ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-              ),
-            ),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  18,
-                  16,
-                  18,
-                  MediaQuery.of(sheetContext).padding.bottom + 18,
-                ),
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 44,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFBFD7F3),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [_kProfileBlue, _kProfileBlueDark],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Icon(
-                          Icons.business_center_rounded,
-                          color: Colors.white,
-                          size: 26,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Create or update a company space with a cleaner setup flow.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.45,
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      _buildCompanyField(
-                        controller: nameController,
-                        label: 'Company Name',
-                        hint: nameHint ?? 'Enter company name',
-                        icon: Icons.apartment_rounded,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Company name is required';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 14),
-                      _buildCompanyField(
-                        controller: remarksController,
-                        label: 'Remarks',
-                        hint: 'Optional notes',
-                        icon: Icons.edit_note_rounded,
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF475569),
-                                side: const BorderSide(
-                                  color: Color(0xFFDCE7F8),
-                                ),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              onPressed: () => Navigator.pop(sheetContext),
-                              child: const Text(
-                                'Cancel',
-                                style: TextStyle(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: FilledButton(
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _kProfileBlue,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 14,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                              onPressed: () {
-                                if (!formKey.currentState!.validate()) return;
-                                Navigator.pop(sheetContext, (
-                                  nameController.text.trim(),
-                                  remarksController.text.trim(),
-                                ));
-                              },
-                              child: Text(
-                                actionLabel,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildCompanyField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    String? Function(String?)? validator,
-    int maxLines = 1,
-  }) {
-    return TextFormField(
-      controller: controller,
-      validator: validator,
-      maxLines: maxLines,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        prefixIcon: Icon(icon, color: _kProfileBlue, size: 20),
-        filled: true,
-        fillColor: const Color(0xFFF8FBFF),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 16,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFDCE7F8)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: Color(0xFFDCE7F8)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: const BorderSide(color: _kProfileBlue, width: 1.4),
-        ),
-      ),
-    );
-  }
-
-  Future<void> _confirmDeleteCompany(
-    BuildContext context,
-    ProfileViewModel vm,
-    CompanyTableData company,
-  ) async {
-    if (!_canManageCompanies(vm.loggedInUser)) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Viewer role has read-only access to companies'),
-        ),
-      );
-      return;
-    }
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Delete Company"),
-        content: Text(
-          "Delete '${company.companyName ?? 'this company'}' (ID: ${company.companyId})?\n\nAll company transactions and accounts for this company will be removed.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel"),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("Delete"),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true || !context.mounted) return;
-    final error = await vm.deleteCompany(
-      context: context,
-      companyId: company.companyId,
-    );
-
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(error ?? "Company deleted."),
-        backgroundColor: error == null ? AppColors.darkgreen : Colors.red,
-      ),
-    );
-  }
-
-  // ───────────────────────── ACCOUNT ACTIONS ─────────────────────────
   Future<void> _loadTeamMembers({bool silent = false}) async {
     if (!mounted) return;
     if (!silent) {
@@ -2814,290 +1914,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         setState(() => _teamLoading = false);
       }
     }
-  }
-
-  Widget _teamMembersCard(BuildContext context) {
-    final count = _teamMembers.length;
-    final subtitle = _teamLoading
-        ? 'Refreshing team access...'
-        : _teamError != null
-        ? _teamError!
-        : count == 0
-        ? (_canManageTeam
-              ? 'No team members yet. Tap to invite your first member.'
-              : 'No team members assigned yet.')
-        : '$count active ${count == 1 ? 'member' : 'members'} linked to this workspace';
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: const LinearGradient(
-          colors: [Color(0xFFF8FBFF), Color(0xFFF1F7FF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: const Color(0xFFDCE7F8)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x140F172A),
-            blurRadius: 22,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(24),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: () async {
-            final vm = context.read<ProfileViewModel>();
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) =>
-                    _TeamMembersHubScreen(loggedInUser: vm.loggedInUser),
-              ),
-            );
-            if (!mounted) return;
-            await _loadTeamMembers(silent: true);
-          },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFDBEAFE), Color(0xFFBFDBFE)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.groups_rounded,
-                        color: Color(0xFF2563EB),
-                        size: 26,
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Team Members',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            subtitle,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              height: 1.35,
-                              color: _teamError != null
-                                  ? Colors.red.shade600
-                                  : const Color(0xFF64748B),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0xFFDCE7F8)),
-                      ),
-                      child: Column(
-                        children: [
-                          Text(
-                            '$count',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          const Text(
-                            'Members',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      size: 28,
-                      color: Color(0xFF64748B),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.82),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFDCE7F8)),
-                  ),
-                  child: Row(
-                    children: [
-                      if (count > 0)
-                        SizedBox(
-                          width: count == 1
-                              ? 28
-                              : count == 2
-                              ? 46
-                              : 64,
-                          height: 28,
-                          child: Stack(
-                            children: List.generate(
-                              count > 3 ? 3 : count,
-                              (index) => Positioned(
-                                left: index * 18,
-                                child: Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(0xFFE9F3FF),
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
-                                    ),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      ((_teamMembers[index].fullName
-                                                      .trim()
-                                                      .isNotEmpty
-                                                  ? _teamMembers[index].fullName
-                                                        .trim()
-                                                  : _teamMembers[index].email
-                                                        .trim())
-                                              .substring(0, 1))
-                                          .toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w800,
-                                        color: _kProfileBlue,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        )
-                      else
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEAF5FF),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.person_add_alt_1_rounded,
-                            color: _kProfileBlue,
-                            size: 18,
-                          ),
-                        ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          count == 0
-                              ? 'Tap to manage members'
-                              : count == 1
-                              ? '1 member connected'
-                              : '$count members connected',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF475569),
-                          ),
-                        ),
-                      ),
-                      const Icon(
-                        Icons.arrow_forward_rounded,
-                        color: _kProfileBlue,
-                        size: 18,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ───────────────────────── ACCOUNT ACTIONS ─────────────────────────
-
-  Widget _accountActions(BuildContext context, ProfileViewModel vm) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBFB),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFF7D4D4)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0F7F1D1D),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFFE9E9),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: const Icon(Icons.delete_forever_rounded, color: Colors.red),
-        ),
-        title: const Text(
-          "Delete Account",
-          style: TextStyle(
-            color: Color(0xFFB91C1C),
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        subtitle: const Text("Permanently delete your account and data"),
-        onTap: () => _confirmDeleteAccount(context, vm),
-      ),
-    );
   }
 
   void _confirmDeleteAccount(BuildContext context, ProfileViewModel vm) {

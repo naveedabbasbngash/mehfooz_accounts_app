@@ -53,6 +53,9 @@ class SyncRepository {
     if (await existsUnsyncedInTable('Acc_Personal')) return true;
     if (await existsUnsyncedInTable('AccType')) return true;
     if (await existsUnsyncedInTable('Account_PCurrencyAssignment')) return true;
+    if (await existsUnsyncedInTable('AccountHeads')) return true;
+    if (await existsUnsyncedInTable('AccountSubHeads')) return true;
+    if (await existsUnsyncedInTable('ChartOfAccounts')) return true;
     return false;
   }
 
@@ -423,7 +426,7 @@ class SyncRepository {
           '''
           SELECT
             AccID, RDate, Name, Phone, Fax, Address, Description, UAccName, statusg,
-            UserID, CompanyID, WName, IsSynced, UpdatedAt, IsDeleted
+            UserID, CompanyID, ChartOfAccountID, WName, IsSynced, UpdatedAt, IsDeleted
           FROM Acc_Personal
           WHERE COALESCE(IsSynced, 0) = 0
             AND CompanyID IS NOT NULL
@@ -463,6 +466,7 @@ class SyncRepository {
               'statusg': _txt(row.data['statusg']),
               'UserID': _toIntOrNull(row.data['UserID']),
               'CompanyID': companyId,
+              'ChartOfAccountID': _toIntOrNull(row.data['ChartOfAccountID']),
               'WName': _txt(row.data['WName']),
               'IsSynced': _toInt(row.data['IsSynced']),
               'UpdatedAt': _txt(row.data['UpdatedAt']),
@@ -488,7 +492,7 @@ class SyncRepository {
           '''
           SELECT
             AccID, RDate, Name, Phone, Fax, Address, Description, UAccName, statusg,
-            UserID, CompanyID, WName, IsSynced, UpdatedAt, IsDeleted
+            UserID, CompanyID, ChartOfAccountID, WName, IsSynced, UpdatedAt, IsDeleted
           FROM Acc_Personal
           WHERE AccID IN (${List.filled(ids.length, '?').join(',')})
           ORDER BY COALESCE(UpdatedAt, RDate, '') ASC, AccID ASC
@@ -527,6 +531,7 @@ class SyncRepository {
               'statusg': _txt(row.data['statusg']),
               'UserID': _toIntOrNull(row.data['UserID']),
               'CompanyID': companyId,
+              'ChartOfAccountID': _toIntOrNull(row.data['ChartOfAccountID']),
               'WName': _txt(row.data['WName']),
               'IsSynced': _toInt(row.data['IsSynced']),
               'UpdatedAt': _txt(row.data['UpdatedAt']),
@@ -543,37 +548,148 @@ class SyncRepository {
   Future<List<PendingMasterChange>> collectHeadSnapshotChanges({
     required int companyId,
     int limit = 300,
+    bool unsyncedOnly = false,
   }) async {
-    final rows = await db
+    if (companyId <= 0) return const <PendingMasterChange>[];
+
+    final unsyncedClause = unsyncedOnly ? 'AND COALESCE(IsSynced, 0) = 0' : '';
+    final output = <PendingMasterChange>[];
+
+    final headRows = await db
         .customSelect(
           '''
-          SELECT acc_head_id, acc_head_name
-          FROM Accounts_Heads
-          WHERE acc_head_id IS NOT NULL
-          ORDER BY acc_head_id ASC
+          SELECT
+            AccountHeadID,
+            AccountHeadName,
+            NormalBalance,
+            IsDeleted,
+            UpdatedAt
+          FROM AccountHeads
+          WHERE AccountHeadID IS NOT NULL
+            $unsyncedClause
+          ORDER BY AccountHeadID ASC
           LIMIT ?1
           ''',
           variables: [Variable.withInt(limit)],
-          readsFrom: {db.accountsHeads},
+          readsFrom: {db.accountHeads},
         )
         .get();
 
-    final output = <PendingMasterChange>[];
-    for (final row in rows) {
-      final id = _toInt(row.data['acc_head_id']);
+    for (final row in headRows) {
+      final id = _toInt(row.data['AccountHeadID']);
       if (id <= 0) continue;
+      final isDeleted = _toInt(row.data['IsDeleted']) == 1;
       output.add(
         PendingMasterChange(
           companyId: companyId,
           rowId: id,
           payload: <String, dynamic>{
-            'table': 'Accounts_Heads',
-            'operation': 'UPSERT',
-            'pkName': 'acc_head_id',
+            'table': 'AccountHeads',
+            'operation': isDeleted ? 'DELETE' : 'UPSERT',
+            'pkName': 'AccountHeadID',
             'pkValue': id,
             'data': <String, dynamic>{
-              'acc_head_id': id,
-              'acc_head_name': _txt(row.data['acc_head_name']),
+              'AccountHeadID': id,
+              'AccountHeadName': _txt(row.data['AccountHeadName']),
+              'NormalBalance': _txt(row.data['NormalBalance']),
+              'IsDeleted': _toInt(row.data['IsDeleted']),
+              'UpdatedAt': _txt(row.data['UpdatedAt']),
+            },
+          },
+        ),
+      );
+    }
+
+    final subHeadRows = await db
+        .customSelect(
+          '''
+          SELECT
+            AccountSubHeadID,
+            AccountHeadID,
+            Code,
+            AccountSubHeadName,
+            IsDeleted,
+            UpdatedAt
+          FROM AccountSubHeads
+          WHERE AccountSubHeadID IS NOT NULL
+            $unsyncedClause
+          ORDER BY AccountHeadID ASC, AccountSubHeadID ASC
+          LIMIT ?1
+          ''',
+          variables: [Variable.withInt(limit)],
+          readsFrom: {db.accountSubHeads},
+        )
+        .get();
+
+    for (final row in subHeadRows) {
+      final id = _toInt(row.data['AccountSubHeadID']);
+      if (id <= 0) continue;
+      final isDeleted = _toInt(row.data['IsDeleted']) == 1;
+      output.add(
+        PendingMasterChange(
+          companyId: companyId,
+          rowId: id,
+          payload: <String, dynamic>{
+            'table': 'AccountSubHeads',
+            'operation': isDeleted ? 'DELETE' : 'UPSERT',
+            'pkName': 'AccountSubHeadID',
+            'pkValue': id,
+            'data': <String, dynamic>{
+              'AccountSubHeadID': id,
+              'AccountHeadID': _toInt(row.data['AccountHeadID']),
+              'Code': _txt(row.data['Code']),
+              'AccountSubHeadName': _txt(row.data['AccountSubHeadName']),
+              'IsDeleted': _toInt(row.data['IsDeleted']),
+              'UpdatedAt': _txt(row.data['UpdatedAt']),
+            },
+          },
+        ),
+      );
+    }
+
+    final chartRows = await db
+        .customSelect(
+          '''
+          SELECT
+            ChartOfAccountID,
+            AccountHeadID,
+            AccountSubHeadID,
+            ChartOfAccountName,
+            Code,
+            IsDeleted,
+            UpdatedAt
+          FROM ChartOfAccounts
+          WHERE ChartOfAccountID IS NOT NULL
+            $unsyncedClause
+          ORDER BY ChartOfAccountID ASC
+          LIMIT ?1
+          ''',
+          variables: [Variable.withInt(limit)],
+          readsFrom: {db.chartOfAccounts},
+        )
+        .get();
+
+    for (final row in chartRows) {
+      final id = _toInt(row.data['ChartOfAccountID']);
+      if (id <= 0) continue;
+      final isDeleted = _toInt(row.data['IsDeleted']) == 1;
+      output.add(
+        PendingMasterChange(
+          companyId: companyId,
+          rowId: id,
+          payload: <String, dynamic>{
+            'table': 'ChartOfAccounts',
+            'operation': isDeleted ? 'DELETE' : 'UPSERT',
+            'pkName': 'ChartOfAccountID',
+            'pkValue': id,
+            'data': <String, dynamic>{
+              'ChartOfAccountID': id,
+              'AccountHeadID': _toInt(row.data['AccountHeadID']),
+              'AccountSubHeadID': _toInt(row.data['AccountSubHeadID']),
+              'ChartOfAccountName': _txt(row.data['ChartOfAccountName']),
+              'Code': _txt(row.data['Code']),
+              'IsDeleted': _toInt(row.data['IsDeleted']),
+              'UpdatedAt': _txt(row.data['UpdatedAt']),
             },
           },
         ),
@@ -590,26 +706,29 @@ class SyncRepository {
         .where((id) => id > 0)
         .toSet()
         .toList(growable: false);
-    final rows = await (ids.isEmpty
-            ? db.customSelect(
-                '''
+    final rows =
+        await (ids.isEmpty
+                ? db.customSelect(
+                    '''
           SELECT CompanyID, CompanyName, Remarks
           FROM Company
           ORDER BY CompanyID ASC
           ''',
-                readsFrom: {db.companyTable},
-              )
-            : db.customSelect(
-                '''
+                    readsFrom: {db.companyTable},
+                  )
+                : db.customSelect(
+                    '''
           SELECT CompanyID, CompanyName, Remarks
           FROM Company
           WHERE CompanyID IN (${List.filled(ids.length, '?').join(',')})
           ORDER BY CompanyID ASC
           ''',
-                variables: ids.map(Variable.withInt).toList(growable: false),
-                readsFrom: {db.companyTable},
-              ))
-        .get();
+                    variables: ids
+                        .map(Variable.withInt)
+                        .toList(growable: false),
+                    readsFrom: {db.companyTable},
+                  ))
+            .get();
 
     final output = <PendingMasterChange>[];
     for (final row in rows) {
@@ -982,6 +1101,48 @@ class SyncRepository {
     return cleaned.length;
   }
 
+  Future<int> markHeadSnapshotsSynced(List<PendingMasterChange> rows) async {
+    final headIds = <int>{};
+    final subHeadIds = <int>{};
+    final chartIds = <int>{};
+
+    for (final row in rows) {
+      final table = (row.payload['table'] ?? '').toString();
+      switch (table) {
+        case 'AccountHeads':
+          if (row.rowId > 0) headIds.add(row.rowId);
+          break;
+        case 'AccountSubHeads':
+          if (row.rowId > 0) subHeadIds.add(row.rowId);
+          break;
+        case 'ChartOfAccounts':
+          if (row.rowId > 0) chartIds.add(row.rowId);
+          break;
+      }
+    }
+
+    var updated = 0;
+    if (headIds.isNotEmpty) {
+      updated +=
+          await (db.update(db.accountHeads)
+                ..where((t) => t.accountHeadId.isIn(headIds.toList())))
+              .write(const AccountHeadsCompanion(isSynced: Value(1)));
+    }
+    if (subHeadIds.isNotEmpty) {
+      updated +=
+          await (db.update(db.accountSubHeads)
+                ..where((t) => t.accountSubHeadId.isIn(subHeadIds.toList())))
+              .write(const AccountSubHeadsCompanion(isSynced: Value(1)));
+    }
+    if (chartIds.isNotEmpty) {
+      updated +=
+          await (db.update(db.chartOfAccounts)
+                ..where((t) => t.chartOfAccountId.isIn(chartIds.toList())))
+              .write(const ChartOfAccountsCompanion(isSynced: Value(1)));
+    }
+    return updated;
+  }
+
   // ------------------------------------------------------------
   // SMALL HELPERS
   // ------------------------------------------------------------
@@ -1016,6 +1177,181 @@ class SyncRepository {
     if (v == null) return null;
     if (v is num) return v.toDouble();
     return double.tryParse(v.toString());
+  }
+
+  int _accountHeadIdForChartName(String name) {
+    final upper = name.trim().toUpperCase();
+    if (upper.contains('EXPENSE')) return 4;
+    if (upper.contains('PAYABLE') ||
+        upper.contains('SUPPLIER') ||
+        upper.contains('LIABILITY')) {
+      return 2;
+    }
+    if (upper.contains('EQUITY') ||
+        upper.contains('CAPITAL') ||
+        upper.contains('DRAWING')) {
+      return 3;
+    }
+    if (upper.contains('SALE') ||
+        upper.contains('INCOME') ||
+        upper.contains('REVENUE')) {
+      return 5;
+    }
+    return 1;
+  }
+
+  int _accountSubHeadIdForChartName(String name, int accountHeadId) {
+    final upper = name.trim().toUpperCase();
+    switch (accountHeadId) {
+      case 2:
+        return 201;
+      case 3:
+        return 301;
+      case 4:
+        return 402;
+      case 5:
+        return 501;
+      case 1:
+      default:
+        return upper.contains('FIXED') ? 102 : 101;
+    }
+  }
+
+  Future<void> _ensureDefaultAccountTaxonomy() async {
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    const heads = <List<Object>>[
+      [1, 'Assets', 'Debit'],
+      [2, 'Liabilities', 'Credit'],
+      [3, 'Capital', 'Credit'],
+      [4, 'Expenses', 'Debit'],
+      [5, 'Revenue', 'Credit'],
+    ];
+    const subHeads = <List<Object>>[
+      [101, 1, '01-01', 'Current Assets'],
+      [102, 1, '01-02', 'Fixed Assets'],
+      [201, 2, '02-01', 'Other Liabilities'],
+      [301, 3, '03-01', 'Owner Equity'],
+      [402, 4, '04-02', 'Other Expenses'],
+      [501, 5, '05-01', 'Other Revenue'],
+    ];
+
+    for (final head in heads) {
+      await db.customStatement(
+        '''
+        INSERT OR IGNORE INTO AccountHeads
+          (AccountHeadID, AccountHeadName, NormalBalance, IsDeleted, IsSynced, UpdatedAt)
+        VALUES (?1, ?2, ?3, 0, 1, ?4)
+        ''',
+        [head[0], head[1], head[2], nowIso],
+      );
+      await db.customStatement(
+        '''
+        UPDATE AccountHeads
+        SET AccountHeadName = ?2,
+            NormalBalance = ?3,
+            IsDeleted = 0,
+            IsSynced = 1,
+            UpdatedAt = ?4
+        WHERE AccountHeadID = ?1
+        ''',
+        [head[0], head[1], head[2], nowIso],
+      );
+    }
+
+    for (final subHead in subHeads) {
+      await db.customStatement(
+        '''
+        INSERT OR IGNORE INTO AccountSubHeads
+          (AccountSubHeadID, AccountHeadID, Code, AccountSubHeadName, IsDeleted, IsSynced, UpdatedAt)
+        VALUES (?1, ?2, ?3, ?4, 0, 1, ?5)
+        ''',
+        [subHead[0], subHead[1], subHead[2], subHead[3], nowIso],
+      );
+      await db.customStatement(
+        '''
+        UPDATE AccountSubHeads
+        SET AccountHeadID = ?2,
+            Code = ?3,
+            AccountSubHeadName = ?4,
+            IsDeleted = 0,
+            IsSynced = 1,
+            UpdatedAt = ?5
+        WHERE AccountSubHeadID = ?1
+        ''',
+        [subHead[0], subHead[1], subHead[2], subHead[3], nowIso],
+      );
+    }
+
+    await db.customStatement(
+      '''
+      UPDATE AccountSubHeads
+      SET IsDeleted = 1,
+          IsSynced = 1,
+          UpdatedAt = ?1
+      WHERE AccountSubHeadID IN (202, 401)
+        AND AccountSubHeadName IN ('Long Term Liability', 'Operating Revenue')
+      ''',
+      [nowIso],
+    );
+  }
+
+  Future<int?> _ensureChartOfAccountForName(String? name) async {
+    final normalized = (name ?? '').trim();
+    if (normalized.isEmpty) return null;
+
+    final existing = await db
+        .customSelect(
+          '''
+          SELECT ChartOfAccountID
+          FROM ChartOfAccounts
+          WHERE LOWER(TRIM(COALESCE(ChartOfAccountName, ''))) = LOWER(TRIM(?1))
+            AND COALESCE(IsDeleted, 0) = 0
+          ORDER BY ChartOfAccountID ASC
+          LIMIT 1
+          ''',
+          variables: [Variable.withString(normalized)],
+          readsFrom: {db.chartOfAccounts},
+        )
+        .get();
+    if (existing.isNotEmpty) {
+      final id = _toInt(existing.first.data['ChartOfAccountID']);
+      return id > 0 ? id : null;
+    }
+
+    await _ensureDefaultAccountTaxonomy();
+    final nextRow = await db
+        .customSelect(
+          '''
+          SELECT COALESCE(MAX(ChartOfAccountID), 0) + 1 AS next_id
+          FROM ChartOfAccounts
+          ''',
+          readsFrom: {db.chartOfAccounts},
+        )
+        .getSingle();
+    final chartId = _toInt(nextRow.data['next_id']);
+    final accountHeadId = _accountHeadIdForChartName(normalized);
+    final accountSubHeadId = _accountSubHeadIdForChartName(
+      normalized,
+      accountHeadId,
+    );
+
+    await db.customStatement(
+      '''
+      INSERT INTO ChartOfAccounts
+        (ChartOfAccountID, AccountHeadID, AccountSubHeadID, ChartOfAccountName,
+         IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, 0, 1, ?5)
+      ''',
+      [
+        chartId > 0 ? chartId : 1,
+        accountHeadId,
+        accountSubHeadId,
+        normalized,
+        DateTime.now().toUtc().toIso8601String(),
+      ],
+    );
+
+    return chartId > 0 ? chartId : 1;
   }
 
   Future<bool> _voucherExists(int voucherNo) async {
@@ -1070,16 +1406,18 @@ class SyncRepository {
       final companyId = _toInt(row['CompanyID']);
       if (companyId <= 0) continue;
 
-      final existing = await db.customSelect(
-        '''
+      final existing = await db
+          .customSelect(
+            '''
         SELECT CompanyID
         FROM Company
         WHERE CompanyID = ?1
         LIMIT 1
         ''',
-        variables: [Variable.withInt(companyId)],
-        readsFrom: {db.companyTable},
-      ).getSingleOrNull();
+            variables: [Variable.withInt(companyId)],
+            readsFrom: {db.companyTable},
+          )
+          .getSingleOrNull();
 
       await db.customStatement(
         '''
@@ -1087,11 +1425,7 @@ class SyncRepository {
           (CompanyID, CompanyName, Remarks)
         VALUES (?1, ?2, ?3)
         ''',
-        [
-          companyId,
-          _txt(row['CompanyName']),
-          _txt(row['Remarks']),
-        ],
+        [companyId, _txt(row['CompanyName']), _txt(row['Remarks'])],
       );
 
       if (existing == null) {
@@ -1175,6 +1509,12 @@ class SyncRepository {
         continue;
       }
 
+      final statusg = _txt(row['statusg']);
+      final incomingChartId = _toIntOrNull(row['ChartOfAccountID']);
+      final chartOfAccountId = incomingChartId != null && incomingChartId > 0
+          ? incomingChartId
+          : await _ensureChartOfAccountForName(statusg);
+
       await db
           .into(db.accPersonal)
           .insertOnConflictUpdate(
@@ -1187,9 +1527,10 @@ class SyncRepository {
               address: Value(_txt(row['Address'])),
               description: Value(_txt(row['Description'])),
               uAccName: Value(_txt(row['UAccName'])),
-              statusg: Value(_txt(row['statusg'])),
+              statusg: Value(statusg),
               userId: Value(_toIntOrNull(row['UserID'])),
               companyId: Value(_toIntOrNull(row['CompanyID'])),
+              chartOfAccountId: Value(chartOfAccountId),
               wName: Value(_txt(row['WName'])),
               isSynced: const Value(1),
               updatedAt: Value(_txt(row['UpdatedAt'])),
