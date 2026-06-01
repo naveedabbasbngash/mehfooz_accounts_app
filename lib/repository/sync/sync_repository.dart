@@ -4,6 +4,7 @@ import 'package:logger/logger.dart';
 
 import '../../data/local/app_database.dart';
 import '../../model/SyncResult.dart';
+import '../../services/company_tombstone_store.dart';
 import '../../services/sync/sync_service.dart';
 
 class PendingSyncChange {
@@ -76,13 +77,29 @@ class SyncRepository {
         final r2 = await _applyAccPersonal(batch.accPersonal);
         final r3 = await _applyAssignments(batch.assignments);
         final r4 = await _applyTransactions(batch.transactions);
+        final r5 = await _dedupeCompaniesByName();
 
         inserted +=
-            r0.inserted + r1.inserted + r2.inserted + r3.inserted + r4.inserted;
+            r0.inserted +
+            r1.inserted +
+            r2.inserted +
+            r3.inserted +
+            r4.inserted +
+            r5.inserted;
         updated +=
-            r0.updated + r1.updated + r2.updated + r3.updated + r4.updated;
+            r0.updated +
+            r1.updated +
+            r2.updated +
+            r3.updated +
+            r4.updated +
+            r5.updated;
         deleted +=
-            r0.deleted + r1.deleted + r2.deleted + r3.deleted + r4.deleted;
+            r0.deleted +
+            r1.deleted +
+            r2.deleted +
+            r3.deleted +
+            r4.deleted +
+            r5.deleted;
       });
 
       _log.i(
@@ -831,6 +848,15 @@ class SyncRepository {
     // Legacy/mobile flows can write only AccountCurrencyMap.
     // Backfill missing assignment rows first so they become syncable.
     await _backfillLegacyAssignmentsForAllCompanies();
+    await db.customStatement('''
+      DELETE FROM Account_PCurrencyAssignment
+      WHERE COALESCE(AccID, 0) <= 0
+         OR NOT EXISTS (
+           SELECT 1
+           FROM Acc_Personal ap
+           WHERE ap.AccID = Account_PCurrencyAssignment.AccID
+         )
+      ''');
 
     final rows = await db
         .customSelect(
@@ -840,10 +866,11 @@ class SyncRepository {
                  apca.UpdatedAt AS UpdatedAt,
                  COALESCE(apca.CompanyID, ap.CompanyID) AS CompanyID
           FROM Account_PCurrencyAssignment apca
-          LEFT JOIN Acc_Personal ap ON ap.AccID = apca.AccID
+          INNER JOIN Acc_Personal ap ON ap.AccID = apca.AccID
           WHERE COALESCE(apca.IsSynced, 0) = 0
             AND COALESCE(apca.AccID, 0) > 0
             AND COALESCE(apca.AccountTypeID, 0) > 0
+            AND COALESCE(ap.IsSynced, 0) = 1
             AND COALESCE(apca.CompanyID, ap.CompanyID, 0) > 0
           ORDER BY COALESCE(apca.UpdatedAt, '') ASC, apca.RegID ASC
           LIMIT ?1
@@ -1398,13 +1425,24 @@ class SyncRepository {
     if (rows.isEmpty) return const SyncResult();
 
     _log.d("⚡ Applying Company rows: ${rows.length}");
+    final tombstones = await CompanyTombstoneStore.load();
 
     var inserted = 0;
     var updated = 0;
+    var skipped = 0;
 
     for (final row in rows) {
       final companyId = _toInt(row['CompanyID']);
       if (companyId <= 0) continue;
+      final companyName = _txt(row['CompanyName']);
+      if (CompanyTombstoneStore.isBlocked(
+        tombstones,
+        companyId: companyId,
+        companyName: companyName,
+      )) {
+        skipped++;
+        continue;
+      }
 
       final existing = await db
           .customSelect(
@@ -1425,7 +1463,7 @@ class SyncRepository {
           (CompanyID, CompanyName, Remarks)
         VALUES (?1, ?2, ?3)
         ''',
-        [companyId, _txt(row['CompanyName']), _txt(row['Remarks'])],
+        [companyId, companyName, _txt(row['Remarks'])],
       );
 
       if (existing == null) {
@@ -1435,7 +1473,106 @@ class SyncRepository {
       }
     }
 
+    if (skipped > 0) {
+      _log.w("⚠️ Skipped tombstoned Company rows: $skipped");
+    }
+
     return SyncResult(inserted: inserted, updated: updated, deleted: 0);
+  }
+
+  Future<SyncResult> _dedupeCompaniesByName() async {
+    final rows = await db
+        .customSelect(
+          '''
+      SELECT CompanyID, CompanyName
+      FROM Company
+      ORDER BY CompanyID ASC
+    ''',
+          readsFrom: {db.companyTable},
+        )
+        .get();
+    if (rows.length < 2) return const SyncResult();
+
+    final canonicalToKeepId = <String, int>{};
+    final duplicates = <({int oldId, int keepId})>[];
+
+    for (final row in rows) {
+      final companyId = _toInt(row.data['CompanyID']);
+      if (companyId <= 0) continue;
+      final canonical = CompanyTombstoneStore.normalizeName(
+        row.data['CompanyName']?.toString(),
+      );
+      if (canonical.isEmpty) continue;
+
+      final keepId = canonicalToKeepId[canonical];
+      if (keepId == null) {
+        canonicalToKeepId[canonical] = companyId;
+        continue;
+      }
+      if (keepId == companyId) continue;
+      duplicates.add((oldId: companyId, keepId: keepId));
+    }
+
+    if (duplicates.isEmpty) return const SyncResult();
+
+    var mergedCount = 0;
+    for (final dup in duplicates) {
+      await db.customStatement(
+        'UPDATE Acc_Personal SET CompanyID = ?1 WHERE CompanyID = ?2;',
+        [dup.keepId, dup.oldId],
+      );
+      await db.customStatement(
+        'UPDATE Transactions_P SET CompanyID = ?1 WHERE CompanyID = ?2;',
+        [dup.keepId, dup.oldId],
+      );
+      await db.customStatement(
+        'UPDATE Account_PCurrencyAssignment SET CompanyID = ?1 WHERE CompanyID = ?2;',
+        [dup.keepId, dup.oldId],
+      );
+      await db.customStatement(
+        'UPDATE tblCashTrans SET CompanyID = ?1 WHERE CompanyID = ?2;',
+        [dup.keepId, dup.oldId],
+      );
+      await db.customStatement(
+        'UPDATE PeriodLocks SET CompanyID = ?1 WHERE CompanyID = ?2;',
+        [dup.keepId, dup.oldId],
+      );
+      await db.customStatement(
+        'UPDATE AuditTrail SET CompanyID = ?1 WHERE CompanyID = ?2;',
+        [dup.keepId, dup.oldId],
+      );
+
+      await db.customStatement(
+        '''
+        INSERT OR IGNORE INTO AccountCurrencyMap
+          (AccID, AccTypeID, CompanyID, IsEnabled, UpdatedAt)
+        SELECT
+          AccID,
+          AccTypeID,
+          ?1 AS CompanyID,
+          COALESCE(IsEnabled, 1),
+          UpdatedAt
+        FROM AccountCurrencyMap
+        WHERE CompanyID = ?2
+        ''',
+        [dup.keepId, dup.oldId],
+      );
+      await db.customStatement(
+        'DELETE FROM AccountCurrencyMap WHERE CompanyID = ?1;',
+        [dup.oldId],
+      );
+
+      await db.customStatement('DELETE FROM Company WHERE CompanyID = ?1;', [
+        dup.oldId,
+      ]);
+      mergedCount++;
+    }
+
+    if (mergedCount > 0) {
+      _log.w("⚠️ Merged duplicate Company names: $mergedCount");
+    }
+
+    return SyncResult(inserted: 0, updated: mergedCount, deleted: mergedCount);
   }
 
   // ============================================================

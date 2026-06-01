@@ -729,19 +729,19 @@ class SyncViewModel extends ChangeNotifier {
           )
         : const <PendingMasterChange>[];
 
-    final pendingAssignments = <PendingMasterChange>[];
+    final baseAssignments = <PendingMasterChange>[];
     final seenAssignments = <String>{};
     for (final row in assignmentRows) {
       final key = '${row.companyId}:${row.rowId}';
       if (!seenAssignments.add(key)) continue;
-      pendingAssignments.add(row);
+      baseAssignments.add(row);
     }
 
     if (pendingCompanies.isEmpty &&
         pendingCurrencies.isEmpty &&
         pendingHeads.isEmpty &&
         pendingAccounts.isEmpty &&
-        pendingAssignments.isEmpty &&
+        baseAssignments.isEmpty &&
         pendingTransactions.isEmpty) {
       return const _PushSummary(pushed: 0, failed: 0);
     }
@@ -797,6 +797,7 @@ class SyncViewModel extends ChangeNotifier {
       ),
     );
 
+    final failedAccountIdsByCompany = <int, Set<int>>{};
     summary = _mergeSummary(
       summary,
       await _pushChangesByCompany<PendingMasterChange>(
@@ -811,11 +812,40 @@ class SyncViewModel extends ChangeNotifier {
           final ids = successRows.map((e) => e.rowId).toList(growable: false);
           await repo.markAccPersonalSynced(companyId: companyId, accIds: ids);
         },
+        onFailureRows: (companyId, failedRows) {
+          final bucket = failedAccountIdsByCompany.putIfAbsent(
+            companyId,
+            () => <int>{},
+          );
+          for (final row in failedRows) {
+            if (row.rowId > 0) bucket.add(row.rowId);
+          }
+        },
         // Keep account push best-effort so one bad account row does not block
         // assignment/transaction sync for the rest of the team.
         nonBlocking: true,
       ),
     );
+
+    final pendingAssignments = <PendingMasterChange>[];
+    var deferredAssignments = 0;
+    for (final row in baseAssignments) {
+      final data = row.payload['data'];
+      final accId = data is Map ? _toIntSafe(data['AccID']) : 0;
+      final failedForCompany = failedAccountIdsByCompany[row.companyId];
+      if (accId > 0 &&
+          failedForCompany != null &&
+          failedForCompany.contains(accId)) {
+        deferredAssignments++;
+        continue;
+      }
+      pendingAssignments.add(row);
+    }
+    if (deferredAssignments > 0) {
+      _log.w(
+        "⚠️ Deferred assignment rows due to failed parent account push: $deferredAssignments",
+      );
+    }
 
     summary = _mergeSummary(
       summary,
@@ -831,6 +861,9 @@ class SyncViewModel extends ChangeNotifier {
           final ids = successRows.map((e) => e.rowId).toList(growable: false);
           await repo.markAssignmentsSynced(ids);
         },
+        // Assignments are dependent rows; any failed rows stay unsynced and
+        // will retry in the next cycle after parent accounts are accepted.
+        nonBlocking: true,
         failOnPartial: true,
       ),
     );
@@ -948,6 +981,7 @@ class SyncViewModel extends ChangeNotifier {
     required int Function(T row) companyIdOf,
     required Map<String, dynamic> Function(T row) payloadOf,
     Future<void> Function(int companyId, List<T> successRows)? onSuccess,
+    void Function(int companyId, List<T> failedRows)? onFailureRows,
     bool nonBlocking = false,
     bool failOnPartial = false,
   }) async {
@@ -1016,14 +1050,20 @@ class SyncViewModel extends ChangeNotifier {
 
         final failedIndexes = pushResp.failedIndexes.toSet();
         final successRows = <T>[];
+        final failedRows = <T>[];
         for (int i = 0; i < chunk.length; i++) {
           if (!failedIndexes.contains(i)) {
             successRows.add(chunk[i]);
+          } else {
+            failedRows.add(chunk[i]);
           }
         }
 
         if (successRows.isNotEmpty && onSuccess != null) {
           await onSuccess(companyId, successRows);
+        }
+        if (failedRows.isNotEmpty && onFailureRows != null) {
+          onFailureRows(companyId, failedRows);
         }
 
         pushed += successRows.length;

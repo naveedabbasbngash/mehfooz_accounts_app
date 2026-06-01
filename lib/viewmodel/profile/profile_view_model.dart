@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/database_manager.dart';
 import '../../model/user_model.dart';
+import '../../services/company_tombstone_store.dart';
 import '../../services/global_state.dart';
 import '../home/home_view_model.dart';
 import '../sync/sync_viewmodel.dart';
@@ -341,6 +342,10 @@ class ProfileViewModel extends ChangeNotifier {
       if (newCompanyId <= 0) {
         return "Failed to create company.";
       }
+      await CompanyTombstoneStore.clear(
+        companyId: newCompanyId,
+        companyName: cleanName,
+      );
       debugPrint(
         "🏢 [COMPANY_DEBUG] addCompany inserted companyId=$newCompanyId name=$cleanName",
       );
@@ -386,6 +391,10 @@ class ProfileViewModel extends ChangeNotifier {
           companyId,
         ],
       );
+      await CompanyTombstoneStore.clear(
+        companyId: companyId,
+        companyName: cleanName,
+      );
 
       await _loadCompanies();
       if (selectedCompany?.companyId == companyId) {
@@ -425,6 +434,13 @@ class ProfileViewModel extends ChangeNotifier {
           companyId,
         ]);
       });
+      final deletedCompany = companies.where((c) => c.companyId == companyId);
+      await CompanyTombstoneStore.markDeleted(
+        companyId: companyId,
+        companyName: deletedCompany.isEmpty
+            ? null
+            : deletedCompany.first.companyName,
+      );
 
       await _loadCompanies();
       if (companies.isEmpty) {
@@ -443,6 +459,8 @@ class ProfileViewModel extends ChangeNotifier {
 
       if (!context.mounted) return null;
       await selectCompany(nextId, context: context);
+      if (!context.mounted) return null;
+      await _syncCompaniesNow(context);
       return null;
     } catch (e) {
       return "Failed to delete company: $e";
