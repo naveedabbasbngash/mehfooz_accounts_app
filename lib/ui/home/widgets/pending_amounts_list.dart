@@ -3,15 +3,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'package:country_flags/country_flags.dart';
 
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../model/pending_amount_row.dart';
-import '../../../repository/transactions_repository.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 import '../../../viewmodel/home/not_paid_view_model.dart';
-import '../../../data/local/database_manager.dart';
 import '../../pending/pending_grouped_screen.dart';
+import '../../commons/currency_flag.dart';
 
 class PendingAmountsList extends StatelessWidget {
   final List<PendingAmountRow> rows;
@@ -19,11 +17,7 @@ class PendingAmountsList extends StatelessWidget {
 
   final NumberFormat fmt = NumberFormat('#,##0.00');
 
-  PendingAmountsList({
-    super.key,
-    required this.rows,
-    this.searchQuery = "",
-  });
+  PendingAmountsList({super.key, required this.rows, this.searchQuery = ""});
 
   // --------------------------------------------------------
   // HYBRID SMART FILTER
@@ -46,64 +40,6 @@ class PendingAmountsList extends StatelessWidget {
     }).toList();
   }
 
-  // --------------------------------------------------------
-  // Currency → Country Code Mapper
-  // --------------------------------------------------------
-  String _currencyToCountry(String currency) {
-    switch (currency.toUpperCase().trim()) {
-      case "PKR":
-        return "PK";
-      case "USD":
-        return "US";
-      case "AED":
-        return "AE";
-      case "SAR":
-        return "SA";
-      case "EUR":
-        return "EU";
-      case "GBP":
-      case "POUND":
-        return "GB";
-      case "INR":
-      case "IND":
-        return "IN";
-      case "AFG":
-        return "AF";
-      case "CAD":
-        return "CA";
-      case "JPY":
-        return "JP";
-      case "RMB":
-        return "CN";
-      case "IRR":
-        return "IR";
-      case "BHD":
-        return "BH";
-      case "OMR":
-        return "OM";
-      case "QAR":
-        return "QA";
-      case "DKK":
-        return "DK";
-      case "SEK":
-        return "SE";
-      case "NOK":
-        return "NO";
-      case "MYR":
-        return "MY";
-      case "AUD":
-        return "AU";
-      case "HKD":
-        return "HK";
-      case "SGD":
-      case "SGP":
-        return "SG";
-      case "RUB":
-        return "RU";
-      default:
-        return "UN"; // Safe fallback
-    }
-  }
   @override
   Widget build(BuildContext context) {
     final filtered = _applyFilter();
@@ -121,26 +57,26 @@ class PendingAmountsList extends StatelessWidget {
 
         return GestureDetector(
           onTap: () {
-            final companyId = Provider.of<HomeViewModel>(
-              context,
-              listen: false,
-            ).selectedCompanyId ?? 1;
+            final companyId =
+                Provider.of<HomeViewModel>(
+                  context,
+                  listen: false,
+                ).selectedCompanyId ??
+                1;
 
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) {
+              PageRouteBuilder(
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+                pageBuilder: (context, animation, secondary) {
                   return ChangeNotifierProvider(
                     create: (_) => NotPaidViewModel(
-                      repository: TransactionsRepository(
-                        DatabaseManager.instance.db,
-                      ),
                       accId: 3,
                       companyId: companyId,
-                    )..loadRows(),
-                    child: NotPaidGroupedScreen(
-                      filterCurrency: row.currency,
+                      currencyFilter: row.currency,
                     ),
+                    child: NotPaidGroupedScreen(filterCurrency: row.currency),
                   );
                 },
               ),
@@ -162,14 +98,7 @@ class PendingAmountsList extends StatelessWidget {
                   CircleAvatar(
                     radius: 20,
                     backgroundColor: Colors.transparent,
-                    child: CountryFlag.fromCountryCode(
-                      _currencyToCountry(row.currency),
-                      theme: const ImageTheme(
-                        width: 36,
-                        height: 36,
-                        shape: Circle(),
-                      ),
-                    ),
+                    child: CurrencyFlagBadge(currency: row.currency, size: 36),
                   ),
                   const SizedBox(width: 16),
 

@@ -17,6 +17,12 @@ class SummaryCombinedPdfService extends BasePdfService {
   double _fixZero(double v) => v.abs() < 0.005 ? 0.0 : v;
 
   String _fmt(double v) => _money.format(_fixZero(v));
+  PdfColor _moneyColor(double v) {
+    final fixed = _fixZero(v);
+    if (fixed < 0) return PdfColors.red700;
+    if (fixed > 0) return PdfColors.green700;
+    return PdfColors.black;
+  }
 
   /// [jbRows] and [acc1Rows] must have:
   ///   - currency : String
@@ -25,6 +31,7 @@ class SummaryCombinedPdfService extends BasePdfService {
     required String companyName,
     required List<dynamic> jbRows,
     required List<dynamic> acc1Rows,
+    String? jbBaseCurrency,
   }) async {
     final pdf = pw.Document();
 
@@ -32,6 +39,7 @@ class SummaryCombinedPdfService extends BasePdfService {
     final blue = PdfColor.fromInt(0xFF0B1E3A);
     final white = PdfColors.white;
     final black = PdfColors.black;
+    final hasBase = (jbBaseCurrency ?? '').trim().isNotEmpty;
 
     pdf.addPage(
       pw.MultiPage(
@@ -43,34 +51,57 @@ class SummaryCombinedPdfService extends BasePdfService {
           BasePdfService.marginBottom,
         ),
         build: (_) => [
-          // ===== HEADER =====
-          buildHeader(
-            title: "$companyName Summary Report",
-            font: font,
-            fontBold: fontBold,
-            titleColor: blue,
+          pw.Center(
+            child: pw.Text(
+              "Combined Summery Report",
+              style: pw.TextStyle(
+                fontSize: 18,
+                font: fontBold,
+                color: blue,
+              ),
+            ),
           ),
-          pw.SizedBox(height: 14),
-
-          // ===== JB AMOUNT =====
-          _sectionTitle("JB Amount Summary", fontBold, blue),
-          pw.SizedBox(height: 6),
-          _buildTable(
+          pw.SizedBox(height: 10),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                "Generated Date & Time: ${DateFormat('dd/MM/yyyy hh:mm a').format(DateTime.now())}",
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 9,
+                  color: PdfColors.grey600,
+                ),
+              ),
+              pw.Text(
+                "Mahfooz Accounts",
+                style: pw.TextStyle(
+                  font: font,
+                  fontSize: 9,
+                  color: PdfColors.grey600,
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 2),
+          _buildJbTable(
             rows: jbRows,
+            baseCurrency: hasBase ? jbBaseCurrency : null,
+            centerCells: true,
             font: font,
             fontBold: fontBold,
             blue: blue,
             black: black,
             white: white,
           ),
-
-          pw.SizedBox(height: 24),
-
-          // ===== CASH IN HAND =====
-          _sectionTitle("Cash In Hand Summary", fontBold, blue),
+          pw.SizedBox(height: 18),
+          pw.Center(
+            child: _sectionTitle("Cash In Hand Summary", fontBold, blue),
+          ),
           pw.SizedBox(height: 6),
           _buildTable(
             rows: acc1Rows,
+            centerCells: true,
             font: font,
             fontBold: fontBold,
             blue: blue,
@@ -102,14 +133,17 @@ class SummaryCombinedPdfService extends BasePdfService {
     required PdfColor blue,
     required PdfColor black,
     required PdfColor white,
+    bool centerCells = false,
   }) {
     final tableRows = <pw.TableRow>[];
 
     pw.Widget th(String text) => pw.Container(
       color: blue,
       padding: const pw.EdgeInsets.all(8),
+      alignment: centerCells ? pw.Alignment.center : null,
       child: pw.Text(
         text,
+        textAlign: centerCells ? pw.TextAlign.center : pw.TextAlign.left,
         style: pw.TextStyle(
           font: fontBold,
           color: white,
@@ -118,17 +152,24 @@ class SummaryCombinedPdfService extends BasePdfService {
       ),
     );
 
-    pw.Widget td(String text, {pw.TextAlign align = pw.TextAlign.left}) =>
+    pw.Widget td(
+      String text, {
+      pw.TextAlign align = pw.TextAlign.left,
+      PdfColor color = PdfColors.black,
+    }) =>
         pw.Container(
           padding: const pw.EdgeInsets.all(6),
-          alignment:
-          align == pw.TextAlign.right ? pw.Alignment.centerRight : null,
+          alignment: align == pw.TextAlign.right
+              ? pw.Alignment.centerRight
+              : align == pw.TextAlign.center
+                  ? pw.Alignment.center
+                  : null,
           child: pw.Text(
             text,
             textAlign: align,
             style: pw.TextStyle(
               font: font,
-              color: black,
+              color: color,
               fontSize: 11,
             ),
           ),
@@ -156,8 +197,17 @@ class SummaryCombinedPdfService extends BasePdfService {
       tableRows.add(
         pw.TableRow(
           children: [
-            td(currency),
-            td(_fmt(amount), align: pw.TextAlign.right),
+            td(
+              currency,
+              align:
+                  centerCells ? pw.TextAlign.center : pw.TextAlign.left,
+            ),
+            td(
+              _fmt(amount),
+              align:
+                  centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+              color: _moneyColor(amount),
+            ),
           ],
         ),
       );
@@ -170,4 +220,205 @@ class SummaryCombinedPdfService extends BasePdfService {
       children: tableRows,
     );
   }
+
+  String _rowCurrency(dynamic row) {
+    try {
+      final dynamic value = row is Map ? row['currency'] : row.currency;
+      return (value?.toString() ?? '-').trim().isEmpty
+          ? '-'
+          : value.toString().trim();
+    } catch (_) {
+      return '-';
+    }
+  }
+
+  double _rowAmount(dynamic row) {
+    try {
+      final dynamic value = row is Map ? row['amount'] : row.amount;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  double? _rowRate(dynamic row) {
+    try {
+      final dynamic value = row is Map ? row['rate'] : null;
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  double? _rowConverted(dynamic row) {
+    try {
+      final dynamic value = row is Map ? row['converted'] : null;
+      if (value == null) return null;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  pw.Widget _buildJbTable({
+    required List<dynamic> rows,
+    required String? baseCurrency,
+    required pw.Font font,
+    required pw.Font fontBold,
+    required PdfColor blue,
+    required PdfColor black,
+    required PdfColor white,
+    bool centerCells = false,
+  }) {
+    final base = (baseCurrency ?? '').trim().toUpperCase();
+    final showBase = base.isNotEmpty;
+    final tableRows = <pw.TableRow>[];
+
+    pw.Widget th(String text) => pw.Container(
+          color: blue,
+          padding: const pw.EdgeInsets.all(8),
+          alignment: centerCells ? pw.Alignment.center : null,
+          child: pw.Text(
+            text,
+            textAlign: centerCells ? pw.TextAlign.center : pw.TextAlign.left,
+            style: pw.TextStyle(
+              font: fontBold,
+              color: white,
+              fontSize: 12,
+            ),
+          ),
+        );
+
+    pw.Widget td(
+      String text, {
+      pw.TextAlign align = pw.TextAlign.left,
+      PdfColor color = PdfColors.black,
+    }) =>
+        pw.Container(
+          padding: const pw.EdgeInsets.all(6),
+          alignment:
+              align == pw.TextAlign.right
+                  ? pw.Alignment.centerRight
+                  : align == pw.TextAlign.center
+                      ? pw.Alignment.center
+                      : null,
+          child: pw.Text(
+            text,
+            textAlign: align,
+            style: pw.TextStyle(
+              font: font,
+              color: color,
+              fontSize: 11,
+            ),
+          ),
+        );
+
+    final headerCells = <pw.Widget>[
+      th("Currency"),
+      th("Amount"),
+      if (showBase) th("Rate"),
+      if (showBase) th('Base "$base"'),
+    ];
+
+    tableRows.add(pw.TableRow(children: headerCells));
+
+    double convertedTotal = 0.0;
+    bool hasConverted = false;
+
+    for (final row in rows) {
+      final currency = _rowCurrency(row);
+      final amount = _rowAmount(row);
+      if (_fixZero(amount) == 0.0) continue;
+
+      final rate = _rowRate(row);
+      double? converted = _rowConverted(row);
+      if (showBase && converted == null && rate != null && rate > 0) {
+        converted = amount * rate;
+      }
+      if (showBase && _normCurrency(currency) == base) {
+        converted ??= amount;
+      }
+
+      if (showBase && converted != null) {
+        convertedTotal += converted;
+        hasConverted = true;
+      }
+
+      final rowCells = <pw.Widget>[
+        td(
+          currency,
+          align: centerCells ? pw.TextAlign.center : pw.TextAlign.left,
+        ),
+        td(
+          _fmt(amount),
+          align:
+              centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+          color: _moneyColor(amount),
+        ),
+      ];
+
+      if (showBase) {
+        rowCells.add(
+          td(
+            rate == null || rate <= 0 ? '--' : rate.toStringAsFixed(4),
+            align:
+                centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+          ),
+        );
+        rowCells.add(
+          td(
+            converted == null ? '--' : _fmt(converted),
+            align:
+                centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+            color: converted == null ? PdfColors.black : _moneyColor(converted),
+          ),
+        );
+      }
+
+      tableRows.add(pw.TableRow(children: rowCells));
+    }
+
+    if (showBase) {
+      final totalCells = <pw.Widget>[
+        td(
+          '',
+          align: centerCells ? pw.TextAlign.center : pw.TextAlign.left,
+        ),
+        td(
+          '',
+          align: centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+        ),
+        td(
+          'Total ($base)',
+          align: centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+        ),
+        td(
+          hasConverted ? _fmt(convertedTotal) : '--',
+          align:
+              centerCells ? pw.TextAlign.center : pw.TextAlign.right,
+          color: hasConverted ? _moneyColor(convertedTotal) : PdfColors.black,
+        ),
+      ];
+      tableRows.add(
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+          children: totalCells,
+        ),
+      );
+    }
+
+    return pw.Table(
+      border: pw.TableBorder.all(
+        color: PdfColors.grey300,
+        width: 0.3,
+      ),
+      children: tableRows,
+    );
+  }
+
+  String _normCurrency(String value) => value.trim().toUpperCase();
 }

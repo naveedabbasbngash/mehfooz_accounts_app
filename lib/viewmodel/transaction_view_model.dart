@@ -7,16 +7,15 @@ import '../model/tx_filter.dart';
 import '../model/tx_item_ui.dart';
 import '../model/balance_currency_ui.dart';
 import '../repository/transactions_repository.dart';
+import '../services/local_storage.dart';
 import '../services/pdf/balance_pdf_service.dart';
 
 class TransactionsViewModel extends ChangeNotifier {
   final TransactionsRepository repo;
   final int companyId; // 🔥 COMPANY CONTEXT
 
-  TransactionsViewModel({
-    required this.repo,
-    required this.companyId,
-  }) {
+  TransactionsViewModel({required this.repo, required this.companyId}) {
+    _loadUserEmailMap();
     _reloadItems();
     _updateSelectedAccIdFromSearch();
     _reloadBalance();
@@ -35,11 +34,14 @@ class TransactionsViewModel extends ChangeNotifier {
   int? _selectedAccId;
 
   List<TxItemUi> _items = [];
+  Map<int, String> _emailByUserId = {};
   List<String> _currencies = [];
   List<BalanceCurrencyUi> _balanceByCurrency = [];
 
   StreamSubscription? _itemsSub;
   StreamSubscription? _balanceSub;
+
+  bool _isZero(double v) => v.abs() < 0.005;
 
   /* -----------------------------------------------------
    * PUBLIC GETTERS
@@ -73,7 +75,7 @@ class TransactionsViewModel extends ChangeNotifier {
    * ----------------------------------------------------- */
   List<String> get suggestions {
     return _items
-        .map((e) => e.name ?? "")
+        .map((e) => e.name)
         .where((n) => n.trim().isNotEmpty)
         .toSet()
         .toList()
@@ -126,32 +128,82 @@ class TransactionsViewModel extends ChangeNotifier {
 
     _itemsSub = repo
         .watchLastTransactions(
-      companyId: companyId,
-      limit: 100,
-      name: _search.isEmpty ? null : _search,
-      filter: _filter,
-      startDate: _startDate,
-      endDate: _endDate,
-    )
+          companyId: companyId,
+          limit: 100,
+          name: _search.isEmpty ? null : _search,
+          filter: _filter,
+          startDate: _startDate,
+          endDate: _endDate,
+        )
         .listen((list) {
-      final filtered = (_selectedCurrency == null)
-          ? list
-          : list.where((e) =>
-      (e.currency ?? "").toLowerCase() ==
-          _selectedCurrency!.toLowerCase())
-          .toList();
+          final listWithUserEmail = _attachUserEmails(list);
 
-      _items = filtered;
+          final filtered = (_selectedCurrency == null)
+              ? listWithUserEmail
+              : listWithUserEmail
+                    .where(
+                      (e) =>
+                          e.currency.toLowerCase() ==
+                          _selectedCurrency!.toLowerCase(),
+                    )
+                    .toList();
 
-      _currencies = list
-          .map((e) => e.currency ?? "")
-          .where((e) => e.trim().isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+          _items = filtered;
 
-      notifyListeners();
-    });
+          _currencies =
+              listWithUserEmail
+                  .map((e) => e.currency)
+                  .where((e) => e.trim().isNotEmpty)
+                  .toSet()
+                  .toList()
+                ..sort();
+
+          notifyListeners();
+        });
+  }
+
+  List<TxItemUi> _attachUserEmails(List<TxItemUi> list) {
+    if (_emailByUserId.isEmpty || list.isEmpty) return list;
+
+    return list
+        .map((item) {
+          final currentEmail = item.userEmail?.trim() ?? '';
+          if (currentEmail.isNotEmpty) {
+            return item;
+          }
+          final id = item.userId;
+          if (id == null) return item;
+          final email = _emailByUserId[id];
+          if (email == null || email.isEmpty) {
+            return item;
+          }
+          return item.copyWith(userEmail: email);
+        })
+        .toList(growable: false);
+  }
+
+  Future<void> _loadUserEmailMap() async {
+    try {
+      final users = await LocalStorageService.loadAllUsers();
+      final map = <int, String>{};
+
+      for (final user in users) {
+        final id = int.tryParse(user.id.trim());
+        final email = user.email.trim();
+        if (id != null && email.isNotEmpty) {
+          map[id] = email;
+        }
+      }
+
+      _emailByUserId = map;
+
+      if (_items.isNotEmpty) {
+        _items = _attachUserEmails(_items);
+        notifyListeners();
+      }
+    } catch (_) {
+      // Best effort only; rows still render without email.
+    }
   }
 
   /* -----------------------------------------------------
@@ -168,15 +220,17 @@ class TransactionsViewModel extends ChangeNotifier {
 
     _balanceSub = repo
         .watchBalanceByCurrencyForAccId(
-      companyId: companyId,
-      accId: _selectedAccId!,
-      startDate: _startDate,
-      endDate: _endDate,
-    )
+          companyId: companyId,
+          accId: _selectedAccId!,
+          startDate: _startDate,
+          endDate: _endDate,
+        )
         .listen((rows) {
-      _balanceByCurrency = rows;
-      notifyListeners();
-    });
+          _balanceByCurrency = rows
+              .where((r) => !_isZero(r.balance))
+              .toList(growable: false);
+          notifyListeners();
+        });
   }
 
   /* -----------------------------------------------------
@@ -199,11 +253,6 @@ class TransactionsViewModel extends ChangeNotifier {
     _reloadBalance();
   }
 
-
-
-
-
-
   Future<File?> generateBalancePdfFromUi() async {
     // Google-style guard clauses
     if (_search.isEmpty) return null;
@@ -212,18 +261,18 @@ class TransactionsViewModel extends ChangeNotifier {
     // Convert UI rows → PDF rows
     final balanceRow = BalanceRow(
       name: _search,
-      byCurrency: {
-        for (final r in _balanceByCurrency)
-          r.currency: r.balance,
-      },
+      byCurrency: {for (final r in _balanceByCurrency) r.currency: r.balance},
     );
 
     return BalancePdfService.instance.render(
       currencies: balanceRow.byCurrency.keys.toList(),
       rows: [balanceRow],
       includeTotalsRow: false,
+      portrait: true,
+      currencyAmountRows: true,
     );
   }
+
   @override
   void dispose() {
     _itemsSub?.cancel();

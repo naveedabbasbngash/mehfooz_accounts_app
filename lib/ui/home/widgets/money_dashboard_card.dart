@@ -3,45 +3,40 @@ import 'package:flutter/material.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 import '../../commons/fade_slide.dart';
 
+const _kHomeBrandBlue = Color(0xFF1862A3);
+
 class MoneyDashboardCard extends StatelessWidget {
   final HomeViewModel vm;
 
-  const MoneyDashboardCard({
-    super.key,
-    required this.vm,
-  });
+  const MoneyDashboardCard({super.key, required this.vm});
 
   @override
   Widget build(BuildContext context) {
     final cashRows = vm.cashInHandSummary;
     final acc1Rows = vm.acc1CashSummary;
-    final pendingRows = vm.pendingAmounts;
 
-    final double totalCash =
-    _sumAmount(cashRows.map((e) => e.amount));
-    final double totalAcc1 =
-    _sumAmount(acc1Rows.map((e) => e.amount));
-    final double totalPending =
-    _sumAmount(pendingRows.map((e) => e.balance));
-
-    // Distinct currencies (from cash rows for pills)
-    final currencies = cashRows.map((e) => e.currency).toSet().toList();
+    final double totalCash = _sumAmount(cashRows.map((e) => e.amount));
+    final double totalAcc1 = _sumAmount(acc1Rows.map((e) => e.amount));
 
     return FadeSlide(
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Colors.white, Color(0xFFF7FBFF)],
+          ),
+          borderRadius: BorderRadius.circular(28),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x14000000),
-              blurRadius: 10,
-              offset: Offset(0, 4),
+              color: Color(0x140F172A),
+              blurRadius: 24,
+              offset: Offset(0, 14),
             ),
           ],
-          border: Border.all(color: Colors.deepPurple.shade50),
+          border: Border.all(color: const Color(0xFFD9E6F3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,12 +47,12 @@ class MoneyDashboardCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.deepPurple.withOpacity(0.06),
+                    color: _kHomeBrandBlue.withValues(alpha: 0.10),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: const Icon(
                     Icons.dashboard_outlined,
-                    color: Colors.deepPurple,
+                    color: _kHomeBrandBlue,
                     size: 20,
                   ),
                 ),
@@ -65,9 +60,10 @@ class MoneyDashboardCard extends StatelessWidget {
                 const Text(
                   "Money Dashboard",
                   style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: 0.2,
+                    color: Color(0xFF102132),
                   ),
                 ),
               ],
@@ -76,10 +72,10 @@ class MoneyDashboardCard extends StatelessWidget {
             const SizedBox(height: 6),
 
             Text(
-              "High-level view of cash, JB amount & pending balance.",
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey.shade600,
-              ),
+              "High-level view of cash and Dr/Cr amounts.",
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: const Color(0xFF64748B)),
             ),
 
             const SizedBox(height: 14),
@@ -90,58 +86,16 @@ class MoneyDashboardCard extends StatelessWidget {
                 _statPill(
                   label: "Cash In Hand",
                   value: totalCash,
-                  color: Colors.green.shade700,
+                  color: _kHomeBrandBlue,
                 ),
                 const SizedBox(width: 10),
                 _statPill(
-                  label: "JB Amount",
+                  label: "DR/CR Amounts",
                   value: totalAcc1,
-                  color: Colors.blue.shade700,
+                  color: _kHomeBrandBlue,
                 ),
               ],
             ),
-
-            const SizedBox(height: 10),
-
-            _statBar(
-              label: "Total Pending",
-              value: totalPending,
-            ),
-
-            const SizedBox(height: 10),
-
-            // Currency tags
-            if (currencies.isNotEmpty) ...[
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: currencies
-                    .map(
-                      (c) => Chip(
-                    label: Text(
-                      c,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    backgroundColor:
-                    Colors.deepPurple.withOpacity(0.06),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 6, vertical: 0),
-                    materialTapTargetSize:
-                    MaterialTapTargetSize.shrinkWrap,
-                  ),
-                )
-                    .toList(),
-              ),
-            ] else
-              Text(
-                "Currencies will appear after cash data is available.",
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Colors.grey.shade500,
-                ),
-              ),
           ],
         ),
       ),
@@ -167,9 +121,9 @@ class MoneyDashboardCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
         decoration: BoxDecoration(
-          color: color.withOpacity(0.04),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2)),
+          color: color.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,8 +132,8 @@ class MoneyDashboardCard extends StatelessWidget {
               label,
               style: const TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF475569),
               ),
             ),
             const SizedBox(height: 2),
@@ -196,49 +150,6 @@ class MoneyDashboardCard extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _statBar({
-    required String label,
-    required double value,
-  }) {
-    final bool isPositive = value >= 0;
-    final double normalized =
-    value == 0 ? 0.0 : (value.abs() / (value.abs() + 1)); // 0..1
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(999),
-          child: LinearProgressIndicator(
-            minHeight: 6,
-            value: normalized.clamp(0.0, 1.0),
-            backgroundColor: Colors.grey.shade200,
-            valueColor: AlwaysStoppedAnimation<Color>(
-              isPositive ? Colors.orange.shade700 : Colors.red.shade600,
-            ),
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          value.toStringAsFixed(2),
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: isPositive ? Colors.orange.shade700 : Colors.red.shade700,
-          ),
-        ),
-      ],
     );
   }
 }

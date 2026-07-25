@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -30,9 +32,46 @@ class CreditPdfService extends BasePdfService {
     required List<String> currencies,
     required List<BalanceRow> rows,
   }) async {
-    final pdf = pw.Document();
+    debugPrint(
+      "[CreditPdf] render:start rows=${rows.length} currencies=${currencies.length}",
+    );
+    final sw = Stopwatch()..start();
 
-    final (font, fontBold) = await createFonts();
+    final fontData = await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf');
+    final payload = <String, dynamic>{
+      'currencies': currencies,
+      'rows': rows
+          .map(
+            (r) => <String, dynamic>{
+              'name': r.name,
+              'byCurrency': r.byCurrency,
+            },
+          )
+          .toList(),
+      'fontBytes': fontData.buffer.asUint8List(),
+    };
+
+    final pdfBytes = await compute(_buildCreditPdfBytesInIsolate, payload);
+
+    final dir = Directory.systemTemp;
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final file = File('${dir.path}/credit_report_$ts.pdf');
+    await file.writeAsBytes(pdfBytes, flush: true);
+
+    sw.stop();
+    debugPrint(
+      "[CreditPdf] render:done path=${file.path} bytes=${pdfBytes.length} elapsedMs=${sw.elapsedMilliseconds}",
+    );
+    return file;
+  }
+
+  Future<Uint8List> _buildPdfBytes({
+    required List<String> currencies,
+    required List<BalanceRow> rows,
+    required pw.Font font,
+    required pw.Font fontBold,
+  }) async {
+    final pdf = pw.Document();
     final deepBlue = PdfColor.fromInt(0xFF0B1E3A);
     final white = PdfColors.white;
     final black = PdfColors.black;
@@ -42,13 +81,17 @@ class CreditPdfService extends BasePdfService {
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.all(12),
         build: (context) => [
-          buildHeader(
+          _buildTitleOnly(
             title: 'Jama / Credit Report',
-            font: font,
             fontBold: fontBold,
             titleColor: deepBlue,
           ),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: 6),
+          _buildMetaRow(
+            fontBold: fontBold,
+            generatedLabel: "Generated Date ${DateFormat('dd/MM/yyyy hh:mm a').format(DateTime.now())}",
+          ),
+          pw.SizedBox(height: 4),
           _buildTable(
             currencies: currencies,
             rows: rows,
@@ -62,7 +105,49 @@ class CreditPdfService extends BasePdfService {
       ),
     );
 
-    return savePdf(pdf, 'credit_report');
+    return pdf.save();
+  }
+
+  pw.Widget _buildTitleOnly({
+    required String title,
+    required pw.Font fontBold,
+    required PdfColor titleColor,
+  }) {
+    return pw.Center(
+      child: pw.Text(
+        title,
+        textAlign: pw.TextAlign.center,
+        style: pw.TextStyle(
+          font: fontBold,
+          fontSize: BasePdfService.titleSize,
+          color: titleColor,
+        ),
+      ),
+    );
+  }
+
+  pw.Widget _buildMetaRow({
+    required pw.Font fontBold,
+    required String generatedLabel,
+  }) {
+    final mahfoozLight = PdfColor.fromInt(0xFFC7CDD7);
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          generatedLabel,
+          style: pw.TextStyle(font: fontBold, fontSize: 8),
+        ),
+        pw.Text(
+          "Mahfooz Accounts",
+          style: pw.TextStyle(
+            font: fontBold,
+            fontSize: 8,
+            color: mahfoozLight,
+          ),
+        ),
+      ],
+    );
   }
 
   pw.Widget _buildTable({
@@ -233,4 +318,41 @@ class CreditPdfService extends BasePdfService {
       children: tableRows,
     );
   }
+}
+
+Future<Uint8List> _buildCreditPdfBytesInIsolate(
+  Map<String, dynamic> payload,
+) async {
+  final currencies = (payload['currencies'] as List?)?.cast<String>() ?? const <String>[];
+  final rawRows = (payload['rows'] as List?)?.cast<Map>() ?? const <Map>[];
+  final fontBytes = payload['fontBytes'] as Uint8List;
+
+  final rows = rawRows.map((m) {
+    final row = Map<String, dynamic>.from(m.cast<String, dynamic>());
+    final byCurrencyMap = Map<String, dynamic>.from(
+      (row['byCurrency'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{},
+    );
+    final byCurrency = <String, double>{};
+    byCurrencyMap.forEach((key, value) {
+      byCurrency[key] = (value is num) ? value.toDouble() : 0.0;
+    });
+    return BalanceRow(
+      name: (row['name'] as String?) ?? '',
+      byCurrency: byCurrency,
+    );
+  }).toList(growable: false);
+
+  final service = CreditPdfService._();
+  final fontData = fontBytes.buffer.asByteData(
+    fontBytes.offsetInBytes,
+    fontBytes.lengthInBytes,
+  );
+  final unicodeFont = pw.Font.ttf(fontData);
+
+  return service._buildPdfBytes(
+    currencies: currencies,
+    rows: rows,
+    font: unicodeFont,
+    fontBold: unicodeFont,
+  );
 }

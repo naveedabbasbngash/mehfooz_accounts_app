@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:country_flags/country_flags.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 
 import '../../../model/pending_group_row.dart';
+import '../../commons/currency_flag.dart';
 
 class PendingGroupCard extends StatefulWidget {
   final PendingGroupRow row;
@@ -32,39 +32,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   bool expanded = true;
   final NumberFormat fmt = NumberFormat('#,##0.##');
 
-  // --------------------------------------------------------
-  // Currency → Country Code Mapper
-  // --------------------------------------------------------
-  String _currencyToCountry(String currency) {
-    switch (currency.toUpperCase().trim()) {
-      case "PKR":
-        return "PK";
-      case "USD":
-        return "US";
-      case "AED":
-        return "AE";
-      case "SAR":
-        return "SA";
-      case "EUR":
-        return "EU";
-      case "GBP":
-      case "POUND":
-        return "GB";
-      case "INR":
-      case "IND":
-        return "IN";
-      case "AFG":
-        return "AF";
-      case "CAD":
-        return "CA";
-      case "JPY":
-        return "JP";
-      case "RMB":
-        return "CN";
-      default:
-        return "UN";
-    }
-  }
+  Color _balanceColor(double value) =>
+      value >= 0 ? AppColors.success : AppColors.error;
 
   @override
   Widget build(BuildContext context) {
@@ -92,13 +61,11 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
               color: AppColors.cardShadow,
               blurRadius: 10,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
           border: Border.all(color: AppColors.divider),
         ),
-        child: expanded
-            ? _expandedView(r, isNeg)
-            : _collapsedView(r, isNeg),
+        child: expanded ? _expandedView(r, isNeg) : _collapsedView(r, isNeg),
       ),
     );
   }
@@ -107,6 +74,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   // COLLAPSED VIEW
   // ============================================================
   Widget _collapsedView(PendingGroupRow r, bool isNeg) {
+    final balColor = _balanceColor(r.balance);
+
     return Row(
       children: [
         Text(
@@ -123,14 +92,7 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
         if (r.accTypeName != null)
           Row(
             children: [
-              CountryFlag.fromCountryCode(
-                _currencyToCountry(r.accTypeName!),
-                theme: const ImageTheme(
-                  width: 14,
-                  height: 14,
-                  shape: Circle(),
-                ),
-              ),
+              CurrencyFlagBadge(currency: r.accTypeName!, size: 14),
               const SizedBox(width: 6),
               Text(
                 r.accTypeName!,
@@ -147,8 +109,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
         Text(
           fmt.format(r.balance),
-          style: const TextStyle(
-            color: Colors.red,
+          style: TextStyle(
+            color: balColor,
             fontSize: 18,
             fontWeight: FontWeight.bold,
           ),
@@ -161,6 +123,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
   // EXPANDED VIEW
   // ============================================================
   Widget _expandedView(PendingGroupRow r, bool isNeg) {
+    final balColor = _balanceColor(r.balance);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -180,14 +144,7 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
             if (r.accTypeName != null)
               Row(
                 children: [
-                  CountryFlag.fromCountryCode(
-                    _currencyToCountry(r.accTypeName!),
-                    theme: const ImageTheme(
-                      width: 14,
-                      height: 14,
-                      shape: Circle(),
-                    ),
-                  ),
+                  CurrencyFlagBadge(currency: r.accTypeName!, size: 14),
                   const SizedBox(width: 6),
                   Text(
                     r.accTypeName!,
@@ -204,8 +161,8 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
 
             Text(
               fmt.format(r.balance),
-              style: const TextStyle(
-                color: Colors.red,
+              style: TextStyle(
+                color: balColor,
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -246,18 +203,15 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
                   children: [
                     const Text(
                       "Balance",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       fmt.format(r.balance),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: Colors.red,
+                        color: balColor,
                       ),
                     ),
                   ],
@@ -306,10 +260,7 @@ class _PendingGroupCardState extends State<PendingGroupCard> {
         children: [
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.black54,
-              fontSize: 12,
-            ),
+            style: const TextStyle(color: Colors.black54, fontSize: 12),
           ),
           const SizedBox(height: 4),
           Text(

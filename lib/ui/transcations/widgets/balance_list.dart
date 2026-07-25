@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
+
 import '../../../model/balance_currency_ui.dart';
+import '../../../services/share/balance_share_full_image_service.dart';
+import '../../commons/currency_flag.dart';
+
+const _kTxBrandBlue = Color(0xFF1862A3);
 
 class BalanceList extends StatefulWidget {
   final String name;
@@ -22,6 +28,7 @@ class BalanceList extends StatefulWidget {
 
 class _BalanceListState extends State<BalanceList> {
   bool _exporting = false;
+  bool _sharing = false;
 
   static final NumberFormat _fmt = NumberFormat('#,##0.00');
 
@@ -31,6 +38,43 @@ class _BalanceListState extends State<BalanceList> {
   }
 
   bool _isZero(double v) => v.abs() < 0.005;
+
+  String _countryNameForCurrency(String currency) =>
+      currencyCountryName(currency);
+
+  List<BalanceCurrencyUi> _visibleRows() {
+    return widget.rows.where((r) {
+      return !_isZero(r.balance);
+    }).toList();
+  }
+
+  Future<void> _handleShareImage() async {
+    if (_sharing) return;
+
+    final visibleRows = _visibleRows();
+    if (visibleRows.isEmpty) return;
+
+    setState(() => _sharing = true);
+
+    try {
+      final file = await BalanceShareFullImageService.instance.render(
+        name: widget.name,
+        rows: visibleRows,
+      );
+
+      final title = widget.name.trim().isEmpty
+          ? 'Balance Summary'
+          : 'Balance • ${widget.name.trim()}';
+
+      await Share.shareXFiles([XFile(file.path)], text: title, subject: title);
+    } catch (e) {
+      debugPrint('❌ Share image failed: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _sharing = false);
+      }
+    }
+  }
 
   // ------------------------------------------------------------
   // ✅ SAFE PDF HANDLER (GOOGLE STYLE)
@@ -43,7 +87,7 @@ class _BalanceListState extends State<BalanceList> {
     try {
       await widget.onExportPdf!();
     } catch (e) {
-      debugPrint("❌ PDF export failed: $e");
+      debugPrint('❌ PDF export failed: $e');
     } finally {
       if (mounted) {
         setState(() => _exporting = false);
@@ -53,37 +97,69 @@ class _BalanceListState extends State<BalanceList> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleRows = widget.rows.where((r) {
-      return !_isZero(r.credit) ||
-          !_isZero(r.debit) ||
-          !_isZero(r.balance);
-    }).toList();
+    final visibleRows = _visibleRows();
 
     if (visibleRows.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            widget.name.trim().isEmpty
-                ? "Type a name to view balance"
-                : "No balance data for this person",
-            style: const TextStyle(
-              color: Color(0xFF6B7280),
-              fontSize: 14,
-            ),
-            textAlign: TextAlign.center,
-          ),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
+        padding: const EdgeInsets.fromLTRB(16, 52, 16, 120),
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _kTxBrandBlue.withValues(alpha: 0.08),
+                  Colors.white,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: _kTxBrandBlue.withValues(alpha: 0.12),
+              ),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _kTxBrandBlue.withValues(alpha: 0.10),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: _kTxBrandBlue,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  widget.name.trim().isEmpty
+                      ? 'Type a name to view balance'
+                      : 'No balance data for this person',
+                  style: const TextStyle(
+                    color: Color(0xFF16324B),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
       );
     }
-
-    final screenWidth = MediaQuery.of(context).size.width;
-    final balanceWidth = screenWidth * 0.28;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ================= HEADER WITH PDF BUTTON =================
+        // ================= HEADER WITH ACTIONS =================
         if (widget.name.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
@@ -91,7 +167,7 @@ class _BalanceListState extends State<BalanceList> {
               children: [
                 Expanded(
                   child: Text(
-                    "Balance • ${widget.name}",
+                    'Balance • ${widget.name}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
@@ -100,25 +176,40 @@ class _BalanceListState extends State<BalanceList> {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-
-                // ---------------- PDF BUTTON ----------------
+                _sharing
+                    ? const SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: Padding(
+                          padding: EdgeInsets.all(6),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: 'Share Image',
+                        icon: const Icon(
+                          Icons.ios_share_rounded,
+                          color: _kTxBrandBlue,
+                        ),
+                        onPressed: _handleShareImage,
+                      ),
                 _exporting
                     ? const SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: Padding(
-                    padding: EdgeInsets.all(6),
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                )
+                        width: 30,
+                        height: 30,
+                        child: Padding(
+                          padding: EdgeInsets.all(6),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
                     : IconButton(
-                  tooltip: "Export PDF",
-                  icon: const Icon(
-                    Icons.picture_as_pdf,
-                    color: Color(0xFFC62828),
-                  ),
-                  onPressed: _handleExportPdf,
-                ),
+                        tooltip: 'Export PDF',
+                        icon: const Icon(
+                          Icons.picture_as_pdf,
+                          color: _kTxBrandBlue,
+                        ),
+                        onPressed: _handleExportPdf,
+                      ),
               ],
             ),
           ),
@@ -128,108 +219,105 @@ class _BalanceListState extends State<BalanceList> {
         // ================= LIST =================
         Expanded(
           child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 16),
             itemCount: visibleRows.length,
-            separatorBuilder: (_, __) =>
-            const Divider(height: 1, color: Color(0x14000000)),
-            itemBuilder: (_, i) {
+            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            itemBuilder: (context, i) {
               final row = visibleRows[i];
               final bal = row.balance;
+              final currencyLabel = row.currency.isEmpty
+                  ? 'Unknown currency'
+                  : row.currency;
+              final countryName = _countryNameForCurrency(currencyLabel);
+              final isPositive = bal >= 0;
 
-              final Color balColor =
-              bal >= 0 ? const Color(0xFF2E7D32) : const Color(0xFFC62828);
+              final Color balColor = isPositive
+                  ? _kTxBrandBlue
+                  : const Color(0xFFC62828);
 
-              return Padding(
-                padding:
-                const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+              return Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x12000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // LEFT
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFE5E7FE),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        row.currency.isEmpty
-                            ? "?"
-                            : row.currency.substring(0, 1).toUpperCase(),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF4338CA),
-                        ),
+                    SizedBox(
+                      width: 42,
+                      height: 42,
+                      child: CurrencyFlagBadge(
+                        currency: currencyLabel,
+                        size: 38,
                       ),
                     ),
-
-                    const SizedBox(width: 10),
-
-                    // MIDDLE
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            row.currency.isEmpty
-                                ? "Unknown currency"
-                                : row.currency,
+                            currencyLabel,
                             style: const TextStyle(
-                              fontSize: 15,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w600,
                               color: Color(0xFF0B1E3A),
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 4,
-                            children: [
-                              if (!_isZero(row.credit)) ...[
-                                const Text("Cr",
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF6B7280))),
-                                Text(_fmtDouble(row.credit),
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFF2E7D32),
-                                        fontWeight: FontWeight.w600)),
-                              ],
-                              if (!_isZero(row.debit)) ...[
-                                const Text("Dr",
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF6B7280))),
-                                Text(_fmtDouble(row.debit),
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: Color(0xFFC62828),
-                                        fontWeight: FontWeight.w600)),
-                              ],
-                            ],
+                          Text(
+                            countryName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF9CA3AF),
+                            ),
                           ),
                         ],
                       ),
                     ),
-
-                    const SizedBox(width: 8),
-
-                    // RIGHT
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: balanceWidth,
-                        minWidth: 80,
+                    const SizedBox(width: 10),
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 120),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isPositive
+                            ? _kTxBrandBlue.withValues(alpha: 0.08)
+                            : const Color(0xFFFFF1F1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isPositive
+                              ? _kTxBrandBlue.withValues(alpha: 0.18)
+                              : const Color(0xFFF6C9C9),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Text("Balance",
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: Color(0xFF6B7280))),
+                          const Text(
+                            'Balance',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
                           const SizedBox(height: 2),
                           Text(
                             _fmtDouble(bal),
@@ -237,7 +325,7 @@ class _BalanceListState extends State<BalanceList> {
                             overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.right,
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 15.5,
                               fontWeight: FontWeight.w700,
                               color: balColor,
                             ),

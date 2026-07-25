@@ -11,11 +11,15 @@ import '../../../services/pdf/transaction_voucher_pdf_service.dart';
 class TxDetailsPanel extends StatelessWidget {
   final TxItemUi row;
   final VoidCallback onClose;
+  final VoidCallback? onDelete;
+  final bool isDeleting;
 
   const TxDetailsPanel({
     super.key,
     required this.row,
     required this.onClose,
+    this.onDelete,
+    this.isDeleting = false,
   });
 
   // ------------------------------------------------------------
@@ -32,9 +36,9 @@ class TxDetailsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool isCredit = row.cr > 0;
     final double amount = row.amount;
+    final mergedDescription = row.descriptionWithSpecs;
 
-    final Color amountColor =
-    isCredit ? AppColors.success : AppColors.error;
+    final Color amountColor = isCredit ? AppColors.success : AppColors.error;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 250),
@@ -53,7 +57,7 @@ class TxDetailsPanel extends StatelessWidget {
             BoxShadow(
               blurRadius: 25,
               spreadRadius: 4,
-              color: Colors.black.withOpacity(0.18),
+              color: Colors.black.withValues(alpha: 0.18),
               offset: const Offset(0, -3),
             ),
           ],
@@ -88,7 +92,7 @@ class TxDetailsPanel extends StatelessWidget {
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: AppColors.primary.withOpacity(0.12),
+                        color: AppColors.primary.withValues(alpha: 0.12),
                       ),
                       child: Icon(
                         Icons.picture_as_pdf,
@@ -98,6 +102,34 @@ class TxDetailsPanel extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 6),
+
+                  if (onDelete != null)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: isDeleting ? null : onDelete,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.red.withValues(alpha: 0.12),
+                        ),
+                        child: isDeleting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.red,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.delete_outline,
+                                size: 20,
+                                color: Colors.red,
+                              ),
+                      ),
+                    ),
+                  if (onDelete != null) const SizedBox(width: 6),
 
                   // CLOSE
                   InkWell(
@@ -130,8 +162,8 @@ class TxDetailsPanel extends StatelessWidget {
               _info("Date", row.date),
               _info("Currency", row.currency),
 
-              if ((row.description ?? "").isNotEmpty)
-                _info("Description", row.description!),
+              if (mergedDescription.isNotEmpty)
+                _info("Description", mergedDescription),
 
               const SizedBox(height: 22),
 
@@ -199,6 +231,7 @@ class TxDetailsPanel extends StatelessWidget {
       final file = await TxDetailsPdfService.instance.render(row);
       await OpenFilex.open(file.path);
     } catch (e) {
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text("Failed to generate PDF: $e"),

@@ -17,9 +17,9 @@ class TxDetailsPdfService {
 
   Future<pw.Font> _font() async {
     _unicodeFont ??= pw.Font.ttf(
-      (await rootBundle.load('assets/fonts/NotoSansArabic-Regular.ttf'))
-          .buffer
-          .asByteData(),
+      (await rootBundle.load(
+        'assets/fonts/NotoSansArabic-Regular.ttf',
+      )).buffer.asByteData(),
     );
     return _unicodeFont!;
   }
@@ -40,18 +40,17 @@ class TxDetailsPdfService {
   Future<File> render(TxItemUi row) async {
     final pdf = pw.Document();
     final font = await _font();
+    final mergedDescription = row.descriptionWithSpecs;
 
     // ✅ REAL money logic
     final bool isCredit = row.cr > 0;
     final double rawAmount = row.amount;
 
     // 🔒 kill -0.00
-    final double safeAmount =
-    rawAmount.abs() < 0.005 ? 0.0 : rawAmount;
+    final double safeAmount = rawAmount.abs() < 0.005 ? 0.0 : rawAmount;
 
     final String amount = fmt.format(safeAmount);
-    final PdfColor amountColor =
-    isCredit ? PdfColors.green : PdfColors.red;
+    final PdfColor amountColor = isCredit ? PdfColors.green : PdfColors.red;
 
     pdf.addPage(
       pw.Page(
@@ -92,11 +91,13 @@ class TxDetailsPdfService {
               // -------------------------------------------------
               _infoBlock("Name", row.name.isNotEmpty ? row.name : "-"),
               _infoBlock("Date", row.date.isNotEmpty ? row.date : "-"),
-              _infoBlock("Currency",
-                  row.currency.isNotEmpty ? row.currency : "-"),
+              _infoBlock(
+                "Currency",
+                row.currency.isNotEmpty ? row.currency : "-",
+              ),
 
-              if ((row.description ?? "").isNotEmpty)
-                _infoBlock("Description", row.description!),
+              if (mergedDescription.isNotEmpty)
+                _infoBlock("Description", mergedDescription),
 
               pw.SizedBox(height: 24),
 

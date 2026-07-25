@@ -36,32 +36,45 @@ class PendingGroupRow {
   /// Factory: SAFE parsing from SQLite / Drift customSelect
   /// ------------------------------------------------------------
   factory PendingGroupRow.fromRow(Map<String, dynamic> row) {
-    double _toDouble(dynamic v) =>
+    double toDouble(dynamic v) =>
         (v is num) ? v.toDouble() : 0.0;
 
-    int _toInt(dynamic v) =>
+    int toInt(dynamic v) =>
         (v is num) ? v.toInt() : 0;
 
-    String _toStr(dynamic v) =>
+    String toStr(dynamic v) =>
         v?.toString() ?? "";
 
+    dynamic pick(List<String> keys) {
+      for (final k in keys) {
+        if (row.containsKey(k) && row[k] != null) return row[k];
+      }
+      return null;
+    }
+
     return PendingGroupRow(
-      voucherNo: _toInt(row['voucherNo']),
-      beginDate: _toStr(row['beginDate']),
-      msgNo: row['msgno']?.toString(),
+      voucherNo: toInt(pick(['voucherNo', 'FirstVoucherNo'])),
+      beginDate: toStr(pick(['beginDate', 'FirstTDate', 'TDate'])),
+      msgNo: pick(['msgno'])?.toString(),
 
       // ✅ MONEY — SAFE & CORRECT
-      notPaidAmount: _toDouble(row['notPaidAmount']),
-      paidAmount: _toDouble(row['paidAmount']),
-      balance: _toDouble(row['balance']),
+      notPaidAmount: toDouble(
+        pick(['notPaidAmount', 'TotalCredit', 'Credit']),
+      ),
+      paidAmount: toDouble(
+        pick(['paidAmount', 'TotalDebit', 'Debit']),
+      ),
+      balance: toDouble(
+        pick(['balance', 'NetBalance', 'Balance']),
+      ),
 
-      sender: row['sender']?.toString(),
-      receiver: row['receiver']?.toString(),
-      accTypeId: _toInt(row['accTypeId']),
-      accId: _toInt(row['accId']),
-      name: row['name']?.toString(),
-      accTypeName: row['accTypeName']?.toString(),
-      pd: row['pd']?.toString(),
+      sender: pick(['sender', 'Sender'])?.toString(),
+      receiver: pick(['receiver', 'Receiver'])?.toString(),
+      accTypeId: toInt(pick(['accTypeId', 'AccTypeID'])),
+      accId: toInt(pick(['accId', 'AccID'])),
+      name: pick(['name', 'Name', 'AccountName'])?.toString(),
+      accTypeName: pick(['accTypeName', 'AccTypeName', 'Currency'])?.toString(),
+      pd: pick(['pd', 'PD'])?.toString(),
     );
   }
 }

@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:mehfooz_accounts_app/theme/app_colors.dart';
 import '../../../viewmodel/home/home_view_model.dart';
+import '../../commons/currency_flag.dart';
 import '../../commons/fade_slide.dart';
+
+const _kHomeBrandBlue = Color(0xFF1862A3);
 
 class Acc1SummaryCard extends StatelessWidget {
   final HomeViewModel vm;
@@ -58,11 +61,17 @@ class Acc1SummaryCard extends StatelessWidget {
     );
   }
 
+  String _countryNameForCurrency(String currency) =>
+      currencyCountryName(currency);
+
   Row _titleRow() {
     return Row(
       children: [
-        Icon(Icons.account_balance_wallet_outlined,
-            color: AppColors.primary, size: 22),
+        Icon(
+          Icons.account_balance_wallet_outlined,
+          color: _kHomeBrandBlue,
+          size: 22,
+        ),
         const SizedBox(width: 8),
         Text(
           "Cash In Hand",
@@ -77,24 +86,58 @@ class Acc1SummaryCard extends StatelessWidget {
   }
 
   List<Widget> _buildRows(List<dynamic> rows) {
-    final visible =
-    isExpanded ? rows.length : rows.length.clamp(0, maxVisible);
+    final visible = isExpanded
+        ? rows.length
+        : rows.length.clamp(0, maxVisible).toInt();
 
     return List.generate(visible, (i) {
       final row = rows[i];
       final isPositive = row.amount >= 0;
+      final currency = (row.currency ?? '').toString().trim().isEmpty
+          ? 'Unknown'
+          : row.currency.toString().trim();
+      final countryName = _countryNameForCurrency(currency);
 
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(row.currency,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
+            Row(
+              children: [
+                SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CurrencyFlagBadge(currency: currency, size: 26),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      currency,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    Text(
+                      countryName,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF9CA3AF),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
             _AnimatedMoneyText(
               value: row.amount.toDouble(),
               fmt: fmt,
-              color: isPositive ? AppColors.success : AppColors.error,
+              color: isPositive ? _kHomeBrandBlue : AppColors.error,
             ),
           ],
         ),
@@ -111,18 +154,16 @@ class Acc1SummaryCard extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              isExpanded
-                  ? Icons.keyboard_arrow_up
-                  : Icons.keyboard_arrow_down,
+              isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
               size: 18,
-              color: AppColors.primary,
+              color: _kHomeBrandBlue,
             ),
             const SizedBox(width: 5),
             Text(
               isExpanded ? "Show less" : "+ $hiddenCount more",
               style: TextStyle(
                 fontSize: 13,
-                color: AppColors.primary,
+                color: _kHomeBrandBlue,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -134,19 +175,58 @@ class Acc1SummaryCard extends StatelessWidget {
 
   Widget _emptyState() {
     return FadeSlide(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              _kHomeBrandBlue.withValues(alpha: 0.08),
+              Colors.white,
+            ],
+          ),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: _kHomeBrandBlue.withValues(alpha: 0.14)),
+        ),
         child: Column(
           children: [
-            Icon(Icons.wallet_outlined,
-                size: 40, color: AppColors.primary.withOpacity(0.35)),
-            const SizedBox(height: 12),
-            Text(
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _kHomeBrandBlue.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: _kHomeBrandBlue.withValues(alpha: 0.18),
+                ),
+              ),
+              child: Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 28,
+                color: _kHomeBrandBlue.withValues(alpha: 0.92),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
               "No Cash Summary Yet",
+              textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF102132),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Cash balances will appear here once account activity starts flowing into the selected company.",
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.45,
+                fontWeight: FontWeight.w500,
+                color: AppColors.textMuted,
               ),
             ),
           ],
@@ -178,7 +258,6 @@ class _AnimatedMoneyText extends StatefulWidget {
   final Color color;
 
   const _AnimatedMoneyText({
-    super.key,
     required this.value,
     required this.fmt,
     required this.color,
@@ -211,13 +290,10 @@ class _AnimatedMoneyTextState extends State<_AnimatedMoneyText> {
       tween: Tween<double>(begin: _oldValue, end: widget.value),
       duration: const Duration(milliseconds: 1600),
       curve: Curves.easeOutCubic,
-      builder: (_, v, __) {
+      builder: (context, v, child) {
         return Text(
           widget.fmt.format(v),
-          style: TextStyle(
-            color: widget.color,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: widget.color, fontWeight: FontWeight.bold),
         );
       },
     );
