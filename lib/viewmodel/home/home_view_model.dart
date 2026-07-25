@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/local/database_manager.dart';
+import '../../data/local/app_database.dart';
 import '../../model/cash_in_hand_row.dart';
 import '../../model/cash_summary_row.dart';
 import '../../model/pending_amount_row.dart';
@@ -26,6 +27,12 @@ class HomeViewModel extends ChangeNotifier {
   final GlobalKey drawerKey;
 
   HomeViewModel({required this.navigatorKey, required this.drawerKey});
+
+  int _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
 
   // 🍎 APPLE REVIEW ACCOUNT
   static const String _appleReviewEmail = 'applereviewmehfooz@gmail.com';
@@ -271,11 +278,50 @@ class HomeViewModel extends ChangeNotifier {
   Future<void> _restoreCompanySelection() async {
     final prefs = await SharedPreferences.getInstance();
     final db = DatabaseManager.instance.db;
+    final storedGuid = prefs.getString("selected_company_guid")?.trim();
     final storedId = prefs.getInt("selected_company_id");
 
-    final companies = await (db.select(
-      db.companyTable,
-    )..orderBy([(t) => OrderingTerm.asc(t.companyId)])).get();
+    final companyRows = await db
+        .customSelect(
+          '''
+          SELECT c.CompanyID, c.CompanyGuid, c.CompanyName, c.Remarks
+          FROM Company c
+          WHERE COALESCE(c.IsDeleted, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM Company other
+              WHERE COALESCE(other.IsDeleted, 0) = 0
+                AND LOWER(TRIM(COALESCE(other.CompanyName, ''))) =
+                    LOWER(TRIM(COALESCE(c.CompanyName, '')))
+                AND (
+                  COALESCE(other.IsSynced, 0) > COALESCE(c.IsSynced, 0)
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') > COALESCE(c.UpdatedAt, '')
+                  )
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') = COALESCE(c.UpdatedAt, '')
+                    AND other.CompanyID < c.CompanyID
+                  )
+                )
+            )
+          ORDER BY c.CompanyID ASC
+          ''',
+          readsFrom: {db.companyTable},
+        )
+        .get();
+    final companies = companyRows
+        .map(
+          (row) => CompanyTableData(
+            companyId: _toInt(row.data['CompanyID']),
+            companyGuid: row.data['CompanyGuid']?.toString(),
+            companyName: row.data['CompanyName']?.toString(),
+            remarks: row.data['Remarks']?.toString(),
+          ),
+        )
+        .where((company) => company.companyId > 0)
+        .toList(growable: false);
 
     if (companies.isEmpty) {
       selectedCompanyId = 1;
@@ -284,12 +330,36 @@ class HomeViewModel extends ChangeNotifier {
       return;
     }
 
+    if (storedGuid != null && storedGuid.isNotEmpty) {
+      final stored = companies.where(
+        (c) => (c.companyGuid ?? '').trim() == storedGuid,
+      );
+      if (stored.isNotEmpty) {
+        final selected = stored.first;
+        selectedCompanyId = selected.companyId;
+        selectedCompanyName = selected.companyName ?? "Your Company";
+        await prefs.setInt("selected_company_id", selectedCompanyId!);
+        GlobalState.instance.setCompany(
+          id: selectedCompanyId!,
+          name: selectedCompanyName!,
+        );
+        return;
+      }
+      _log.w(
+        "⚠ selected_company_guid=$storedGuid not found in DB; trying legacy id",
+      );
+    }
+
     if (storedId != null) {
       final stored = companies.where((c) => c.companyId == storedId);
       if (stored.isNotEmpty) {
         final selected = stored.first;
         selectedCompanyId = selected.companyId;
         selectedCompanyName = selected.companyName ?? "Your Company";
+        final selectedGuid = selected.companyGuid?.trim();
+        if (selectedGuid != null && selectedGuid.isNotEmpty) {
+          await prefs.setString("selected_company_guid", selectedGuid);
+        }
         GlobalState.instance.setCompany(
           id: selectedCompanyId!,
           name: selectedCompanyName!,
@@ -305,6 +375,10 @@ class HomeViewModel extends ChangeNotifier {
     selectedCompanyId = fallback.companyId;
     selectedCompanyName = fallback.companyName ?? "Your Company";
     await prefs.setInt("selected_company_id", selectedCompanyId!);
+    final fallbackGuid = fallback.companyGuid?.trim();
+    if (fallbackGuid != null && fallbackGuid.isNotEmpty) {
+      await prefs.setString("selected_company_guid", fallbackGuid);
+    }
 
     GlobalState.instance.setCompany(
       id: selectedCompanyId!,
@@ -319,13 +393,40 @@ class HomeViewModel extends ChangeNotifier {
     await prefs.setInt("selected_company_id", id);
 
     final db = DatabaseManager.instance.db;
-    final rows = await (db.select(
-      db.companyTable,
-    )..where((t) => t.companyId.equals(id))).get();
+    final rawRows = await db
+        .customSelect(
+          '''
+          SELECT CompanyID, CompanyGuid, CompanyName, Remarks
+          FROM Company
+          WHERE CompanyID = ?1
+            AND COALESCE(IsDeleted, 0) = 0
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(id)],
+          readsFrom: {db.companyTable},
+        )
+        .get();
+    final rows = rawRows
+        .map(
+          (row) => CompanyTableData(
+            companyId: _toInt(row.data['CompanyID']),
+            companyGuid: row.data['CompanyGuid']?.toString(),
+            companyName: row.data['CompanyName']?.toString(),
+            remarks: row.data['Remarks']?.toString(),
+          ),
+        )
+        .where((company) => company.companyId > 0)
+        .toList(growable: false);
 
     selectedCompanyName = rows.isNotEmpty
         ? rows.first.companyName
         : "Your Company";
+    final selectedGuid = rows.isNotEmpty
+        ? rows.first.companyGuid?.trim()
+        : null;
+    if (selectedGuid != null && selectedGuid.isNotEmpty) {
+      await prefs.setString("selected_company_guid", selectedGuid);
+    }
 
     GlobalState.instance.setCompany(id: id, name: selectedCompanyName!);
 
@@ -385,6 +486,7 @@ class HomeViewModel extends ChangeNotifier {
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove("selected_company_id");
+    await prefs.remove("selected_company_guid");
 
     await DatabaseManager.instance.clearUserDb(user.email);
 

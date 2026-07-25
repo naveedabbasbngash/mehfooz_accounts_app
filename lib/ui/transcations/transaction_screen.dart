@@ -137,204 +137,211 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
               ),
               const SizedBox(height: 14),
               if (_isSelectionMode)
-              Container(
-                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: _kTxBrandBlue.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: _kTxBrandBlue.withValues(alpha: 0.18),
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
                   ),
-                ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final compact = constraints.maxWidth < 560;
+                  decoration: BoxDecoration(
+                    color: _kTxBrandBlue.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: _kTxBrandBlue.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxWidth < 560;
 
-                    final clearBtn = TextButton(
-                      onPressed: (_isBulkDeleting || _isOpeningEditor)
-                          ? null
-                          : () => setState(() => _selectedVoucherNos.clear()),
-                      child: const Text('Clear'),
-                    );
+                      final clearBtn = TextButton(
+                        onPressed: (_isBulkDeleting || _isOpeningEditor)
+                            ? null
+                            : () => setState(() => _selectedVoucherNos.clear()),
+                        child: const Text('Clear'),
+                      );
 
-                    final updateBtn = FilledButton.tonalIcon(
-                      onPressed:
-                          (_isBulkDeleting ||
-                              _isOpeningEditor ||
-                              _selectedVoucherNos.length != 1)
-                          ? null
-                          : _editSelectedTransaction,
-                      icon: _isOpeningEditor
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.edit_outlined),
-                      label: const Text('Update'),
-                    );
-
-                    final deleteBtn = FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.red,
-                      ),
-                      onPressed: (_isBulkDeleting || _isOpeningEditor)
-                          ? null
-                          : _deleteSelectedTransactions,
-                      icon: _isBulkDeleting
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.delete_outline),
-                      label: const Text('Delete Selected'),
-                    );
-
-                    if (compact) {
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                '${_selectedVoucherNos.length} selected',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: _kTxBrandBlue,
+                      final updateBtn = FilledButton.tonalIcon(
+                        onPressed:
+                            (_isBulkDeleting ||
+                                _isOpeningEditor ||
+                                _selectedVoucherNos.length != 1)
+                            ? null
+                            : _editSelectedTransaction,
+                        icon: _isOpeningEditor
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
                                 ),
-                              ),
-                              const Spacer(),
-                              clearBtn,
-                            ],
+                              )
+                            : const Icon(Icons.edit_outlined),
+                        label: const Text('Update'),
+                      );
+
+                      final deleteBtn = FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        onPressed: (_isBulkDeleting || _isOpeningEditor)
+                            ? null
+                            : _deleteSelectedTransactions,
+                        icon: _isBulkDeleting
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.delete_outline),
+                        label: const Text('Delete Selected'),
+                      );
+
+                      if (compact) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  '${_selectedVoucherNos.length} selected',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    color: _kTxBrandBlue,
+                                  ),
+                                ),
+                                const Spacer(),
+                                clearBtn,
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                Expanded(child: updateBtn),
+                                const SizedBox(width: 8),
+                                Expanded(child: deleteBtn),
+                              ],
+                            ),
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          Text(
+                            '${_selectedVoucherNos.length} selected',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: _kTxBrandBlue,
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(child: updateBtn),
-                              const SizedBox(width: 8),
-                              Expanded(child: deleteBtn),
-                            ],
-                          ),
+                          const Spacer(),
+                          clearBtn,
+                          const SizedBox(width: 4),
+                          updateBtn,
+                          const SizedBox(width: 6),
+                          deleteBtn,
                         ],
                       );
-                    }
+                    },
+                  ),
+                ),
 
-                    return Row(
-                      children: [
-                        Text(
-                          '${_selectedVoucherNos.length} selected',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            color: _kTxBrandBlue,
-                          ),
-                        ),
-                        const Spacer(),
-                        clearBtn,
-                        const SizedBox(width: 4),
-                        updateBtn,
-                        const SizedBox(width: 6),
-                        deleteBtn,
-                      ],
-                    );
+              // ------------------------------------------------------------
+              // MAIN CONTENT
+              // ------------------------------------------------------------
+              Expanded(
+                child: RefreshIndicator(
+                  color: _kTxBrandBlue,
+                  onRefresh: () async {
+                    await context.read<SyncViewModel>().syncNowSingleFlight();
                   },
-                ),
-              ),
-
-            // ------------------------------------------------------------
-            // MAIN CONTENT
-            // ------------------------------------------------------------
-            Expanded(
-              child: RefreshIndicator(
-                color: _kTxBrandBlue,
-                onRefresh: () async {
-                  await context.read<SyncViewModel>().syncNowSingleFlight();
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(top: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(28),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0x121862A3),
-                        blurRadius: 18,
-                        offset: const Offset(0, -2),
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(28),
                       ),
-                    ],
-                  ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    child: isBalanceMode
-                        ? BalanceList(
-                            name: vm.search,
-                            rows: vm.balanceByCurrency,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0x121862A3),
+                          blurRadius: 18,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 260),
+                      child: isBalanceMode
+                          ? BalanceList(
+                              name: vm.search,
+                              rows: vm.balanceByCurrency,
 
-                            onExportPdf: () async {
-                              debugPrint("📄 PDF export requested");
+                              onExportPdf: () async {
+                                debugPrint("📄 PDF export requested");
 
-                              final file = await vm.generateBalancePdfFromUi();
+                                final file = await vm
+                                    .generateBalancePdfFromUi();
 
-                              if (file == null) {
-                                debugPrint("⚠️ PDF not generated (empty data)");
-                                return;
-                              }
+                                if (file == null) {
+                                  debugPrint(
+                                    "⚠️ PDF not generated (empty data)",
+                                  );
+                                  return;
+                                }
 
-                              debugPrint("✅ PDF generated at: ${file.path}");
+                                debugPrint("✅ PDF generated at: ${file.path}");
 
-                              await OpenFilex.open(file.path);
-                            },
-                          )
-                        : TxList(
-                            key: const ValueKey("LIST"),
-                            items: vm.items,
-                            selectedVoucherNos: _selectedVoucherNos,
-                            onRowTap: (row) async {
-                              if (_isSelectionMode) {
+                                await OpenFilex.open(file.path);
+                              },
+                            )
+                          : TxList(
+                              key: const ValueKey("LIST"),
+                              items: vm.items,
+                              selectedVoucherNos: _selectedVoucherNos,
+                              onRowTap: (row) async {
+                                if (_isSelectionMode) {
+                                  _toggleVoucherSelection(row.voucherNo);
+                                  return;
+                                }
+                                FocusScope.of(context).unfocus();
+                                await Future.delayed(
+                                  const Duration(milliseconds: 120),
+                                );
+                                setState(() {
+                                  selectedRow = row;
+                                  showDetails = true;
+                                });
+                              },
+                              onRowLongPress: (row) {
                                 _toggleVoucherSelection(row.voucherNo);
-                                return;
-                              }
-                              FocusScope.of(context).unfocus();
-                              await Future.delayed(
-                                const Duration(milliseconds: 120),
-                              );
-                              setState(() {
-                                selectedRow = row;
-                                showDetails = true;
-                              });
-                            },
-                            onRowLongPress: (row) {
-                              _toggleVoucherSelection(row.voucherNo);
-                            },
-                          ),
+                              },
+                            ),
+                    ),
                   ),
                 ),
               ),
-            ),
 
-            // ------------------------------------------------------------
-            // DETAILS PANEL
-            // ------------------------------------------------------------
-            if (!_isSelectionMode && showDetails && selectedRow != null)
-              SafeArea(
-                top: false,
-                bottom: true,
-                child: TxDetailsPanel(
-                  row: selectedRow!,
-                  onClose: () => setState(() => showDetails = false),
-                  onDelete: _isDeletingTx ? null : _deleteSelectedTransaction,
-                  isDeleting: _isDeletingTx,
+              // ------------------------------------------------------------
+              // DETAILS PANEL
+              // ------------------------------------------------------------
+              if (!_isSelectionMode && showDetails && selectedRow != null)
+                SafeArea(
+                  top: false,
+                  bottom: true,
+                  child: TxDetailsPanel(
+                    row: selectedRow!,
+                    onClose: () => setState(() => showDetails = false),
+                    onDelete: _isDeletingTx ? null : _deleteSelectedTransaction,
+                    isDeleting: _isDeletingTx,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
       ),
     );
   }
@@ -348,7 +355,8 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
   }
 
   bool _canCreateTransactionsFor(UserModel? user) {
-    final roles = user?.roleCodes
+    final roles =
+        user?.roleCodes
             .map((e) => e.trim().toUpperCase())
             .where((e) => e.isNotEmpty)
             .toSet() ??
@@ -448,13 +456,18 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
         );
         processed++;
       }
+      final complianceNotice = vm.repo.consumeLastComplianceNotice();
 
       if (!mounted) return;
       setState(() {
         _selectedVoucherNos.clear();
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$processed transaction(s) moved to Trash')),
+        SnackBar(
+          content: Text(
+            complianceNotice ?? '$processed transaction(s) moved to Trash',
+          ),
+        ),
       );
       await context.read<HomeViewModel>().setCompany(vm.companyId);
       _kickoffBackgroundSync();
@@ -546,6 +559,7 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
         companyId: vm.companyId,
         voucherNo: row.voucherNo,
       );
+      final complianceNotice = vm.repo.consumeLastComplianceNotice();
       if (!mounted) return;
       setState(() {
         showDetails = false;
@@ -554,9 +568,10 @@ class _TransactionScreenBodyState extends State<_TransactionScreenBody> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            deleted > 1
-                ? 'Transaction and linked cash entry moved to Trash'
-                : 'Transaction moved to Trash',
+            complianceNotice ??
+                (deleted > 1
+                    ? 'Transaction and linked cash entry moved to Trash'
+                    : 'Transaction moved to Trash'),
           ),
         ),
       );

@@ -592,13 +592,16 @@ class _TransactionEntryScreenState extends State<TransactionEntryScreen> {
         );
       }
 
+      final complianceNotice = widget.repo.consumeLastComplianceNotice();
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            _isEdit
-                ? 'Transaction updated successfully'
-                : 'Transaction saved successfully',
+            complianceNotice ??
+                (_isEdit
+                    ? 'Transaction updated successfully'
+                    : 'Transaction saved successfully'),
           ),
         ),
       );

@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:logger/logger.dart';
 
 import 'app_database.dart';
+import '../../utils/ulid.dart';
 
 class DatabaseManager {
   DatabaseManager._internal();
@@ -123,6 +124,7 @@ class DatabaseManager {
     await db.customStatement('''
       CREATE TABLE IF NOT EXISTS Acc_Personal (
         AccID INTEGER PRIMARY KEY,
+        AccountGuid TEXT,
         RDate TEXT,
         Name TEXT,
         Phone TEXT,
@@ -158,8 +160,12 @@ class DatabaseManager {
     await db.customStatement('''
       CREATE TABLE IF NOT EXISTS Company (
         CompanyID INTEGER PRIMARY KEY AUTOINCREMENT,
+        CompanyGuid TEXT,
         CompanyName TEXT,
-        Remarks TEXT
+        Remarks TEXT,
+        IsDeleted INTEGER DEFAULT 0,
+        IsSynced INTEGER DEFAULT 0,
+        UpdatedAt TEXT
       );
     ''');
 
@@ -180,6 +186,7 @@ class DatabaseManager {
     await db.customStatement('''
       CREATE TABLE IF NOT EXISTS Account_PCurrencyAssignment (
         RegID INTEGER PRIMARY KEY,
+        AssignmentGuid TEXT,
         AccID INTEGER,
         AccountTypeID INTEGER,
         CompanyID INTEGER,
@@ -264,6 +271,37 @@ class DatabaseManager {
     ''');
 
     await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS PeriodLocks (
+        PeriodLockID INTEGER PRIMARY KEY AUTOINCREMENT,
+        CompanyID INTEGER NOT NULL,
+        StartDate TEXT NOT NULL,
+        EndDate TEXT NOT NULL,
+        LockMode TEXT NOT NULL DEFAULT 'HARD',
+        Reason TEXT,
+        IsActive INTEGER DEFAULT 1,
+        CreatedByUserID INTEGER,
+        CreatedByEmail TEXT,
+        CreatedAt TEXT,
+        UpdatedAt TEXT
+      );
+    ''');
+
+    await db.customStatement('''
+      CREATE TABLE IF NOT EXISTS AuditTrail (
+        AuditID INTEGER PRIMARY KEY AUTOINCREMENT,
+        CompanyID INTEGER,
+        EntityType TEXT NOT NULL,
+        EntityID TEXT,
+        Action TEXT NOT NULL,
+        Message TEXT,
+        Payload TEXT,
+        ActorUserID INTEGER,
+        ActorEmail TEXT,
+        CreatedAt TEXT NOT NULL
+      );
+    ''');
+
+    await db.customStatement('''
       CREATE TABLE IF NOT EXISTS Sheet1 (
         AccID INTEGER PRIMARY KEY,
         RDate TEXT,
@@ -299,8 +337,68 @@ class DatabaseManager {
     }
   }
 
+  Future<void> _backfillStableSyncGuids(AppDatabase db) async {
+    final companyRows = await db.customSelect('''
+      SELECT CompanyID
+      FROM Company
+      WHERE COALESCE(TRIM(CompanyGuid), '') = ''
+    ''').get();
+    for (final row in companyRows) {
+      final companyId = _asInt(row.data['CompanyID']);
+      if (companyId <= 0) continue;
+      await db.customStatement(
+        'UPDATE Company SET CompanyGuid = ?1 WHERE CompanyID = ?2;',
+        [Ulid.generate(), companyId],
+      );
+    }
+
+    final accountRows = await db.customSelect('''
+      SELECT AccID
+      FROM Acc_Personal
+      WHERE COALESCE(TRIM(AccountGuid), '') = ''
+    ''').get();
+    for (final row in accountRows) {
+      final accId = _asInt(row.data['AccID']);
+      if (accId <= 0) continue;
+      await db.customStatement(
+        'UPDATE Acc_Personal SET AccountGuid = ?1 WHERE AccID = ?2;',
+        [Ulid.generate(), accId],
+      );
+    }
+
+    final assignmentRows = await db.customSelect('''
+      SELECT RegID
+      FROM Account_PCurrencyAssignment
+      WHERE COALESCE(TRIM(AssignmentGuid), '') = ''
+    ''').get();
+    for (final row in assignmentRows) {
+      final regId = _asInt(row.data['RegID']);
+      if (regId <= 0) continue;
+      await db.customStatement(
+        '''
+        UPDATE Account_PCurrencyAssignment
+        SET AssignmentGuid = ?1
+        WHERE RegID = ?2;
+        ''',
+        [Ulid.generate(), regId],
+      );
+    }
+  }
+
   Future<void> _runAutoMigration(AppDatabase db) async {
     _log.i("🔧 Running auto-migration...");
+
+    await _ensureColumnExists(db, "Company", "CompanyGuid", "TEXT");
+    await _ensureColumnExists(db, "Company", "IsDeleted", "INTEGER DEFAULT 0");
+    await _ensureColumnExists(db, "Company", "IsSynced", "INTEGER DEFAULT 0");
+    await _ensureColumnExists(db, "Company", "UpdatedAt", "TEXT");
+    await _ensureColumnExists(db, "Acc_Personal", "AccountGuid", "TEXT");
+    await _ensureColumnExists(
+      db,
+      "Account_PCurrencyAssignment",
+      "AssignmentGuid",
+      "TEXT",
+    );
 
     await _ensureColumnExists(
       db,
@@ -355,6 +453,13 @@ class DatabaseManager {
 
     await _ensureColumnExists(
       db,
+      "PeriodLocks",
+      "LockMode",
+      "TEXT NOT NULL DEFAULT 'HARD'",
+    );
+
+    await _ensureColumnExists(
+      db,
       "Transactions_P",
       "IsSynced",
       "INTEGER DEFAULT 0",
@@ -390,6 +495,26 @@ class DatabaseManager {
     await db.customStatement('''
       CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_txguid_unique
       ON Transactions_P (TxGuid);
+    ''');
+
+    await _backfillStableSyncGuids(db);
+
+    await db.customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_company_guid_unique
+      ON Company (CompanyGuid)
+      WHERE COALESCE(TRIM(CompanyGuid), '') <> '';
+    ''');
+
+    await db.customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_acc_personal_guid_unique
+      ON Acc_Personal (AccountGuid)
+      WHERE COALESCE(TRIM(AccountGuid), '') <> '';
+    ''');
+
+    await db.customStatement('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_assignment_guid_unique
+      ON Account_PCurrencyAssignment (AssignmentGuid)
+      WHERE COALESCE(TRIM(AssignmentGuid), '') <> '';
     ''');
 
     await db.customStatement('''
@@ -943,6 +1068,8 @@ class DatabaseManager {
       );
     });
 
+    await _backfillStableSyncGuids(db);
+
     final accTypeAfter = await _countRows(db, "AccType");
     final accPersonalAfter = await _countRows(db, "Acc_Personal");
     final addedAccType = accTypeAfter - accTypeBefore;
@@ -963,26 +1090,76 @@ class DatabaseManager {
   }
 
   Future<int> _ensureDefaultCompanyExists(AppDatabase db) async {
-    final existing = await db
-        .customSelect(
-          'SELECT CompanyID FROM Company ORDER BY CompanyID LIMIT 1;',
-        )
-        .get();
+    final existing = await db.customSelect('''
+          SELECT c.CompanyID
+          FROM Company c
+          WHERE COALESCE(c.IsDeleted, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM Company other
+              WHERE COALESCE(other.IsDeleted, 0) = 0
+                AND LOWER(TRIM(COALESCE(other.CompanyName, ''))) =
+                    LOWER(TRIM(COALESCE(c.CompanyName, '')))
+                AND (
+                  COALESCE(other.IsSynced, 0) > COALESCE(c.IsSynced, 0)
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') > COALESCE(c.UpdatedAt, '')
+                  )
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') = COALESCE(c.UpdatedAt, '')
+                    AND other.CompanyID < c.CompanyID
+                  )
+                )
+            )
+          ORDER BY c.CompanyID
+          LIMIT 1;
+          ''').get();
 
     if (existing.isNotEmpty) {
       return _asInt(existing.first.data['CompanyID']);
     }
 
     await db.customStatement(
-      'INSERT INTO Company (CompanyName, Remarks) VALUES (?1, ?2);',
-      [defaultCompanyName, 'Default Company'],
+      '''
+      INSERT INTO Company (CompanyGuid, CompanyName, Remarks, IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, 0, 0, ?4);
+      ''',
+      [
+        Ulid.generate(),
+        defaultCompanyName,
+        'Default Company',
+        DateTime.now().toUtc().toIso8601String(),
+      ],
     );
 
-    final inserted = await db
-        .customSelect(
-          'SELECT CompanyID FROM Company ORDER BY CompanyID LIMIT 1;',
-        )
-        .getSingle();
+    final inserted = await db.customSelect('''
+          SELECT c.CompanyID
+          FROM Company c
+          WHERE COALESCE(c.IsDeleted, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM Company other
+              WHERE COALESCE(other.IsDeleted, 0) = 0
+                AND LOWER(TRIM(COALESCE(other.CompanyName, ''))) =
+                    LOWER(TRIM(COALESCE(c.CompanyName, '')))
+                AND (
+                  COALESCE(other.IsSynced, 0) > COALESCE(c.IsSynced, 0)
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') > COALESCE(c.UpdatedAt, '')
+                  )
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') = COALESCE(c.UpdatedAt, '')
+                    AND other.CompanyID < c.CompanyID
+                  )
+                )
+            )
+          ORDER BY c.CompanyID
+          LIMIT 1;
+          ''').getSingle();
     final id = _asInt(inserted.data['CompanyID']);
 
     _log.i("🏢 Created default company: $defaultCompanyName (ID=$id)");
@@ -1029,6 +1206,7 @@ class DatabaseManager {
     for (final source in sourceRows) {
       final row = Map<String, dynamic>.from(source);
       row['AccID'] = ++nextAccId;
+      row['AccountGuid'] = Ulid.generate();
       row['CompanyID'] = companyId;
       clonedRows.add(row);
     }

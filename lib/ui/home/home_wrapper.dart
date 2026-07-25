@@ -21,6 +21,7 @@ import '../../viewmodel/profile/profile_view_model.dart';
 import '../../viewmodel/sync/sync_viewmodel.dart';
 import '../accounts/accounts_screen.dart';
 import '../chart_of_accounts/chart_of_accounts_screen.dart';
+import '../compliance/compliance_center_screen.dart';
 import '../currencies/currencies_screen.dart';
 import '../drawer/drawer_menu.dart';
 import '../heads/heads_screen.dart';
@@ -63,6 +64,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
   static const int _accountsIndex = 5;
   static const int _headsIndex = 6;
   static const int _chartOfAccountsIndex = 7;
+  static const int _complianceIndex = 8;
 
   StreamSubscription<List<SharedMediaFile>>? _intentStream;
 
@@ -79,6 +81,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     "Accounts",
     "Heads",
     "Chart of Accounts",
+    "Compliance",
   ];
 
   final List<Widget> _screens = const [
@@ -90,6 +93,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
     AccountsScreen(),
     HeadsScreen(),
     ChartOfAccountsScreen(),
+    ComplianceCenterScreen(),
   ];
 
   @override
@@ -534,6 +538,7 @@ class _HomeWrapperState extends State<HomeWrapper> {
       case _accountsIndex:
       case _headsIndex:
       case _chartOfAccountsIndex:
+      case _complianceIndex:
         return AppColors.searchColor;
       default:
         return AppColors.profileColor;

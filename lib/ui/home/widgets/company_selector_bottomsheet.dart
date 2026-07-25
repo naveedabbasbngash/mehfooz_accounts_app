@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../data/local/app_database.dart';
 import '../../../data/local/database_manager.dart';
 import '../../../viewmodel/home/home_view_model.dart';
 
@@ -11,7 +12,53 @@ class CompanySelectorBottomSheet {
   /// -------------------------------------------------------------
   static Future<void> show(BuildContext context, HomeViewModel vm) async {
     final db = DatabaseManager.instance.db;
-    final companies = await db.select(db.companyTable).get();
+    int toInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT c.CompanyID, c.CompanyGuid, c.CompanyName, c.Remarks
+          FROM Company c
+          WHERE COALESCE(c.IsDeleted, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM Company other
+              WHERE COALESCE(other.IsDeleted, 0) = 0
+                AND LOWER(TRIM(COALESCE(other.CompanyName, ''))) =
+                    LOWER(TRIM(COALESCE(c.CompanyName, '')))
+                AND (
+                  COALESCE(other.IsSynced, 0) > COALESCE(c.IsSynced, 0)
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') > COALESCE(c.UpdatedAt, '')
+                  )
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') = COALESCE(c.UpdatedAt, '')
+                    AND other.CompanyID < c.CompanyID
+                  )
+                )
+            )
+          ORDER BY c.CompanyID ASC
+          ''',
+          readsFrom: {db.companyTable},
+        )
+        .get();
+    final companies = rows
+        .map(
+          (row) => CompanyTableData(
+            companyId: toInt(row.data['CompanyID']),
+            companyGuid: row.data['CompanyGuid']?.toString(),
+            companyName: row.data['CompanyName']?.toString(),
+            remarks: row.data['Remarks']?.toString(),
+          ),
+        )
+        .where((company) => company.companyId > 0)
+        .toList(growable: false);
 
     if (!context.mounted) return;
 
@@ -42,10 +89,7 @@ class CompanySelectorBottomSheet {
 
                 const Text(
                   "Select company",
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
                 ),
 
                 const SizedBox(height: 8),
@@ -57,8 +101,7 @@ class CompanySelectorBottomSheet {
                     itemCount: companies.length,
                     itemBuilder: (context, index) {
                       final c = companies[index];
-                      final isSelected =
-                          vm.selectedCompanyId == c.companyId;
+                      final isSelected = vm.selectedCompanyId == c.companyId;
 
                       return ListTile(
                         dense: true,
@@ -76,8 +119,9 @@ class CompanySelectorBottomSheet {
                         title: Text(
                           c.companyName ?? "Unnamed company",
                           style: TextStyle(
-                            fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.w400,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.w400,
                           ),
                         ),
                         trailing: isSelected

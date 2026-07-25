@@ -43,7 +43,9 @@ Future<void> _ensureFirebaseInitialized() async {
   }
 
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
   } on FirebaseException catch (e) {
     // Native side may have initialized [DEFAULT] just before this call.
     if (e.code == 'duplicate-app') {
@@ -224,6 +226,7 @@ class MahfoozAppState extends State<MahfoozApp> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove("selected_company_id");
+      await prefs.remove("selected_company_guid");
       await prefs.remove("profile_is_restricted");
     } catch (_) {}
 

@@ -8,6 +8,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../model/subscription_package_option.dart';
 import '../model/user_model.dart';
 import 'local_storage.dart';
 import 'logging/logger_service.dart';
@@ -46,6 +47,10 @@ class AuthService {
   static const List<String> _meEndpoints = [
     'https://mkb.mahfoozaccounts.com/index.php/api/v1/auth/me',
     'https://mkb.mahfoozaccounts.com/api/v1/auth/me',
+  ];
+  static const List<String> _activeSubscriptionPackageEndpoints = [
+    'https://mkb.mahfoozaccounts.com/index.php/api/v1/subscription-packages/active',
+    'https://mkb.mahfoozaccounts.com/api/v1/subscription-packages/active',
   ];
 
   // ============================================================
@@ -391,6 +396,77 @@ class AuthService {
     }
 
     return null;
+  }
+
+  static Future<List<SubscriptionPackageOption>>
+  fetchActiveSubscriptionPackages() async {
+    final token = await LocalStorageService.loadAuthTokenForLastUsedUser();
+    if (token == null || token.trim().isEmpty) {
+      throw Exception('Session token not found. Please sign in again.');
+    }
+
+    Exception? lastError;
+    for (final endpoint in _activeSubscriptionPackageEndpoints) {
+      final uri = Uri.parse(endpoint);
+      LoggerService.info('📦 [PACKAGES] URL=$uri');
+
+      http.Response res;
+      try {
+        res = await http.get(
+          uri,
+          headers: {
+            'Authorization': 'Bearer ${token.trim()}',
+            'Accept': 'application/json',
+          },
+        );
+      } catch (e) {
+        lastError = Exception('Unable to connect to package server: $e');
+        continue;
+      }
+
+      LoggerService.info('📡 [PACKAGES] ${res.statusCode} | ${res.body}');
+
+      if (res.statusCode == 404) continue;
+      if (res.statusCode == 401) {
+        throw Exception('Session expired. Please sign in again.');
+      }
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        lastError = Exception(
+          'Unable to load packages (HTTP ${res.statusCode})',
+        );
+        continue;
+      }
+
+      Map<String, dynamic>? json;
+      try {
+        json = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Invalid package response from server.');
+      }
+
+      if (json['status'] != true) {
+        throw Exception(
+          (json['message'] ?? 'Unable to load packages').toString(),
+        );
+      }
+
+      final data = json['data'];
+      final dataMap = data is Map<String, dynamic> ? data : <String, dynamic>{};
+      final rawItems = dataMap['items'] ?? dataMap['packages'] ?? data;
+      if (rawItems is! List) return const [];
+
+      return rawItems
+          .whereType<Map>()
+          .map(
+            (item) => SubscriptionPackageOption.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .where((package) => package.packageId > 0 && package.title.isNotEmpty)
+          .toList(growable: false);
+    }
+
+    throw lastError ?? Exception('Packages API route not found.');
   }
 
   // ============================================================

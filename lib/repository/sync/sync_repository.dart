@@ -6,6 +6,7 @@ import '../../data/local/app_database.dart';
 import '../../model/SyncResult.dart';
 import '../../services/company_tombstone_store.dart';
 import '../../services/sync/sync_service.dart';
+import '../../utils/ulid.dart';
 
 class PendingSyncChange {
   final int companyId;
@@ -36,6 +37,7 @@ class PendingMasterChange {
 class SyncRepository {
   final AppDatabase db;
   final Logger _log = Logger();
+  final Map<int, int> _incomingCompanyIdMap = <int, int>{};
 
   SyncRepository(this.db);
 
@@ -57,6 +59,7 @@ class SyncRepository {
     if (await existsUnsyncedInTable('AccountHeads')) return true;
     if (await existsUnsyncedInTable('AccountSubHeads')) return true;
     if (await existsUnsyncedInTable('ChartOfAccounts')) return true;
+    if (await existsUnsyncedInTable('Company')) return true;
     return false;
   }
 
@@ -72,12 +75,18 @@ class SyncRepository {
 
     try {
       await db.transaction(() async {
+        _incomingCompanyIdMap.clear();
         final r0 = await _applyCompanies(batch.companies);
-        final r1 = await _applyAccTypes(batch.accTypes);
-        final r2 = await _applyAccPersonal(batch.accPersonal);
-        final r3 = await _applyAssignments(batch.assignments);
-        final r4 = await _applyTransactions(batch.transactions);
-        final r5 = await _dedupeCompaniesByName();
+        final r1 = await _applyAccountHeads(batch.accountHeads);
+        final r2 = await _applyAccountSubHeads(batch.accountSubHeads);
+        final r3 = await _applyChartOfAccounts(batch.chartOfAccounts);
+        final r4 = await _applyAccTypes(batch.accTypes);
+        final r5 = await _applyAccPersonal(batch.accPersonal);
+        final r6 = await _applyAssignments(batch.assignments);
+        final r7 = await _applyTransactions(batch.transactions);
+        // Company identity is GUID-based. Never merge companies by name in the
+        // sync pipeline because equal names can still represent separate books.
+        const r8 = SyncResult();
 
         inserted +=
             r0.inserted +
@@ -85,21 +94,30 @@ class SyncRepository {
             r2.inserted +
             r3.inserted +
             r4.inserted +
-            r5.inserted;
+            r5.inserted +
+            r6.inserted +
+            r7.inserted +
+            r8.inserted;
         updated +=
             r0.updated +
             r1.updated +
             r2.updated +
             r3.updated +
             r4.updated +
-            r5.updated;
+            r5.updated +
+            r6.updated +
+            r7.updated +
+            r8.updated;
         deleted +=
             r0.deleted +
             r1.deleted +
             r2.deleted +
             r3.deleted +
             r4.deleted +
-            r5.deleted;
+            r5.deleted +
+            r6.deleted +
+            r7.deleted +
+            r8.deleted;
       });
 
       _log.i(
@@ -182,6 +200,7 @@ class SyncRepository {
           'cashstatus': _txt(row.data['cashstatus']),
           'UserID': _toIntOrNull(row.data['UserID']),
           'CompanyID': companyId,
+          'CompanyGuid': await _companyGuidForId(companyId),
           'WName': _txt(row.data['WName']),
           'msgno': _txt(row.data['msgno']),
           'hwls1': _txt(row.data['hwls1']),
@@ -277,10 +296,30 @@ class SyncRepository {
     final fromCompany = await db
         .customSelect(
           '''
-          SELECT CompanyID
-          FROM Company
-          WHERE CompanyID IS NOT NULL
-          ORDER BY CompanyID ASC
+          SELECT c.CompanyID
+          FROM Company c
+          WHERE c.CompanyID IS NOT NULL
+            AND COALESCE(c.IsDeleted, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM Company other
+              WHERE COALESCE(other.IsDeleted, 0) = 0
+                AND LOWER(TRIM(COALESCE(other.CompanyName, ''))) =
+                    LOWER(TRIM(COALESCE(c.CompanyName, '')))
+                AND (
+                  COALESCE(other.IsSynced, 0) > COALESCE(c.IsSynced, 0)
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') > COALESCE(c.UpdatedAt, '')
+                  )
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') = COALESCE(c.UpdatedAt, '')
+                    AND other.CompanyID < c.CompanyID
+                  )
+                )
+            )
+          ORDER BY c.CompanyID ASC
           LIMIT 1
           ''',
           readsFrom: {db.companyTable},
@@ -442,7 +481,7 @@ class SyncRepository {
         .customSelect(
           '''
           SELECT
-            AccID, RDate, Name, Phone, Fax, Address, Description, UAccName, statusg,
+            AccID, AccountGuid, RDate, Name, Phone, Fax, Address, Description, UAccName, statusg,
             UserID, CompanyID, ChartOfAccountID, WName, IsSynced, UpdatedAt, IsDeleted
           FROM Acc_Personal
           WHERE COALESCE(IsSynced, 0) = 0
@@ -460,6 +499,8 @@ class SyncRepository {
       final accId = _toInt(row.data['AccID']);
       final companyId = _toInt(row.data['CompanyID']);
       if (accId <= 0 || companyId <= 0) continue;
+      final accountGuid = _cleanGuid(row.data['AccountGuid']);
+      final companyGuid = await _companyGuidForId(companyId);
       final isDeleted = _toInt(row.data['IsDeleted']) == 1;
 
       output.add(
@@ -469,10 +510,11 @@ class SyncRepository {
           payload: <String, dynamic>{
             'table': 'Acc_Personal',
             'operation': isDeleted ? 'DELETE' : 'UPSERT',
-            'pkName': 'AccID',
-            'pkValue': accId,
+            'pkName': accountGuid.isNotEmpty ? 'AccountGuid' : 'AccID',
+            'pkValue': accountGuid.isNotEmpty ? accountGuid : accId,
             'data': <String, dynamic>{
               'AccID': accId,
+              'AccountGuid': accountGuid,
               'RDate': _txt(row.data['RDate']),
               'Name': _txt(row.data['Name']),
               'Phone': _txt(row.data['Phone']),
@@ -483,6 +525,7 @@ class SyncRepository {
               'statusg': _txt(row.data['statusg']),
               'UserID': _toIntOrNull(row.data['UserID']),
               'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
               'ChartOfAccountID': _toIntOrNull(row.data['ChartOfAccountID']),
               'WName': _txt(row.data['WName']),
               'IsSynced': _toInt(row.data['IsSynced']),
@@ -508,7 +551,7 @@ class SyncRepository {
         .customSelect(
           '''
           SELECT
-            AccID, RDate, Name, Phone, Fax, Address, Description, UAccName, statusg,
+            AccID, AccountGuid, RDate, Name, Phone, Fax, Address, Description, UAccName, statusg,
             UserID, CompanyID, ChartOfAccountID, WName, IsSynced, UpdatedAt, IsDeleted
           FROM Acc_Personal
           WHERE AccID IN (${List.filled(ids.length, '?').join(',')})
@@ -525,6 +568,8 @@ class SyncRepository {
       final accId = _toInt(row.data['AccID']);
       final companyId = _toInt(row.data['CompanyID']);
       if (accId <= 0 || companyId <= 0) continue;
+      final accountGuid = _cleanGuid(row.data['AccountGuid']);
+      final companyGuid = await _companyGuidForId(companyId);
       final isDeleted = _toInt(row.data['IsDeleted']) == 1;
 
       output.add(
@@ -534,10 +579,11 @@ class SyncRepository {
           payload: <String, dynamic>{
             'table': 'Acc_Personal',
             'operation': isDeleted ? 'DELETE' : 'UPSERT',
-            'pkName': 'AccID',
-            'pkValue': accId,
+            'pkName': accountGuid.isNotEmpty ? 'AccountGuid' : 'AccID',
+            'pkValue': accountGuid.isNotEmpty ? accountGuid : accId,
             'data': <String, dynamic>{
               'AccID': accId,
+              'AccountGuid': accountGuid,
               'RDate': _txt(row.data['RDate']),
               'Name': _txt(row.data['Name']),
               'Phone': _txt(row.data['Phone']),
@@ -548,6 +594,7 @@ class SyncRepository {
               'statusg': _txt(row.data['statusg']),
               'UserID': _toIntOrNull(row.data['UserID']),
               'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
               'ChartOfAccountID': _toIntOrNull(row.data['ChartOfAccountID']),
               'WName': _txt(row.data['WName']),
               'IsSynced': _toInt(row.data['IsSynced']),
@@ -727,17 +774,23 @@ class SyncRepository {
         await (ids.isEmpty
                 ? db.customSelect(
                     '''
-          SELECT CompanyID, CompanyName, Remarks
+          SELECT CompanyID, CompanyGuid, CompanyName, Remarks,
+                 COALESCE(IsDeleted, 0) AS IsDeleted,
+                 UpdatedAt
           FROM Company
+          WHERE COALESCE(IsDeleted, 0) = 0
           ORDER BY CompanyID ASC
           ''',
                     readsFrom: {db.companyTable},
                   )
                 : db.customSelect(
                     '''
-          SELECT CompanyID, CompanyName, Remarks
+          SELECT CompanyID, CompanyGuid, CompanyName, Remarks,
+                 COALESCE(IsDeleted, 0) AS IsDeleted,
+                 UpdatedAt
           FROM Company
           WHERE CompanyID IN (${List.filled(ids.length, '?').join(',')})
+            AND COALESCE(IsDeleted, 0) = 0
           ORDER BY CompanyID ASC
           ''',
                     variables: ids
@@ -751,6 +804,7 @@ class SyncRepository {
     for (final row in rows) {
       final companyId = _toInt(row.data['CompanyID']);
       if (companyId <= 0) continue;
+      final companyGuid = _cleanGuid(row.data['CompanyGuid']);
       output.add(
         PendingMasterChange(
           companyId: companyId,
@@ -758,12 +812,65 @@ class SyncRepository {
           payload: <String, dynamic>{
             'table': 'Company',
             'operation': 'UPSERT',
-            'pkName': 'CompanyID',
-            'pkValue': companyId,
+            'pkName': companyGuid.isNotEmpty ? 'CompanyGuid' : 'CompanyID',
+            'pkValue': companyGuid.isNotEmpty ? companyGuid : companyId,
             'data': <String, dynamic>{
               'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
               'CompanyName': _txt(row.data['CompanyName']),
               'Remarks': _txt(row.data['Remarks']),
+              'IsDeleted': _toInt(row.data['IsDeleted']),
+              'UpdatedAt': _txt(row.data['UpdatedAt']),
+            },
+          },
+        ),
+      );
+    }
+
+    return output;
+  }
+
+  Future<List<PendingMasterChange>> collectUnsyncedCompanyChanges({
+    int limit = 200,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT CompanyID, CompanyGuid, CompanyName, Remarks,
+                 COALESCE(IsDeleted, 0) AS IsDeleted,
+                 UpdatedAt
+          FROM Company
+          WHERE COALESCE(IsSynced, 0) = 0
+          ORDER BY COALESCE(UpdatedAt, '') ASC, CompanyID ASC
+          LIMIT ?1
+          ''',
+          variables: [Variable.withInt(limit)],
+          readsFrom: {db.companyTable},
+        )
+        .get();
+
+    final output = <PendingMasterChange>[];
+    for (final row in rows) {
+      final companyId = _toInt(row.data['CompanyID']);
+      if (companyId <= 0) continue;
+      final companyGuid = _cleanGuid(row.data['CompanyGuid']);
+      final isDeleted = _toInt(row.data['IsDeleted']) == 1;
+      output.add(
+        PendingMasterChange(
+          companyId: companyId,
+          rowId: companyId,
+          payload: <String, dynamic>{
+            'table': 'Company',
+            'operation': isDeleted ? 'DELETE' : 'UPSERT',
+            'pkName': companyGuid.isNotEmpty ? 'CompanyGuid' : 'CompanyID',
+            'pkValue': companyGuid.isNotEmpty ? companyGuid : companyId,
+            'data': <String, dynamic>{
+              'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
+              'CompanyName': _txt(row.data['CompanyName']),
+              'Remarks': _txt(row.data['Remarks']),
+              'IsDeleted': _toInt(row.data['IsDeleted']),
+              'UpdatedAt': _txt(row.data['UpdatedAt']),
             },
           },
         ),
@@ -787,7 +894,7 @@ class SyncRepository {
     final rows = await db
         .customSelect(
           '''
-          SELECT apca.RegID, apca.AccID, apca.AccountTypeID,
+          SELECT apca.RegID, apca.AssignmentGuid, apca.AccID, ap.AccountGuid, apca.AccountTypeID,
                  COALESCE(apca.IsDeleted, 0) AS IsDeleted,
                  apca.UpdatedAt AS UpdatedAt
           FROM Account_PCurrencyAssignment apca
@@ -811,8 +918,11 @@ class SyncRepository {
     final output = <PendingMasterChange>[];
     for (final row in rows) {
       final regId = _toInt(row.data['RegID']);
+      final assignmentGuid = _cleanGuid(row.data['AssignmentGuid']);
       final accId = _toInt(row.data['AccID']);
+      final accountGuid = _cleanGuid(row.data['AccountGuid']);
       final accTypeId = _toInt(row.data['AccountTypeID']);
+      final companyGuid = await _companyGuidForId(companyId);
       final isDeleted = _toInt(row.data['IsDeleted']);
       final updatedAt = _txt(row.data['UpdatedAt']);
       if (regId <= 0 || accId <= 0 || accTypeId <= 0) continue;
@@ -824,13 +934,16 @@ class SyncRepository {
           payload: <String, dynamic>{
             'table': 'Account_PCurrencyAssignment',
             'operation': 'UPSERT',
-            'pkName': 'RegID',
-            'pkValue': regId,
+            'pkName': assignmentGuid.isNotEmpty ? 'AssignmentGuid' : 'RegID',
+            'pkValue': assignmentGuid.isNotEmpty ? assignmentGuid : regId,
             'data': <String, dynamic>{
               'RegID': regId,
+              'AssignmentGuid': assignmentGuid,
               'AccID': accId,
+              'AccountGuid': accountGuid,
               'AccountTypeID': accTypeId,
               'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
               'IsDeleted': isDeleted,
               'UpdatedAt': updatedAt,
             },
@@ -861,7 +974,7 @@ class SyncRepository {
     final rows = await db
         .customSelect(
           '''
-          SELECT apca.RegID, apca.AccID, apca.AccountTypeID,
+          SELECT apca.RegID, apca.AssignmentGuid, apca.AccID, ap.AccountGuid, apca.AccountTypeID,
                  COALESCE(apca.IsDeleted, 0) AS IsDeleted,
                  apca.UpdatedAt AS UpdatedAt,
                  COALESCE(apca.CompanyID, ap.CompanyID) AS CompanyID
@@ -883,9 +996,12 @@ class SyncRepository {
     final output = <PendingMasterChange>[];
     for (final row in rows) {
       final regId = _toInt(row.data['RegID']);
+      final assignmentGuid = _cleanGuid(row.data['AssignmentGuid']);
       final accId = _toInt(row.data['AccID']);
+      final accountGuid = _cleanGuid(row.data['AccountGuid']);
       final accTypeId = _toInt(row.data['AccountTypeID']);
       final companyId = _toInt(row.data['CompanyID']);
+      final companyGuid = await _companyGuidForId(companyId);
       final isDeleted = _toInt(row.data['IsDeleted']);
       final updatedAt = _txt(row.data['UpdatedAt']);
       if (regId <= 0 || accId <= 0 || accTypeId <= 0 || companyId <= 0) {
@@ -899,13 +1015,16 @@ class SyncRepository {
           payload: <String, dynamic>{
             'table': 'Account_PCurrencyAssignment',
             'operation': 'UPSERT',
-            'pkName': 'RegID',
-            'pkValue': regId,
+            'pkName': assignmentGuid.isNotEmpty ? 'AssignmentGuid' : 'RegID',
+            'pkValue': assignmentGuid.isNotEmpty ? assignmentGuid : regId,
             'data': <String, dynamic>{
               'RegID': regId,
+              'AssignmentGuid': assignmentGuid,
               'AccID': accId,
+              'AccountGuid': accountGuid,
               'AccountTypeID': accTypeId,
               'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
               'IsDeleted': isDeleted,
               'UpdatedAt': updatedAt,
             },
@@ -952,7 +1071,7 @@ class SyncRepository {
     final rows = await db
         .customSelect(
           '''
-          SELECT apca.RegID, apca.AccID, apca.AccountTypeID,
+          SELECT apca.RegID, apca.AssignmentGuid, apca.AccID, ap.AccountGuid, apca.AccountTypeID,
                  COALESCE(apca.IsDeleted, 0) AS IsDeleted,
                  apca.UpdatedAt AS UpdatedAt
           FROM Account_PCurrencyAssignment apca
@@ -973,8 +1092,11 @@ class SyncRepository {
     final output = <PendingMasterChange>[];
     for (final row in rows) {
       final regId = _toInt(row.data['RegID']);
+      final assignmentGuid = _cleanGuid(row.data['AssignmentGuid']);
       final accId = _toInt(row.data['AccID']);
+      final accountGuid = _cleanGuid(row.data['AccountGuid']);
       final accTypeId = _toInt(row.data['AccountTypeID']);
+      final companyGuid = await _companyGuidForId(companyId);
       final isDeleted = _toInt(row.data['IsDeleted']);
       final updatedAt = _txt(row.data['UpdatedAt']);
       if (regId <= 0 || accId <= 0 || accTypeId <= 0) continue;
@@ -986,13 +1108,16 @@ class SyncRepository {
           payload: <String, dynamic>{
             'table': 'Account_PCurrencyAssignment',
             'operation': 'UPSERT',
-            'pkName': 'RegID',
-            'pkValue': regId,
+            'pkName': assignmentGuid.isNotEmpty ? 'AssignmentGuid' : 'RegID',
+            'pkValue': assignmentGuid.isNotEmpty ? assignmentGuid : regId,
             'data': <String, dynamic>{
               'RegID': regId,
+              'AssignmentGuid': assignmentGuid,
               'AccID': accId,
+              'AccountGuid': accountGuid,
               'AccountTypeID': accTypeId,
               'CompanyID': companyId,
+              'CompanyGuid': companyGuid,
               'IsDeleted': isDeleted,
               'UpdatedAt': updatedAt,
             },
@@ -1078,11 +1203,12 @@ class SyncRepository {
         await db.customStatement(
           '''
           INSERT INTO Account_PCurrencyAssignment
-            (RegID, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
-          VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+            (RegID, AssignmentGuid, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
+          VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6)
           ''',
           [
             nextRegId++,
+            Ulid.generate(),
             pair.key,
             pair.value,
             companyId,
@@ -1126,6 +1252,22 @@ class SyncRepository {
       WHERE RegID IN (${List.filled(cleaned.length, '?').join(',')})
       ''', cleaned);
     return cleaned.length;
+  }
+
+  Future<int> markCompanySnapshotsSynced(List<PendingMasterChange> rows) async {
+    final companyIds = rows
+        .map((row) => row.rowId)
+        .where((id) => id > 0)
+        .toSet()
+        .toList(growable: false);
+    if (companyIds.isEmpty) return 0;
+
+    await db.customStatement('''
+      UPDATE Company
+      SET IsSynced = 1
+      WHERE CompanyID IN (${List.filled(companyIds.length, '?').join(',')})
+      ''', companyIds);
+    return companyIds.length;
   }
 
   Future<int> markHeadSnapshotsSynced(List<PendingMasterChange> rows) async {
@@ -1429,6 +1571,7 @@ class SyncRepository {
 
     var inserted = 0;
     var updated = 0;
+    var deleted = 0;
     var skipped = 0;
 
     for (final row in rows) {
@@ -1444,31 +1587,149 @@ class SyncRepository {
         continue;
       }
 
-      final existing = await db
-          .customSelect(
-            '''
-        SELECT CompanyID
+      var companyGuid = _cleanGuid(row['CompanyGuid']);
+      var existing = companyGuid.isEmpty
+          ? null
+          : await db
+                .customSelect(
+                  '''
+        SELECT CompanyID, CompanyGuid
         FROM Company
-        WHERE CompanyID = ?1
+        WHERE CompanyGuid = ?1
         LIMIT 1
         ''',
-            variables: [Variable.withInt(companyId)],
-            readsFrom: {db.companyTable},
-          )
-          .getSingleOrNull();
+                  variables: [Variable.withString(companyGuid)],
+                  readsFrom: {db.companyTable},
+                )
+                .getSingleOrNull();
+      if (existing == null && companyGuid.isEmpty) {
+        existing = await db
+            .customSelect(
+              '''
+          SELECT CompanyID, CompanyGuid
+          FROM Company
+          WHERE CompanyID = ?1
+          LIMIT 1
+          ''',
+              variables: [Variable.withInt(companyId)],
+              readsFrom: {db.companyTable},
+            )
+            .getSingleOrNull();
+      }
+      if (existing == null &&
+          companyGuid.isNotEmpty &&
+          (companyName ?? '').trim().isNotEmpty) {
+        existing = await db
+            .customSelect(
+              '''
+          SELECT CompanyID, CompanyGuid
+          FROM Company
+          WHERE COALESCE(IsDeleted, 0) = 0
+            AND COALESCE(IsSynced, 0) = 0
+            AND LOWER(TRIM(COALESCE(CompanyName, ''))) = ?1
+          ORDER BY CompanyID ASC
+          LIMIT 1
+          ''',
+              variables: [
+                Variable.withString((companyName ?? '').trim().toLowerCase()),
+              ],
+              readsFrom: {db.companyTable},
+            )
+            .getSingleOrNull();
+      }
+      if (companyGuid.isEmpty && existing != null) {
+        companyGuid = _cleanGuid(existing.data['CompanyGuid']);
+      }
+      if (companyGuid.isEmpty) companyGuid = Ulid.generate();
+      final isDeleted = _toInt(row['IsDeleted']) == 1;
 
-      await db.customStatement(
-        '''
-        INSERT OR REPLACE INTO Company
-          (CompanyID, CompanyName, Remarks)
-        VALUES (?1, ?2, ?3)
-        ''',
-        [companyId, companyName, _txt(row['Remarks'])],
-      );
+      if (existing != null && isDeleted) {
+        final targetCompanyId = _toInt(existing.data['CompanyID']);
+        if (targetCompanyId > 0) {
+          _incomingCompanyIdMap[companyId] = targetCompanyId;
+          await db.customStatement(
+            '''
+            UPDATE Company
+            SET IsDeleted = 1,
+                IsSynced = 1,
+                UpdatedAt = ?1
+            WHERE CompanyID = ?2
+            ''',
+            [
+              _txt(row['UpdatedAt']) ??
+                  DateTime.now().toUtc().toIso8601String(),
+              targetCompanyId,
+            ],
+          );
+          deleted++;
+        }
+        continue;
+      }
+
+      int targetCompanyId;
 
       if (existing == null) {
+        if (_cleanGuid(row['CompanyGuid']).isNotEmpty) {
+          await db.customStatement(
+            '''
+            INSERT INTO Company
+              (CompanyGuid, CompanyName, Remarks, IsDeleted, IsSynced, UpdatedAt)
+            VALUES (?1, ?2, ?3, 0, 1, ?4)
+            ''',
+            [
+              companyGuid,
+              companyName,
+              _txt(row['Remarks']),
+              _txt(row['UpdatedAt']) ??
+                  DateTime.now().toUtc().toIso8601String(),
+            ],
+          );
+          final insertedRow = await db
+              .customSelect('SELECT last_insert_rowid() AS CompanyID;')
+              .getSingle();
+          targetCompanyId = _toInt(insertedRow.data['CompanyID']);
+        } else {
+          targetCompanyId = companyId;
+          await db.customStatement(
+            '''
+            INSERT OR REPLACE INTO Company
+              (CompanyID, CompanyGuid, CompanyName, Remarks, IsDeleted, IsSynced, UpdatedAt)
+            VALUES (?1, ?2, ?3, ?4, 0, 1, ?5)
+            ''',
+            [
+              targetCompanyId,
+              companyGuid,
+              companyName,
+              _txt(row['Remarks']),
+              _txt(row['UpdatedAt']) ??
+                  DateTime.now().toUtc().toIso8601String(),
+            ],
+          );
+        }
+        _incomingCompanyIdMap[companyId] = targetCompanyId;
         inserted++;
       } else {
+        targetCompanyId = _toInt(existing.data['CompanyID']);
+        _incomingCompanyIdMap[companyId] = targetCompanyId;
+        await db.customStatement(
+          '''
+          UPDATE Company
+          SET CompanyGuid = ?1,
+              CompanyName = ?2,
+              Remarks = ?3,
+              IsDeleted = 0,
+              IsSynced = 1,
+              UpdatedAt = ?4
+          WHERE CompanyID = ?5
+          ''',
+          [
+            companyGuid,
+            companyName,
+            _txt(row['Remarks']),
+            _txt(row['UpdatedAt']) ?? DateTime.now().toUtc().toIso8601String(),
+            targetCompanyId,
+          ],
+        );
         updated++;
       }
     }
@@ -1477,102 +1738,182 @@ class SyncRepository {
       _log.w("⚠️ Skipped tombstoned Company rows: $skipped");
     }
 
-    return SyncResult(inserted: inserted, updated: updated, deleted: 0);
+    return SyncResult(inserted: inserted, updated: updated, deleted: deleted);
   }
 
-  Future<SyncResult> _dedupeCompaniesByName() async {
-    final rows = await db
+  Future<String> resolveCompanyGuidForId(int companyId) =>
+      _companyGuidForId(companyId);
+
+  Future<String> _companyGuidForId(int companyId) async {
+    if (companyId <= 0) return '';
+    final row = await db
         .customSelect(
           '''
-      SELECT CompanyID, CompanyName
-      FROM Company
-      ORDER BY CompanyID ASC
-    ''',
+          SELECT CompanyGuid
+          FROM Company
+          WHERE CompanyID = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(companyId)],
           readsFrom: {db.companyTable},
         )
-        .get();
-    if (rows.length < 2) return const SyncResult();
+        .getSingleOrNull();
+    return _cleanGuid(row?.data['CompanyGuid']);
+  }
 
-    final canonicalToKeepId = <String, int>{};
-    final duplicates = <({int oldId, int keepId})>[];
+  Future<int?> _resolveIncomingCompanyId(Map<String, dynamic> row) async {
+    final incomingCompanyId = _toIntOrNull(row['CompanyID']);
+    final companyGuid = _cleanGuid(row['CompanyGuid']);
+    if (companyGuid.isNotEmpty) {
+      final existing = await db
+          .customSelect(
+            '''
+            SELECT CompanyID
+            FROM Company
+            WHERE CompanyGuid = ?1
+            LIMIT 1
+            ''',
+            variables: [Variable.withString(companyGuid)],
+            readsFrom: {db.companyTable},
+          )
+          .getSingleOrNull();
+      final resolved = _toIntOrNull(existing?.data['CompanyID']);
+      if (resolved != null && resolved > 0) return resolved;
+    }
+    if (incomingCompanyId != null && incomingCompanyId > 0) {
+      return _incomingCompanyIdMap[incomingCompanyId] ?? incomingCompanyId;
+    }
+    return null;
+  }
+
+  // ============================================================
+  // ACCOUNT TAXONOMY
+  // ============================================================
+  Future<SyncResult> _applyAccountHeads(List<Map<String, dynamic>> rows) async {
+    if (rows.isEmpty) return const SyncResult();
+
+    _log.d("⚡ Applying AccountHeads rows: ${rows.length}");
+
+    var updated = 0;
+    var deleted = 0;
 
     for (final row in rows) {
-      final companyId = _toInt(row.data['CompanyID']);
-      if (companyId <= 0) continue;
-      final canonical = CompanyTombstoneStore.normalizeName(
-        row.data['CompanyName']?.toString(),
-      );
-      if (canonical.isEmpty) continue;
+      final id = _toInt(row['AccountHeadID']);
+      if (id <= 0) continue;
 
-      final keepId = canonicalToKeepId[canonical];
-      if (keepId == null) {
-        canonicalToKeepId[canonical] = companyId;
+      final isDeleted = _toInt(row['IsDeleted']) == 1;
+      if (isDeleted) {
+        final count = await (db.delete(
+          db.accountHeads,
+        )..where((t) => t.accountHeadId.equals(id))).go();
+        if (count > 0) deleted++;
         continue;
       }
-      if (keepId == companyId) continue;
-      duplicates.add((oldId: companyId, keepId: keepId));
+
+      await db
+          .into(db.accountHeads)
+          .insertOnConflictUpdate(
+            AccountHeadsCompanion(
+              accountHeadId: Value(id),
+              accountHeadName: Value(_txt(row['AccountHeadName']) ?? ''),
+              normalBalance: Value(_txt(row['NormalBalance'])),
+              isDeleted: const Value(0),
+              isSynced: const Value(1),
+              updatedAt: Value(_txt(row['UpdatedAt'])),
+            ),
+          );
+      updated++;
     }
 
-    if (duplicates.isEmpty) return const SyncResult();
+    return SyncResult(inserted: 0, updated: updated, deleted: deleted);
+  }
 
-    var mergedCount = 0;
-    for (final dup in duplicates) {
-      await db.customStatement(
-        'UPDATE Acc_Personal SET CompanyID = ?1 WHERE CompanyID = ?2;',
-        [dup.keepId, dup.oldId],
-      );
-      await db.customStatement(
-        'UPDATE Transactions_P SET CompanyID = ?1 WHERE CompanyID = ?2;',
-        [dup.keepId, dup.oldId],
-      );
-      await db.customStatement(
-        'UPDATE Account_PCurrencyAssignment SET CompanyID = ?1 WHERE CompanyID = ?2;',
-        [dup.keepId, dup.oldId],
-      );
-      await db.customStatement(
-        'UPDATE tblCashTrans SET CompanyID = ?1 WHERE CompanyID = ?2;',
-        [dup.keepId, dup.oldId],
-      );
-      await db.customStatement(
-        'UPDATE PeriodLocks SET CompanyID = ?1 WHERE CompanyID = ?2;',
-        [dup.keepId, dup.oldId],
-      );
-      await db.customStatement(
-        'UPDATE AuditTrail SET CompanyID = ?1 WHERE CompanyID = ?2;',
-        [dup.keepId, dup.oldId],
-      );
+  Future<SyncResult> _applyAccountSubHeads(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (rows.isEmpty) return const SyncResult();
 
-      await db.customStatement(
-        '''
-        INSERT OR IGNORE INTO AccountCurrencyMap
-          (AccID, AccTypeID, CompanyID, IsEnabled, UpdatedAt)
-        SELECT
-          AccID,
-          AccTypeID,
-          ?1 AS CompanyID,
-          COALESCE(IsEnabled, 1),
-          UpdatedAt
-        FROM AccountCurrencyMap
-        WHERE CompanyID = ?2
-        ''',
-        [dup.keepId, dup.oldId],
-      );
-      await db.customStatement(
-        'DELETE FROM AccountCurrencyMap WHERE CompanyID = ?1;',
-        [dup.oldId],
-      );
+    _log.d("⚡ Applying AccountSubHeads rows: ${rows.length}");
 
-      await db.customStatement('DELETE FROM Company WHERE CompanyID = ?1;', [
-        dup.oldId,
-      ]);
-      mergedCount++;
+    var updated = 0;
+    var deleted = 0;
+
+    for (final row in rows) {
+      final id = _toInt(row['AccountSubHeadID']);
+      final headId = _toInt(row['AccountHeadID']);
+      if (id <= 0 || headId <= 0) continue;
+
+      final isDeleted = _toInt(row['IsDeleted']) == 1;
+      if (isDeleted) {
+        final count = await (db.delete(
+          db.accountSubHeads,
+        )..where((t) => t.accountSubHeadId.equals(id))).go();
+        if (count > 0) deleted++;
+        continue;
+      }
+
+      await db
+          .into(db.accountSubHeads)
+          .insertOnConflictUpdate(
+            AccountSubHeadsCompanion(
+              accountSubHeadId: Value(id),
+              accountHeadId: Value(headId),
+              code: Value(_txt(row['Code'])),
+              accountSubHeadName: Value(_txt(row['AccountSubHeadName']) ?? ''),
+              isDeleted: const Value(0),
+              isSynced: const Value(1),
+              updatedAt: Value(_txt(row['UpdatedAt'])),
+            ),
+          );
+      updated++;
     }
 
-    if (mergedCount > 0) {
-      _log.w("⚠️ Merged duplicate Company names: $mergedCount");
+    return SyncResult(inserted: 0, updated: updated, deleted: deleted);
+  }
+
+  Future<SyncResult> _applyChartOfAccounts(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    if (rows.isEmpty) return const SyncResult();
+
+    _log.d("⚡ Applying ChartOfAccounts rows: ${rows.length}");
+
+    var updated = 0;
+    var deleted = 0;
+
+    for (final row in rows) {
+      final id = _toInt(row['ChartOfAccountID']);
+      final headId = _toInt(row['AccountHeadID']);
+      final subHeadId = _toInt(row['AccountSubHeadID']);
+      if (id <= 0 || headId <= 0 || subHeadId <= 0) continue;
+
+      final isDeleted = _toInt(row['IsDeleted']) == 1;
+      if (isDeleted) {
+        final count = await (db.delete(
+          db.chartOfAccounts,
+        )..where((t) => t.chartOfAccountId.equals(id))).go();
+        if (count > 0) deleted++;
+        continue;
+      }
+
+      await db
+          .into(db.chartOfAccounts)
+          .insertOnConflictUpdate(
+            ChartOfAccountsCompanion(
+              chartOfAccountId: Value(id),
+              accountHeadId: Value(headId),
+              accountSubHeadId: Value(subHeadId),
+              chartOfAccountName: Value(_txt(row['ChartOfAccountName']) ?? ''),
+              code: Value(_txt(row['Code'])),
+              isDeleted: const Value(0),
+              isSynced: const Value(1),
+              updatedAt: Value(_txt(row['UpdatedAt'])),
+            ),
+          );
+      updated++;
     }
 
-    return SyncResult(inserted: 0, updated: mergedCount, deleted: mergedCount);
+    return SyncResult(inserted: 0, updated: updated, deleted: deleted);
   }
 
   // ============================================================
@@ -1635,13 +1976,19 @@ class SyncRepository {
     for (final row in rows) {
       final id = _toInt(row['AccID']);
       if (id <= 0) continue;
+      final incomingAccountGuid = _cleanGuid(row['AccountGuid']);
+      final companyId = await _resolveIncomingCompanyId(row);
 
       final isDeleted = _toInt(row['IsDeleted']) == 1;
 
       if (isDeleted) {
-        final count = await (db.delete(
-          db.accPersonal,
-        )..where((p) => p.accId.equals(id))).go();
+        final delete = db.delete(db.accPersonal);
+        if (incomingAccountGuid.isNotEmpty) {
+          delete.where((p) => p.accountGuid.equals(incomingAccountGuid));
+        } else {
+          delete.where((p) => p.accId.equals(id));
+        }
+        final count = await delete.go();
         if (count > 0) deleted++;
         continue;
       }
@@ -1651,12 +1998,27 @@ class SyncRepository {
       final chartOfAccountId = incomingChartId != null && incomingChartId > 0
           ? incomingChartId
           : await _ensureChartOfAccountForName(statusg);
+      var accountGuid = incomingAccountGuid;
+      var existing = accountGuid.isEmpty
+          ? null
+          : await (db.select(db.accPersonal)
+                  ..where((p) => p.accountGuid.equals(accountGuid)))
+                .getSingleOrNull();
+      existing ??= await (db.select(
+        db.accPersonal,
+      )..where((p) => p.accId.equals(id))).getSingleOrNull();
+      if (accountGuid.isEmpty && existing != null) {
+        accountGuid = _cleanGuid(existing.accountGuid);
+      }
+      if (accountGuid.isEmpty) accountGuid = Ulid.generate();
+      final targetAccId = existing?.accId ?? id;
 
       await db
           .into(db.accPersonal)
           .insertOnConflictUpdate(
             AccPersonalCompanion(
-              accId: Value(id),
+              accId: Value(targetAccId),
+              accountGuid: Value(accountGuid),
               rDate: Value(_txt(row['RDate'])),
               name: Value(_txt(row['Name'])),
               phone: Value(_txt(row['Phone'])),
@@ -1666,7 +2028,7 @@ class SyncRepository {
               uAccName: Value(_txt(row['UAccName'])),
               statusg: Value(statusg),
               userId: Value(_toIntOrNull(row['UserID'])),
-              companyId: Value(_toIntOrNull(row['CompanyID'])),
+              companyId: Value(companyId),
               chartOfAccountId: Value(chartOfAccountId),
               wName: Value(_txt(row['WName'])),
               isSynced: const Value(1),
@@ -1696,7 +2058,7 @@ class SyncRepository {
     for (final row in rows) {
       final rawVoucher = row['VoucherNo'];
       final incomingVoucher = _toInt(rawVoucher);
-      final companyId = _toIntOrNull(row['CompanyID']);
+      final companyId = await _resolveIncomingCompanyId(row);
       var txGuid = _cleanGuid(row['TxGuid']);
       if (txGuid.isEmpty) txGuid = _cleanGuid(row['txGuid']);
       if (txGuid.isEmpty) txGuid = _cleanGuid(row['tx_guid']);
@@ -1756,7 +2118,7 @@ class SyncRepository {
               currencyStatus: Value(_txt(row['currencystatus'])),
               cashStatus: Value(_txt(row['cashstatus'])),
               userId: Value(_toIntOrNull(row['UserID'])),
-              companyId: Value(_toIntOrNull(row['CompanyID'])),
+              companyId: Value(companyId),
               wName: Value(_txt(row['WName'])),
               msgNo: Value(_txt(row['msgno'])),
               hwls1: Value(_txt(row['hwls1'])),
@@ -1798,7 +2160,17 @@ class SyncRepository {
     for (final row in rows) {
       final regId = _toInt(row['RegID']);
       if (regId <= 0) continue;
-      final accId = _toIntOrNull(row['AccID']);
+      final incomingAssignmentGuid = _cleanGuid(row['AssignmentGuid']);
+      final accountGuid = _cleanGuid(row['AccountGuid']);
+      var accId = _toIntOrNull(row['AccID']);
+      if (accountGuid.isNotEmpty) {
+        final account = await (db.select(
+          db.accPersonal,
+        )..where((p) => p.accountGuid.equals(accountGuid))).getSingleOrNull();
+        if (account != null) {
+          accId = account.accId;
+        }
+      }
       final accountTypeId =
           _toIntOrNull(row['AccountTypeID']) ?? _toIntOrNull(row['AccTypeID']);
       if (accId == null ||
@@ -1808,14 +2180,32 @@ class SyncRepository {
         continue;
       }
 
-      var companyId = _toIntOrNull(row['CompanyID']);
+      var companyId = await _resolveIncomingCompanyId(row);
       companyId ??= await _resolveCompanyIdForAccount(accId);
+      var assignmentGuid = incomingAssignmentGuid;
+      var existing = assignmentGuid.isEmpty
+          ? null
+          : await (db.select(db.accountPCurrencyAssignment)
+                  ..where((t) => t.assignmentGuid.equals(assignmentGuid)))
+                .getSingleOrNull();
+      existing ??= await (db.select(
+        db.accountPCurrencyAssignment,
+      )..where((t) => t.regId.equals(regId))).getSingleOrNull();
+      if (assignmentGuid.isEmpty && existing != null) {
+        assignmentGuid = _cleanGuid(existing.assignmentGuid);
+      }
+      if (assignmentGuid.isEmpty) assignmentGuid = Ulid.generate();
+      final targetRegId = existing?.regId ?? regId;
 
       final isDeleted = _toInt(row['IsDeleted']) == 1;
       if (isDeleted) {
-        final count = await (db.delete(
-          db.accountPCurrencyAssignment,
-        )..where((t) => t.regId.equals(regId))).go();
+        final delete = db.delete(db.accountPCurrencyAssignment);
+        if (incomingAssignmentGuid.isNotEmpty) {
+          delete.where((t) => t.assignmentGuid.equals(incomingAssignmentGuid));
+        } else {
+          delete.where((t) => t.regId.equals(regId));
+        }
+        final count = await delete.go();
         if (companyId != null && companyId > 0) {
           await db.customStatement(
             '''
@@ -1835,7 +2225,8 @@ class SyncRepository {
           .into(db.accountPCurrencyAssignment)
           .insertOnConflictUpdate(
             AccountPCurrencyAssignmentCompanion(
-              regId: Value(regId),
+              regId: Value(targetRegId),
+              assignmentGuid: Value(assignmentGuid),
               accId: Value(accId),
               accountTypeId: Value(accountTypeId),
             ),

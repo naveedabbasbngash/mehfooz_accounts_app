@@ -1434,6 +1434,17 @@ class $AccPersonalTable extends AccPersonal
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _accountGuidMeta = const VerificationMeta(
+    'accountGuid',
+  );
+  @override
+  late final GeneratedColumn<String> accountGuid = GeneratedColumn<String>(
+    'AccountGuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _rDateMeta = const VerificationMeta('rDate');
   @override
   late final GeneratedColumn<String> rDate = GeneratedColumn<String>(
@@ -1593,6 +1604,7 @@ class $AccPersonalTable extends AccPersonal
   @override
   List<GeneratedColumn> get $columns => [
     accId,
+    accountGuid,
     rDate,
     name,
     phone,
@@ -1625,6 +1637,15 @@ class $AccPersonalTable extends AccPersonal
       context.handle(
         _accIdMeta,
         accId.isAcceptableOrUnknown(data['AccID']!, _accIdMeta),
+      );
+    }
+    if (data.containsKey('AccountGuid')) {
+      context.handle(
+        _accountGuidMeta,
+        accountGuid.isAcceptableOrUnknown(
+          data['AccountGuid']!,
+          _accountGuidMeta,
+        ),
       );
     }
     if (data.containsKey('RDate')) {
@@ -1736,6 +1757,10 @@ class $AccPersonalTable extends AccPersonal
         DriftSqlType.int,
         data['${effectivePrefix}AccID'],
       )!,
+      accountGuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}AccountGuid'],
+      ),
       rDate: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}RDate'],
@@ -1807,6 +1832,7 @@ class $AccPersonalTable extends AccPersonal
 
 class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   final int accId;
+  final String? accountGuid;
   final String? rDate;
   final String? name;
   final String? phone;
@@ -1826,6 +1852,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   final int? isDeleted;
   const AccPersonalData({
     required this.accId,
+    this.accountGuid,
     this.rDate,
     this.name,
     this.phone,
@@ -1846,6 +1873,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['AccID'] = Variable<int>(accId);
+    if (!nullToAbsent || accountGuid != null) {
+      map['AccountGuid'] = Variable<String>(accountGuid);
+    }
     if (!nullToAbsent || rDate != null) {
       map['RDate'] = Variable<String>(rDate);
     }
@@ -1897,6 +1927,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   AccPersonalCompanion toCompanion(bool nullToAbsent) {
     return AccPersonalCompanion(
       accId: Value(accId),
+      accountGuid: accountGuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(accountGuid),
       rDate: rDate == null && nullToAbsent
           ? const Value.absent()
           : Value(rDate),
@@ -1948,6 +1981,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return AccPersonalData(
       accId: serializer.fromJson<int>(json['accId']),
+      accountGuid: serializer.fromJson<String?>(json['accountGuid']),
       rDate: serializer.fromJson<String?>(json['rDate']),
       name: serializer.fromJson<String?>(json['name']),
       phone: serializer.fromJson<String?>(json['phone']),
@@ -1970,6 +2004,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'accId': serializer.toJson<int>(accId),
+      'accountGuid': serializer.toJson<String?>(accountGuid),
       'rDate': serializer.toJson<String?>(rDate),
       'name': serializer.toJson<String?>(name),
       'phone': serializer.toJson<String?>(phone),
@@ -1990,6 +2025,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
 
   AccPersonalData copyWith({
     int? accId,
+    Value<String?> accountGuid = const Value.absent(),
     Value<String?> rDate = const Value.absent(),
     Value<String?> name = const Value.absent(),
     Value<String?> phone = const Value.absent(),
@@ -2007,6 +2043,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
     Value<int?> isDeleted = const Value.absent(),
   }) => AccPersonalData(
     accId: accId ?? this.accId,
+    accountGuid: accountGuid.present ? accountGuid.value : this.accountGuid,
     rDate: rDate.present ? rDate.value : this.rDate,
     name: name.present ? name.value : this.name,
     phone: phone.present ? phone.value : this.phone,
@@ -2028,6 +2065,9 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   AccPersonalData copyWithCompanion(AccPersonalCompanion data) {
     return AccPersonalData(
       accId: data.accId.present ? data.accId.value : this.accId,
+      accountGuid: data.accountGuid.present
+          ? data.accountGuid.value
+          : this.accountGuid,
       rDate: data.rDate.present ? data.rDate.value : this.rDate,
       name: data.name.present ? data.name.value : this.name,
       phone: data.phone.present ? data.phone.value : this.phone,
@@ -2054,6 +2094,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   String toString() {
     return (StringBuffer('AccPersonalData(')
           ..write('accId: $accId, ')
+          ..write('accountGuid: $accountGuid, ')
           ..write('rDate: $rDate, ')
           ..write('name: $name, ')
           ..write('phone: $phone, ')
@@ -2076,6 +2117,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
   @override
   int get hashCode => Object.hash(
     accId,
+    accountGuid,
     rDate,
     name,
     phone,
@@ -2097,6 +2139,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
       identical(this, other) ||
       (other is AccPersonalData &&
           other.accId == this.accId &&
+          other.accountGuid == this.accountGuid &&
           other.rDate == this.rDate &&
           other.name == this.name &&
           other.phone == this.phone &&
@@ -2116,6 +2159,7 @@ class AccPersonalData extends DataClass implements Insertable<AccPersonalData> {
 
 class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   final Value<int> accId;
+  final Value<String?> accountGuid;
   final Value<String?> rDate;
   final Value<String?> name;
   final Value<String?> phone;
@@ -2133,6 +2177,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   final Value<int?> isDeleted;
   const AccPersonalCompanion({
     this.accId = const Value.absent(),
+    this.accountGuid = const Value.absent(),
     this.rDate = const Value.absent(),
     this.name = const Value.absent(),
     this.phone = const Value.absent(),
@@ -2151,6 +2196,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   });
   AccPersonalCompanion.insert({
     this.accId = const Value.absent(),
+    this.accountGuid = const Value.absent(),
     this.rDate = const Value.absent(),
     this.name = const Value.absent(),
     this.phone = const Value.absent(),
@@ -2169,6 +2215,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   });
   static Insertable<AccPersonalData> custom({
     Expression<int>? accId,
+    Expression<String>? accountGuid,
     Expression<String>? rDate,
     Expression<String>? name,
     Expression<String>? phone,
@@ -2187,6 +2234,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   }) {
     return RawValuesInsertable({
       if (accId != null) 'AccID': accId,
+      if (accountGuid != null) 'AccountGuid': accountGuid,
       if (rDate != null) 'RDate': rDate,
       if (name != null) 'Name': name,
       if (phone != null) 'Phone': phone,
@@ -2207,6 +2255,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
 
   AccPersonalCompanion copyWith({
     Value<int>? accId,
+    Value<String?>? accountGuid,
     Value<String?>? rDate,
     Value<String?>? name,
     Value<String?>? phone,
@@ -2225,6 +2274,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   }) {
     return AccPersonalCompanion(
       accId: accId ?? this.accId,
+      accountGuid: accountGuid ?? this.accountGuid,
       rDate: rDate ?? this.rDate,
       name: name ?? this.name,
       phone: phone ?? this.phone,
@@ -2248,6 +2298,9 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
     final map = <String, Expression>{};
     if (accId.present) {
       map['AccID'] = Variable<int>(accId.value);
+    }
+    if (accountGuid.present) {
+      map['AccountGuid'] = Variable<String>(accountGuid.value);
     }
     if (rDate.present) {
       map['RDate'] = Variable<String>(rDate.value);
@@ -2301,6 +2354,7 @@ class AccPersonalCompanion extends UpdateCompanion<AccPersonalData> {
   String toString() {
     return (StringBuffer('AccPersonalCompanion(')
           ..write('accId: $accId, ')
+          ..write('accountGuid: $accountGuid, ')
           ..write('rDate: $rDate, ')
           ..write('name: $name, ')
           ..write('phone: $phone, ')
@@ -2756,6 +2810,17 @@ class $CompanyTableTable extends CompanyTable
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _companyGuidMeta = const VerificationMeta(
+    'companyGuid',
+  );
+  @override
+  late final GeneratedColumn<String> companyGuid = GeneratedColumn<String>(
+    'CompanyGuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _companyNameMeta = const VerificationMeta(
     'companyName',
   );
@@ -2779,7 +2844,12 @@ class $CompanyTableTable extends CompanyTable
     requiredDuringInsert: false,
   );
   @override
-  List<GeneratedColumn> get $columns => [companyId, companyName, remarks];
+  List<GeneratedColumn> get $columns => [
+    companyId,
+    companyGuid,
+    companyName,
+    remarks,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2796,6 +2866,15 @@ class $CompanyTableTable extends CompanyTable
       context.handle(
         _companyIdMeta,
         companyId.isAcceptableOrUnknown(data['CompanyID']!, _companyIdMeta),
+      );
+    }
+    if (data.containsKey('CompanyGuid')) {
+      context.handle(
+        _companyGuidMeta,
+        companyGuid.isAcceptableOrUnknown(
+          data['CompanyGuid']!,
+          _companyGuidMeta,
+        ),
       );
     }
     if (data.containsKey('CompanyName')) {
@@ -2826,6 +2905,10 @@ class $CompanyTableTable extends CompanyTable
         DriftSqlType.int,
         data['${effectivePrefix}CompanyID'],
       )!,
+      companyGuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}CompanyGuid'],
+      ),
       companyName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}CompanyName'],
@@ -2846,10 +2929,12 @@ class $CompanyTableTable extends CompanyTable
 class CompanyTableData extends DataClass
     implements Insertable<CompanyTableData> {
   final int companyId;
+  final String? companyGuid;
   final String? companyName;
   final String? remarks;
   const CompanyTableData({
     required this.companyId,
+    this.companyGuid,
     this.companyName,
     this.remarks,
   });
@@ -2857,6 +2942,9 @@ class CompanyTableData extends DataClass
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['CompanyID'] = Variable<int>(companyId);
+    if (!nullToAbsent || companyGuid != null) {
+      map['CompanyGuid'] = Variable<String>(companyGuid);
+    }
     if (!nullToAbsent || companyName != null) {
       map['CompanyName'] = Variable<String>(companyName);
     }
@@ -2869,6 +2957,9 @@ class CompanyTableData extends DataClass
   CompanyTableCompanion toCompanion(bool nullToAbsent) {
     return CompanyTableCompanion(
       companyId: Value(companyId),
+      companyGuid: companyGuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(companyGuid),
       companyName: companyName == null && nullToAbsent
           ? const Value.absent()
           : Value(companyName),
@@ -2885,6 +2976,7 @@ class CompanyTableData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return CompanyTableData(
       companyId: serializer.fromJson<int>(json['companyId']),
+      companyGuid: serializer.fromJson<String?>(json['companyGuid']),
       companyName: serializer.fromJson<String?>(json['companyName']),
       remarks: serializer.fromJson<String?>(json['remarks']),
     );
@@ -2894,6 +2986,7 @@ class CompanyTableData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'companyId': serializer.toJson<int>(companyId),
+      'companyGuid': serializer.toJson<String?>(companyGuid),
       'companyName': serializer.toJson<String?>(companyName),
       'remarks': serializer.toJson<String?>(remarks),
     };
@@ -2901,16 +2994,21 @@ class CompanyTableData extends DataClass
 
   CompanyTableData copyWith({
     int? companyId,
+    Value<String?> companyGuid = const Value.absent(),
     Value<String?> companyName = const Value.absent(),
     Value<String?> remarks = const Value.absent(),
   }) => CompanyTableData(
     companyId: companyId ?? this.companyId,
+    companyGuid: companyGuid.present ? companyGuid.value : this.companyGuid,
     companyName: companyName.present ? companyName.value : this.companyName,
     remarks: remarks.present ? remarks.value : this.remarks,
   );
   CompanyTableData copyWithCompanion(CompanyTableCompanion data) {
     return CompanyTableData(
       companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      companyGuid: data.companyGuid.present
+          ? data.companyGuid.value
+          : this.companyGuid,
       companyName: data.companyName.present
           ? data.companyName.value
           : this.companyName,
@@ -2922,6 +3020,7 @@ class CompanyTableData extends DataClass
   String toString() {
     return (StringBuffer('CompanyTableData(')
           ..write('companyId: $companyId, ')
+          ..write('companyGuid: $companyGuid, ')
           ..write('companyName: $companyName, ')
           ..write('remarks: $remarks')
           ..write(')'))
@@ -2929,37 +3028,43 @@ class CompanyTableData extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(companyId, companyName, remarks);
+  int get hashCode => Object.hash(companyId, companyGuid, companyName, remarks);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is CompanyTableData &&
           other.companyId == this.companyId &&
+          other.companyGuid == this.companyGuid &&
           other.companyName == this.companyName &&
           other.remarks == this.remarks);
 }
 
 class CompanyTableCompanion extends UpdateCompanion<CompanyTableData> {
   final Value<int> companyId;
+  final Value<String?> companyGuid;
   final Value<String?> companyName;
   final Value<String?> remarks;
   const CompanyTableCompanion({
     this.companyId = const Value.absent(),
+    this.companyGuid = const Value.absent(),
     this.companyName = const Value.absent(),
     this.remarks = const Value.absent(),
   });
   CompanyTableCompanion.insert({
     this.companyId = const Value.absent(),
+    this.companyGuid = const Value.absent(),
     this.companyName = const Value.absent(),
     this.remarks = const Value.absent(),
   });
   static Insertable<CompanyTableData> custom({
     Expression<int>? companyId,
+    Expression<String>? companyGuid,
     Expression<String>? companyName,
     Expression<String>? remarks,
   }) {
     return RawValuesInsertable({
       if (companyId != null) 'CompanyID': companyId,
+      if (companyGuid != null) 'CompanyGuid': companyGuid,
       if (companyName != null) 'CompanyName': companyName,
       if (remarks != null) 'Remarks': remarks,
     });
@@ -2967,11 +3072,13 @@ class CompanyTableCompanion extends UpdateCompanion<CompanyTableData> {
 
   CompanyTableCompanion copyWith({
     Value<int>? companyId,
+    Value<String?>? companyGuid,
     Value<String?>? companyName,
     Value<String?>? remarks,
   }) {
     return CompanyTableCompanion(
       companyId: companyId ?? this.companyId,
+      companyGuid: companyGuid ?? this.companyGuid,
       companyName: companyName ?? this.companyName,
       remarks: remarks ?? this.remarks,
     );
@@ -2982,6 +3089,9 @@ class CompanyTableCompanion extends UpdateCompanion<CompanyTableData> {
     final map = <String, Expression>{};
     if (companyId.present) {
       map['CompanyID'] = Variable<int>(companyId.value);
+    }
+    if (companyGuid.present) {
+      map['CompanyGuid'] = Variable<String>(companyGuid.value);
     }
     if (companyName.present) {
       map['CompanyName'] = Variable<String>(companyName.value);
@@ -2996,6 +3106,7 @@ class CompanyTableCompanion extends UpdateCompanion<CompanyTableData> {
   String toString() {
     return (StringBuffer('CompanyTableCompanion(')
           ..write('companyId: $companyId, ')
+          ..write('companyGuid: $companyGuid, ')
           ..write('companyName: $companyName, ')
           ..write('remarks: $remarks')
           ..write(')'))
@@ -3468,6 +3579,17 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _assignmentGuidMeta = const VerificationMeta(
+    'assignmentGuid',
+  );
+  @override
+  late final GeneratedColumn<String> assignmentGuid = GeneratedColumn<String>(
+    'AssignmentGuid',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _accIdMeta = const VerificationMeta('accId');
   @override
   late final GeneratedColumn<int> accId = GeneratedColumn<int>(
@@ -3488,8 +3610,61 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _companyIdMeta = const VerificationMeta(
+    'companyId',
+  );
   @override
-  List<GeneratedColumn> get $columns => [regId, accId, accountTypeId];
+  late final GeneratedColumn<int> companyId = GeneratedColumn<int>(
+    'CompanyID',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isDeletedMeta = const VerificationMeta(
+    'isDeleted',
+  );
+  @override
+  late final GeneratedColumn<int> isDeleted = GeneratedColumn<int>(
+    'IsDeleted',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<int> isSynced = GeneratedColumn<int>(
+    'IsSynced',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<String> updatedAt = GeneratedColumn<String>(
+    'UpdatedAt',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    regId,
+    assignmentGuid,
+    accId,
+    accountTypeId,
+    companyId,
+    isDeleted,
+    isSynced,
+    updatedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3508,6 +3683,15 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
         regId.isAcceptableOrUnknown(data['RegID']!, _regIdMeta),
       );
     }
+    if (data.containsKey('AssignmentGuid')) {
+      context.handle(
+        _assignmentGuidMeta,
+        assignmentGuid.isAcceptableOrUnknown(
+          data['AssignmentGuid']!,
+          _assignmentGuidMeta,
+        ),
+      );
+    }
     if (data.containsKey('AccID')) {
       context.handle(
         _accIdMeta,
@@ -3521,6 +3705,30 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
           data['AccountTypeID']!,
           _accountTypeIdMeta,
         ),
+      );
+    }
+    if (data.containsKey('CompanyID')) {
+      context.handle(
+        _companyIdMeta,
+        companyId.isAcceptableOrUnknown(data['CompanyID']!, _companyIdMeta),
+      );
+    }
+    if (data.containsKey('IsDeleted')) {
+      context.handle(
+        _isDeletedMeta,
+        isDeleted.isAcceptableOrUnknown(data['IsDeleted']!, _isDeletedMeta),
+      );
+    }
+    if (data.containsKey('IsSynced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['IsSynced']!, _isSyncedMeta),
+      );
+    }
+    if (data.containsKey('UpdatedAt')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['UpdatedAt']!, _updatedAtMeta),
       );
     }
     return context;
@@ -3539,6 +3747,10 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
         DriftSqlType.int,
         data['${effectivePrefix}RegID'],
       )!,
+      assignmentGuid: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}AssignmentGuid'],
+      ),
       accId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}AccID'],
@@ -3546,6 +3758,22 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
       accountTypeId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}AccountTypeID'],
+      ),
+      companyId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}CompanyID'],
+      ),
+      isDeleted: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsDeleted'],
+      ),
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}IsSynced'],
+      ),
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}UpdatedAt'],
       ),
     );
   }
@@ -3559,22 +3787,47 @@ class $AccountPCurrencyAssignmentTable extends AccountPCurrencyAssignment
 class AccountPCurrencyAssignmentData extends DataClass
     implements Insertable<AccountPCurrencyAssignmentData> {
   final int regId;
+  final String? assignmentGuid;
   final int? accId;
   final int? accountTypeId;
+  final int? companyId;
+  final int? isDeleted;
+  final int? isSynced;
+  final String? updatedAt;
   const AccountPCurrencyAssignmentData({
     required this.regId,
+    this.assignmentGuid,
     this.accId,
     this.accountTypeId,
+    this.companyId,
+    this.isDeleted,
+    this.isSynced,
+    this.updatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['RegID'] = Variable<int>(regId);
+    if (!nullToAbsent || assignmentGuid != null) {
+      map['AssignmentGuid'] = Variable<String>(assignmentGuid);
+    }
     if (!nullToAbsent || accId != null) {
       map['AccID'] = Variable<int>(accId);
     }
     if (!nullToAbsent || accountTypeId != null) {
       map['AccountTypeID'] = Variable<int>(accountTypeId);
+    }
+    if (!nullToAbsent || companyId != null) {
+      map['CompanyID'] = Variable<int>(companyId);
+    }
+    if (!nullToAbsent || isDeleted != null) {
+      map['IsDeleted'] = Variable<int>(isDeleted);
+    }
+    if (!nullToAbsent || isSynced != null) {
+      map['IsSynced'] = Variable<int>(isSynced);
+    }
+    if (!nullToAbsent || updatedAt != null) {
+      map['UpdatedAt'] = Variable<String>(updatedAt);
     }
     return map;
   }
@@ -3582,12 +3835,27 @@ class AccountPCurrencyAssignmentData extends DataClass
   AccountPCurrencyAssignmentCompanion toCompanion(bool nullToAbsent) {
     return AccountPCurrencyAssignmentCompanion(
       regId: Value(regId),
+      assignmentGuid: assignmentGuid == null && nullToAbsent
+          ? const Value.absent()
+          : Value(assignmentGuid),
       accId: accId == null && nullToAbsent
           ? const Value.absent()
           : Value(accId),
       accountTypeId: accountTypeId == null && nullToAbsent
           ? const Value.absent()
           : Value(accountTypeId),
+      companyId: companyId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(companyId),
+      isDeleted: isDeleted == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isDeleted),
+      isSynced: isSynced == null && nullToAbsent
+          ? const Value.absent()
+          : Value(isSynced),
+      updatedAt: updatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(updatedAt),
     );
   }
 
@@ -3598,8 +3866,13 @@ class AccountPCurrencyAssignmentData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return AccountPCurrencyAssignmentData(
       regId: serializer.fromJson<int>(json['regId']),
+      assignmentGuid: serializer.fromJson<String?>(json['assignmentGuid']),
       accId: serializer.fromJson<int?>(json['accId']),
       accountTypeId: serializer.fromJson<int?>(json['accountTypeId']),
+      companyId: serializer.fromJson<int?>(json['companyId']),
+      isDeleted: serializer.fromJson<int?>(json['isDeleted']),
+      isSynced: serializer.fromJson<int?>(json['isSynced']),
+      updatedAt: serializer.fromJson<String?>(json['updatedAt']),
     );
   }
   @override
@@ -3607,31 +3880,55 @@ class AccountPCurrencyAssignmentData extends DataClass
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'regId': serializer.toJson<int>(regId),
+      'assignmentGuid': serializer.toJson<String?>(assignmentGuid),
       'accId': serializer.toJson<int?>(accId),
       'accountTypeId': serializer.toJson<int?>(accountTypeId),
+      'companyId': serializer.toJson<int?>(companyId),
+      'isDeleted': serializer.toJson<int?>(isDeleted),
+      'isSynced': serializer.toJson<int?>(isSynced),
+      'updatedAt': serializer.toJson<String?>(updatedAt),
     };
   }
 
   AccountPCurrencyAssignmentData copyWith({
     int? regId,
+    Value<String?> assignmentGuid = const Value.absent(),
     Value<int?> accId = const Value.absent(),
     Value<int?> accountTypeId = const Value.absent(),
+    Value<int?> companyId = const Value.absent(),
+    Value<int?> isDeleted = const Value.absent(),
+    Value<int?> isSynced = const Value.absent(),
+    Value<String?> updatedAt = const Value.absent(),
   }) => AccountPCurrencyAssignmentData(
     regId: regId ?? this.regId,
+    assignmentGuid: assignmentGuid.present
+        ? assignmentGuid.value
+        : this.assignmentGuid,
     accId: accId.present ? accId.value : this.accId,
     accountTypeId: accountTypeId.present
         ? accountTypeId.value
         : this.accountTypeId,
+    companyId: companyId.present ? companyId.value : this.companyId,
+    isDeleted: isDeleted.present ? isDeleted.value : this.isDeleted,
+    isSynced: isSynced.present ? isSynced.value : this.isSynced,
+    updatedAt: updatedAt.present ? updatedAt.value : this.updatedAt,
   );
   AccountPCurrencyAssignmentData copyWithCompanion(
     AccountPCurrencyAssignmentCompanion data,
   ) {
     return AccountPCurrencyAssignmentData(
       regId: data.regId.present ? data.regId.value : this.regId,
+      assignmentGuid: data.assignmentGuid.present
+          ? data.assignmentGuid.value
+          : this.assignmentGuid,
       accId: data.accId.present ? data.accId.value : this.accId,
       accountTypeId: data.accountTypeId.present
           ? data.accountTypeId.value
           : this.accountTypeId,
+      companyId: data.companyId.present ? data.companyId.value : this.companyId,
+      isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
 
@@ -3639,59 +3936,113 @@ class AccountPCurrencyAssignmentData extends DataClass
   String toString() {
     return (StringBuffer('AccountPCurrencyAssignmentData(')
           ..write('regId: $regId, ')
+          ..write('assignmentGuid: $assignmentGuid, ')
           ..write('accId: $accId, ')
-          ..write('accountTypeId: $accountTypeId')
+          ..write('accountTypeId: $accountTypeId, ')
+          ..write('companyId: $companyId, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(regId, accId, accountTypeId);
+  int get hashCode => Object.hash(
+    regId,
+    assignmentGuid,
+    accId,
+    accountTypeId,
+    companyId,
+    isDeleted,
+    isSynced,
+    updatedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is AccountPCurrencyAssignmentData &&
           other.regId == this.regId &&
+          other.assignmentGuid == this.assignmentGuid &&
           other.accId == this.accId &&
-          other.accountTypeId == this.accountTypeId);
+          other.accountTypeId == this.accountTypeId &&
+          other.companyId == this.companyId &&
+          other.isDeleted == this.isDeleted &&
+          other.isSynced == this.isSynced &&
+          other.updatedAt == this.updatedAt);
 }
 
 class AccountPCurrencyAssignmentCompanion
     extends UpdateCompanion<AccountPCurrencyAssignmentData> {
   final Value<int> regId;
+  final Value<String?> assignmentGuid;
   final Value<int?> accId;
   final Value<int?> accountTypeId;
+  final Value<int?> companyId;
+  final Value<int?> isDeleted;
+  final Value<int?> isSynced;
+  final Value<String?> updatedAt;
   const AccountPCurrencyAssignmentCompanion({
     this.regId = const Value.absent(),
+    this.assignmentGuid = const Value.absent(),
     this.accId = const Value.absent(),
     this.accountTypeId = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   AccountPCurrencyAssignmentCompanion.insert({
     this.regId = const Value.absent(),
+    this.assignmentGuid = const Value.absent(),
     this.accId = const Value.absent(),
     this.accountTypeId = const Value.absent(),
+    this.companyId = const Value.absent(),
+    this.isDeleted = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.updatedAt = const Value.absent(),
   });
   static Insertable<AccountPCurrencyAssignmentData> custom({
     Expression<int>? regId,
+    Expression<String>? assignmentGuid,
     Expression<int>? accId,
     Expression<int>? accountTypeId,
+    Expression<int>? companyId,
+    Expression<int>? isDeleted,
+    Expression<int>? isSynced,
+    Expression<String>? updatedAt,
   }) {
     return RawValuesInsertable({
       if (regId != null) 'RegID': regId,
+      if (assignmentGuid != null) 'AssignmentGuid': assignmentGuid,
       if (accId != null) 'AccID': accId,
       if (accountTypeId != null) 'AccountTypeID': accountTypeId,
+      if (companyId != null) 'CompanyID': companyId,
+      if (isDeleted != null) 'IsDeleted': isDeleted,
+      if (isSynced != null) 'IsSynced': isSynced,
+      if (updatedAt != null) 'UpdatedAt': updatedAt,
     });
   }
 
   AccountPCurrencyAssignmentCompanion copyWith({
     Value<int>? regId,
+    Value<String?>? assignmentGuid,
     Value<int?>? accId,
     Value<int?>? accountTypeId,
+    Value<int?>? companyId,
+    Value<int?>? isDeleted,
+    Value<int?>? isSynced,
+    Value<String?>? updatedAt,
   }) {
     return AccountPCurrencyAssignmentCompanion(
       regId: regId ?? this.regId,
+      assignmentGuid: assignmentGuid ?? this.assignmentGuid,
       accId: accId ?? this.accId,
       accountTypeId: accountTypeId ?? this.accountTypeId,
+      companyId: companyId ?? this.companyId,
+      isDeleted: isDeleted ?? this.isDeleted,
+      isSynced: isSynced ?? this.isSynced,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 
@@ -3701,11 +4052,26 @@ class AccountPCurrencyAssignmentCompanion
     if (regId.present) {
       map['RegID'] = Variable<int>(regId.value);
     }
+    if (assignmentGuid.present) {
+      map['AssignmentGuid'] = Variable<String>(assignmentGuid.value);
+    }
     if (accId.present) {
       map['AccID'] = Variable<int>(accId.value);
     }
     if (accountTypeId.present) {
       map['AccountTypeID'] = Variable<int>(accountTypeId.value);
+    }
+    if (companyId.present) {
+      map['CompanyID'] = Variable<int>(companyId.value);
+    }
+    if (isDeleted.present) {
+      map['IsDeleted'] = Variable<int>(isDeleted.value);
+    }
+    if (isSynced.present) {
+      map['IsSynced'] = Variable<int>(isSynced.value);
+    }
+    if (updatedAt.present) {
+      map['UpdatedAt'] = Variable<String>(updatedAt.value);
     }
     return map;
   }
@@ -3714,8 +4080,13 @@ class AccountPCurrencyAssignmentCompanion
   String toString() {
     return (StringBuffer('AccountPCurrencyAssignmentCompanion(')
           ..write('regId: $regId, ')
+          ..write('assignmentGuid: $assignmentGuid, ')
           ..write('accId: $accId, ')
-          ..write('accountTypeId: $accountTypeId')
+          ..write('accountTypeId: $accountTypeId, ')
+          ..write('companyId: $companyId, ')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
@@ -7990,6 +8361,7 @@ typedef $$ChartOfAccountsTableProcessedTableManager =
 typedef $$AccPersonalTableCreateCompanionBuilder =
     AccPersonalCompanion Function({
       Value<int> accId,
+      Value<String?> accountGuid,
       Value<String?> rDate,
       Value<String?> name,
       Value<String?> phone,
@@ -8009,6 +8381,7 @@ typedef $$AccPersonalTableCreateCompanionBuilder =
 typedef $$AccPersonalTableUpdateCompanionBuilder =
     AccPersonalCompanion Function({
       Value<int> accId,
+      Value<String?> accountGuid,
       Value<String?> rDate,
       Value<String?> name,
       Value<String?> phone,
@@ -8064,6 +8437,11 @@ class $$AccPersonalTableFilterComposer
   });
   ColumnFilters<int> get accId => $composableBuilder(
     column: $table.accId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get accountGuid => $composableBuilder(
+    column: $table.accountGuid,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8175,6 +8553,11 @@ class $$AccPersonalTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get accountGuid => $composableBuilder(
+    column: $table.accountGuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get rDate => $composableBuilder(
     column: $table.rDate,
     builder: (column) => ColumnOrderings(column),
@@ -8281,6 +8664,11 @@ class $$AccPersonalTableAnnotationComposer
   GeneratedColumn<int> get accId =>
       $composableBuilder(column: $table.accId, builder: (column) => column);
 
+  GeneratedColumn<String> get accountGuid => $composableBuilder(
+    column: $table.accountGuid,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get rDate =>
       $composableBuilder(column: $table.rDate, builder: (column) => column);
 
@@ -8378,6 +8766,7 @@ class $$AccPersonalTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> accId = const Value.absent(),
+                Value<String?> accountGuid = const Value.absent(),
                 Value<String?> rDate = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> phone = const Value.absent(),
@@ -8395,6 +8784,7 @@ class $$AccPersonalTableTableManager
                 Value<int?> isDeleted = const Value.absent(),
               }) => AccPersonalCompanion(
                 accId: accId,
+                accountGuid: accountGuid,
                 rDate: rDate,
                 name: name,
                 phone: phone,
@@ -8414,6 +8804,7 @@ class $$AccPersonalTableTableManager
           createCompanionCallback:
               ({
                 Value<int> accId = const Value.absent(),
+                Value<String?> accountGuid = const Value.absent(),
                 Value<String?> rDate = const Value.absent(),
                 Value<String?> name = const Value.absent(),
                 Value<String?> phone = const Value.absent(),
@@ -8431,6 +8822,7 @@ class $$AccPersonalTableTableManager
                 Value<int?> isDeleted = const Value.absent(),
               }) => AccPersonalCompanion.insert(
                 accId: accId,
+                accountGuid: accountGuid,
                 rDate: rDate,
                 name: name,
                 phone: phone,
@@ -8731,12 +9123,14 @@ typedef $$AccTypeTableProcessedTableManager =
 typedef $$CompanyTableTableCreateCompanionBuilder =
     CompanyTableCompanion Function({
       Value<int> companyId,
+      Value<String?> companyGuid,
       Value<String?> companyName,
       Value<String?> remarks,
     });
 typedef $$CompanyTableTableUpdateCompanionBuilder =
     CompanyTableCompanion Function({
       Value<int> companyId,
+      Value<String?> companyGuid,
       Value<String?> companyName,
       Value<String?> remarks,
     });
@@ -8752,6 +9146,11 @@ class $$CompanyTableTableFilterComposer
   });
   ColumnFilters<int> get companyId => $composableBuilder(
     column: $table.companyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get companyGuid => $composableBuilder(
+    column: $table.companyGuid,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8780,6 +9179,11 @@ class $$CompanyTableTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get companyGuid => $composableBuilder(
+    column: $table.companyGuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get companyName => $composableBuilder(
     column: $table.companyName,
     builder: (column) => ColumnOrderings(column),
@@ -8802,6 +9206,11 @@ class $$CompanyTableTableAnnotationComposer
   });
   GeneratedColumn<int> get companyId =>
       $composableBuilder(column: $table.companyId, builder: (column) => column);
+
+  GeneratedColumn<String> get companyGuid => $composableBuilder(
+    column: $table.companyGuid,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<String> get companyName => $composableBuilder(
     column: $table.companyName,
@@ -8844,20 +9253,24 @@ class $$CompanyTableTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> companyId = const Value.absent(),
+                Value<String?> companyGuid = const Value.absent(),
                 Value<String?> companyName = const Value.absent(),
                 Value<String?> remarks = const Value.absent(),
               }) => CompanyTableCompanion(
                 companyId: companyId,
+                companyGuid: companyGuid,
                 companyName: companyName,
                 remarks: remarks,
               ),
           createCompanionCallback:
               ({
                 Value<int> companyId = const Value.absent(),
+                Value<String?> companyGuid = const Value.absent(),
                 Value<String?> companyName = const Value.absent(),
                 Value<String?> remarks = const Value.absent(),
               }) => CompanyTableCompanion.insert(
                 companyId: companyId,
+                companyGuid: companyGuid,
                 companyName: companyName,
                 remarks: remarks,
               ),
@@ -9175,14 +9588,24 @@ typedef $$DbInfoTableTableProcessedTableManager =
 typedef $$AccountPCurrencyAssignmentTableCreateCompanionBuilder =
     AccountPCurrencyAssignmentCompanion Function({
       Value<int> regId,
+      Value<String?> assignmentGuid,
       Value<int?> accId,
       Value<int?> accountTypeId,
+      Value<int?> companyId,
+      Value<int?> isDeleted,
+      Value<int?> isSynced,
+      Value<String?> updatedAt,
     });
 typedef $$AccountPCurrencyAssignmentTableUpdateCompanionBuilder =
     AccountPCurrencyAssignmentCompanion Function({
       Value<int> regId,
+      Value<String?> assignmentGuid,
       Value<int?> accId,
       Value<int?> accountTypeId,
+      Value<int?> companyId,
+      Value<int?> isDeleted,
+      Value<int?> isSynced,
+      Value<String?> updatedAt,
     });
 
 class $$AccountPCurrencyAssignmentTableFilterComposer
@@ -9199,6 +9622,11 @@ class $$AccountPCurrencyAssignmentTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<String> get assignmentGuid => $composableBuilder(
+    column: $table.assignmentGuid,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get accId => $composableBuilder(
     column: $table.accId,
     builder: (column) => ColumnFilters(column),
@@ -9206,6 +9634,26 @@ class $$AccountPCurrencyAssignmentTableFilterComposer
 
   ColumnFilters<int> get accountTypeId => $composableBuilder(
     column: $table.accountTypeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get companyId => $composableBuilder(
+    column: $table.companyId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -9224,6 +9672,11 @@ class $$AccountPCurrencyAssignmentTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get assignmentGuid => $composableBuilder(
+    column: $table.assignmentGuid,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get accId => $composableBuilder(
     column: $table.accId,
     builder: (column) => ColumnOrderings(column),
@@ -9231,6 +9684,26 @@ class $$AccountPCurrencyAssignmentTableOrderingComposer
 
   ColumnOrderings<int> get accountTypeId => $composableBuilder(
     column: $table.accountTypeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get companyId => $composableBuilder(
+    column: $table.companyId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isDeleted => $composableBuilder(
+    column: $table.isDeleted,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
 }
@@ -9247,6 +9720,11 @@ class $$AccountPCurrencyAssignmentTableAnnotationComposer
   GeneratedColumn<int> get regId =>
       $composableBuilder(column: $table.regId, builder: (column) => column);
 
+  GeneratedColumn<String> get assignmentGuid => $composableBuilder(
+    column: $table.assignmentGuid,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<int> get accId =>
       $composableBuilder(column: $table.accId, builder: (column) => column);
 
@@ -9254,6 +9732,18 @@ class $$AccountPCurrencyAssignmentTableAnnotationComposer
     column: $table.accountTypeId,
     builder: (column) => column,
   );
+
+  GeneratedColumn<int> get companyId =>
+      $composableBuilder(column: $table.companyId, builder: (column) => column);
+
+  GeneratedColumn<int> get isDeleted =>
+      $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<int> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+
+  GeneratedColumn<String> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
 
 class $$AccountPCurrencyAssignmentTableTableManager
@@ -9303,22 +9793,42 @@ class $$AccountPCurrencyAssignmentTableTableManager
           updateCompanionCallback:
               ({
                 Value<int> regId = const Value.absent(),
+                Value<String?> assignmentGuid = const Value.absent(),
                 Value<int?> accId = const Value.absent(),
                 Value<int?> accountTypeId = const Value.absent(),
+                Value<int?> companyId = const Value.absent(),
+                Value<int?> isDeleted = const Value.absent(),
+                Value<int?> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
               }) => AccountPCurrencyAssignmentCompanion(
                 regId: regId,
+                assignmentGuid: assignmentGuid,
                 accId: accId,
                 accountTypeId: accountTypeId,
+                companyId: companyId,
+                isDeleted: isDeleted,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
               ),
           createCompanionCallback:
               ({
                 Value<int> regId = const Value.absent(),
+                Value<String?> assignmentGuid = const Value.absent(),
                 Value<int?> accId = const Value.absent(),
                 Value<int?> accountTypeId = const Value.absent(),
+                Value<int?> companyId = const Value.absent(),
+                Value<int?> isDeleted = const Value.absent(),
+                Value<int?> isSynced = const Value.absent(),
+                Value<String?> updatedAt = const Value.absent(),
               }) => AccountPCurrencyAssignmentCompanion.insert(
                 regId: regId,
+                assignmentGuid: assignmentGuid,
                 accId: accId,
                 accountTypeId: accountTypeId,
+                companyId: companyId,
+                isDeleted: isDeleted,
+                isSynced: isSynced,
+                updatedAt: updatedAt,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

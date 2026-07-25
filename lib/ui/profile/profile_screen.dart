@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/local/app_database.dart';
+import '../../model/subscription_package_option.dart';
 import '../../model/user_model.dart';
 import '../../theme/app_colors.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
@@ -13,19 +14,20 @@ import '../../services/local_storage.dart';
 import '../../services/report_preferences_service.dart';
 import '../auth/auth_screen.dart';
 import '../home/widgets/google_sync_icon.dart';
-import '../subscription/subscription_status_card.dart';
+import '../profile/sync_recovery_screen.dart';
 
 // Brand colors (used in header card + dialogs)
 const Color _kProfileBlue = Color(0xFF1862A3);
 const Color _kProfileBlueDark = Color(0xFF0F4E88);
-const Color _kProfileBg = Color(0xFFF4F8FC);
 
 // iOS Settings design system
-const Color _kSettingsBg = Color(0xFFF2F2F7);
-const Color _kTextPrimary = Color(0xFF000000);
-const Color _kTextSecondary = Color(0xFF8E8E93);
-const Color _kDivider = Color(0xFFE5E5EA);
-const Color _kChevron = Color(0xFFC7C7CC);
+const Color _kSettingsBg = Color(0xFFF6F8FB);
+const Color _kTextPrimary = Color(0xFF0F172A);
+const Color _kTextSecondary = Color(0xFF64748B);
+const Color _kDivider = Color(0xFFE5E7EB);
+const Color _kChevron = Color(0xFF94A3B8);
+const Color _kCardBorder = Color(0xFFE2E8F0);
+const Color _kCardShadow = Color(0x140F172A);
 
 // Icon backgrounds and foregrounds
 const Color _kIconBlue = Color(0xFF007AFF);
@@ -121,6 +123,452 @@ Future<_TeamMembersSnapshot> _fetchTeamMembersSnapshot(UserModel user) async {
   }
 }
 
+class _UpgradePlan {
+  final int packageId;
+  final String packageCode;
+  final String title;
+  final String subtitle;
+  final String price;
+  final Color accent;
+
+  const _UpgradePlan({
+    required this.packageId,
+    required this.packageCode,
+    required this.title,
+    required this.subtitle,
+    required this.price,
+    required this.accent,
+  });
+
+  factory _UpgradePlan.fromPackage(
+    SubscriptionPackageOption package,
+    int index,
+  ) {
+    const accents = <Color>[
+      Color(0xFF64748B),
+      _kProfileBlue,
+      Color(0xFF1F7A30),
+      Color(0xFF9B3FE5),
+      Color(0xFFF97316),
+    ];
+
+    return _UpgradePlan(
+      packageId: package.packageId,
+      packageCode: package.packageCode,
+      title: package.title,
+      subtitle: package.subtitle,
+      price: package.priceText,
+      accent: accents[index % accents.length],
+    );
+  }
+}
+
+class _PremiumHero extends StatelessWidget {
+  final VoidCallback onClose;
+
+  const _PremiumHero({required this.onClose});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 184,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF9B3FE5),
+                  Color(0xFF6D5DFB),
+                  Color(0xFF0F4E88),
+                ],
+              ),
+            ),
+          ),
+          CustomPaint(painter: _PremiumMountainPainter()),
+          Positioned(
+            left: 22,
+            right: 70,
+            bottom: 26,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Go Premium',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.8,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Premium features just for your business',
+                  style: TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 14,
+            right: 14,
+            child: InkWell(
+              onTap: onClose,
+              borderRadius: BorderRadius.circular(999),
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.72),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.close_rounded,
+                  color: Colors.white,
+                  size: 19,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PremiumMountainPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final back = Paint()..color = const Color(0x662D4D80);
+    final mid = Paint()..color = const Color(0x8840578F);
+    final front = Paint()..color = const Color(0xCC18385F);
+
+    final backPath = Path()
+      ..moveTo(0, size.height * 0.66)
+      ..lineTo(size.width * 0.20, size.height * 0.46)
+      ..lineTo(size.width * 0.42, size.height * 0.61)
+      ..lineTo(size.width * 0.62, size.height * 0.40)
+      ..lineTo(size.width * 0.84, size.height * 0.58)
+      ..lineTo(size.width, size.height * 0.44)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(backPath, back);
+
+    final midPath = Path()
+      ..moveTo(0, size.height * 0.78)
+      ..lineTo(size.width * 0.18, size.height * 0.58)
+      ..lineTo(size.width * 0.36, size.height * 0.70)
+      ..lineTo(size.width * 0.54, size.height * 0.52)
+      ..lineTo(size.width * 0.74, size.height * 0.72)
+      ..lineTo(size.width, size.height * 0.56)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(midPath, mid);
+
+    final frontPath = Path()
+      ..moveTo(0, size.height * 0.88)
+      ..lineTo(size.width * 0.17, size.height * 0.72)
+      ..lineTo(size.width * 0.34, size.height * 0.82)
+      ..lineTo(size.width * 0.50, size.height * 0.68)
+      ..lineTo(size.width * 0.68, size.height * 0.84)
+      ..lineTo(size.width, size.height * 0.70)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(frontPath, front);
+
+    final treePaint = Paint()..color = const Color(0xCC0B243D);
+    for (final x in [18.0, 31.0, size.width - 42, size.width - 25]) {
+      final baseY = size.height * 0.91;
+      canvas.drawRect(Rect.fromLTWH(x, baseY - 34, 3, 34), treePaint);
+      final tree = Path()
+        ..moveTo(x - 12, baseY - 8)
+        ..lineTo(x + 1.5, baseY - 50)
+        ..lineTo(x + 15, baseY - 8)
+        ..close();
+      canvas.drawPath(tree, treePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _UpgradeAccountStrip extends StatelessWidget {
+  final UserModel user;
+
+  const _UpgradeAccountStrip({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final package = user.subscription?.planTitle.trim();
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF3FD),
+              borderRadius: BorderRadius.circular(13),
+            ),
+            child: const Icon(
+              Icons.workspace_premium_rounded,
+              color: _kProfileBlue,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  user.email,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Current: ${package == null || package.isEmpty ? user.packageStatusText : package}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UpgradePlanTile extends StatelessWidget {
+  final _UpgradePlan plan;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _UpgradePlanTile({
+    required this.plan,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected
+        ? const Color(0xFF1688F8)
+        : const Color(0xFFD1D5DB);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(13),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: borderColor, width: selected ? 1.8 : 1.2),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF1688F8).withValues(alpha: 0.12),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected ? Colors.black : const Color(0xFFCBD5E1),
+                  width: 1.5,
+                ),
+              ),
+              child: selected
+                  ? Center(
+                      child: Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Colors.black,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    plan.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected
+                          ? const Color(0xFF0F172A)
+                          : const Color(0xFF6B7280),
+                      fontSize: 13.5,
+                      fontWeight: selected ? FontWeight.w900 : FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    plan.subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              plan.price,
+              style: TextStyle(
+                color: selected
+                    ? const Color(0xFF111827)
+                    : const Color(0xFF94A3B8),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PackageLoadingCard extends StatelessWidget {
+  const _PackageLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Loading packages from admin dashboard...',
+              style: TextStyle(
+                color: Color(0xFF334155),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackageErrorCard extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _PackageErrorCard({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7ED),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFED7AA)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Packages unavailable',
+            style: TextStyle(
+              color: Color(0xFF9A3412),
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            style: const TextStyle(
+              color: Color(0xFF9A3412),
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextButton(
+            onPressed: onRetry,
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF9A3412),
+              padding: EdgeInsets.zero,
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            child: const Text('Retry'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -199,13 +647,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _userHeaderCard(context, user, svm),
-                      const SizedBox(height: 14),
-                      SubscriptionStatusCard(
-                        user: user,
-                        actionLabel: 'Renew / Refresh Status',
-                        onRenew: () => _showRenewalInfo(context, user),
-                      ),
+                      _userHeaderCard(context, user),
                       const SizedBox(height: 28),
 
                       if (vm.companies.isNotEmpty) ...[
@@ -232,6 +674,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 28),
 
                       _iosDangerSection(context, vm),
+                      const SizedBox(height: 20),
+                      _logoutFooterButton(context),
                     ],
                   ),
                 ),
@@ -245,196 +689,242 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _showRenewalInfo(BuildContext context, UserModel user) async {
     final vm = context.read<ProfileViewModel>();
+    var selectedPlanIndex = 0;
+    var packagesFuture = AuthService.fetchActiveSubscriptionPackages();
 
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (sheetContext) {
-        return Container(
-          margin: const EdgeInsets.all(12),
-          padding: EdgeInsets.fromLTRB(
-            18,
-            18,
-            18,
-            MediaQuery.of(sheetContext).padding.bottom + 18,
-          ),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x24000000),
-                blurRadius: 30,
-                offset: Offset(0, 18),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: _kIconOrangeBg,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(
-                  Icons.workspace_premium_rounded,
-                  color: _kIconOrange,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text(
-                'Renew Package',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: _kTextPrimary,
-                  letterSpacing: -0.4,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Your account is currently ${user.packageStatusText}. Package renewal is activated by the admin dashboard. After activation, refresh your status here or log in again.',
-                style: const TextStyle(
-                  fontSize: 13.5,
-                  height: 1.45,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-              const SizedBox(height: 14),
-              _renewalDetailRow(
-                icon: Icons.email_outlined,
-                label: 'Account',
-                value: user.email,
-              ),
-              const SizedBox(height: 8),
-              _renewalDetailRow(
-                icon: Icons.inventory_2_outlined,
-                label: 'Package',
-                value: user.subscription?.planTitle ?? 'Not assigned',
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF475569),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                      child: const Text(
-                        'Close',
-                        style: TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                    ),
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            final bottomInset = MediaQuery.of(sheetContext).padding.bottom;
+
+            Future<void> refreshStatus(BuildContext panelContext) async {
+              final refreshed = await AuthService.quickLogin(vm.loggedInUser);
+              if (!panelContext.mounted) return;
+              if (refreshed == null) {
+                ScaffoldMessenger.of(panelContext).showSnackBar(
+                  const SnackBar(
+                    behavior: SnackBarBehavior.floating,
+                    content: Text('Unable to refresh package status.'),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () async {
-                        final refreshed = await AuthService.quickLogin(
-                          vm.loggedInUser,
-                        );
-                        if (!sheetContext.mounted) return;
-                        if (refreshed == null) {
-                          ScaffoldMessenger.of(sheetContext).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Unable to refresh package status.',
+                );
+                return;
+              }
+
+              vm.loggedInUser = refreshed;
+              await vm.refresh();
+              if (!sheetContext.mounted) return;
+              Navigator.pop(sheetContext);
+              if (!context.mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Package status refreshed.'),
+                  backgroundColor: AppColors.darkgreen,
+                ),
+              );
+            }
+
+            return ScaffoldMessenger(
+              child: Scaffold(
+                backgroundColor: Colors.transparent,
+                body: Builder(
+                  builder: (panelContext) => Align(
+                    alignment: Alignment.bottomCenter,
+                    child: FractionallySizedBox(
+                      heightFactor: 0.93,
+                      child: Container(
+                        margin: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(30),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x33000000),
+                              blurRadius: 34,
+                              offset: Offset(0, 18),
+                            ),
+                          ],
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            _PremiumHero(
+                              onClose: () => Navigator.pop(sheetContext),
+                            ),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: EdgeInsets.fromLTRB(
+                                  22,
+                                  20,
+                                  22,
+                                  bottomInset + 22,
+                                ),
+                                child: Column(
+                                  children: [
+                                    _UpgradeAccountStrip(user: user),
+                                    const SizedBox(height: 16),
+                                    FutureBuilder<
+                                      List<SubscriptionPackageOption>
+                                    >(
+                                      future: packagesFuture,
+                                      builder: (sheetContext, snapshot) {
+                                        if (snapshot.connectionState ==
+                                            ConnectionState.waiting) {
+                                          return const _PackageLoadingCard();
+                                        }
+
+                                        if (snapshot.hasError) {
+                                          return _PackageErrorCard(
+                                            message: snapshot.error
+                                                .toString()
+                                                .replaceFirst(
+                                                  'Exception: ',
+                                                  '',
+                                                ),
+                                            onRetry: () {
+                                              setSheetState(() {
+                                                packagesFuture =
+                                                    AuthService.fetchActiveSubscriptionPackages();
+                                              });
+                                            },
+                                          );
+                                        }
+
+                                        final packages =
+                                            snapshot.data ?? const [];
+                                        final plans = packages
+                                            .asMap()
+                                            .entries
+                                            .map(
+                                              (entry) =>
+                                                  _UpgradePlan.fromPackage(
+                                                    entry.value,
+                                                    entry.key,
+                                                  ),
+                                            )
+                                            .toList(growable: false);
+
+                                        if (plans.isEmpty) {
+                                          return _PackageErrorCard(
+                                            message:
+                                                'No active packages are available right now.',
+                                            onRetry: () {
+                                              setSheetState(() {
+                                                packagesFuture =
+                                                    AuthService.fetchActiveSubscriptionPackages();
+                                              });
+                                            },
+                                          );
+                                        }
+
+                                        if (selectedPlanIndex >= plans.length) {
+                                          selectedPlanIndex = 0;
+                                        }
+                                        final selectedPlan =
+                                            plans[selectedPlanIndex];
+
+                                        return Column(
+                                          children: [
+                                            for (
+                                              var i = 0;
+                                              i < plans.length;
+                                              i++
+                                            ) ...[
+                                              _UpgradePlanTile(
+                                                plan: plans[i],
+                                                selected:
+                                                    selectedPlanIndex == i,
+                                                onTap: () => setSheetState(
+                                                  () => selectedPlanIndex = i,
+                                                ),
+                                              ),
+                                              if (i != plans.length - 1)
+                                                const SizedBox(height: 10),
+                                            ],
+                                            const SizedBox(height: 22),
+                                            SizedBox(
+                                              width: double.infinity,
+                                              height: 54,
+                                              child: FilledButton(
+                                                onPressed: () {
+                                                  ScaffoldMessenger.of(
+                                                    panelContext,
+                                                  ).showSnackBar(
+                                                    SnackBar(
+                                                      behavior: SnackBarBehavior
+                                                          .floating,
+                                                      content: Text(
+                                                        '${selectedPlan.title} selected. Admin will activate this package from dashboard.',
+                                                      ),
+                                                    ),
+                                                  );
+                                                },
+                                                style: FilledButton.styleFrom(
+                                                  backgroundColor: const Color(
+                                                    0xFF1688F8,
+                                                  ),
+                                                  foregroundColor: Colors.white,
+                                                  shape: RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          28,
+                                                        ),
+                                                  ),
+                                                  textStyle: const TextStyle(
+                                                    fontSize: 15,
+                                                    fontWeight: FontWeight.w900,
+                                                  ),
+                                                ),
+                                                child: const Text(
+                                                  'Request upgrade',
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 14),
+                                    TextButton(
+                                      onPressed: () =>
+                                          refreshStatus(panelContext),
+                                      child: const Text(
+                                        'Refresh Package Status',
+                                        style: TextStyle(
+                                          color: Color(0xFF0F172A),
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'Package activation is managed by the admin dashboard. After payment or approval, refresh status here or log in again to unlock premium access.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Color(0xFF475569),
+                                        fontSize: 11.2,
+                                        height: 1.35,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          );
-                          return;
-                        }
-
-                        vm.loggedInUser = refreshed;
-                        await vm.refresh();
-                        if (!sheetContext.mounted) return;
-                        Navigator.pop(sheetContext);
-                        if (!context.mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Package status refreshed.'),
-                            backgroundColor: AppColors.darkgreen,
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.refresh_rounded, size: 18),
-                      label: const Text('Refresh Status'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _kProfileBlue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          ],
                         ),
-                        textStyle: const TextStyle(fontWeight: FontWeight.w900),
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
-    );
-  }
-
-  Widget _renewalDetailRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: _kProfileBlue, size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 
@@ -456,17 +946,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _iosSectionHeader(String label, {Widget? action}) {
     return Padding(
-      padding: const EdgeInsets.only(left: 16, right: 8, bottom: 8),
+      padding: const EdgeInsets.only(left: 4, right: 4, bottom: 10),
       child: Row(
         children: [
           Expanded(
             child: Text(
-              label.toUpperCase(),
+              label,
               style: const TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
                 color: _kTextSecondary,
-                letterSpacing: 0.6,
+                letterSpacing: 0.1,
               ),
             ),
           ),
@@ -480,7 +970,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _kCardBorder),
+        boxShadow: const [
+          BoxShadow(
+            color: _kCardShadow,
+            blurRadius: 18,
+            spreadRadius: -8,
+            offset: Offset(0, 10),
+          ),
+        ],
       ),
       clipBehavior: Clip.hardEdge,
       child: Column(
@@ -491,7 +990,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const Divider(
                 height: 1,
                 thickness: 0.5,
-                indent: 58,
+                indent: 64,
                 endIndent: 0,
                 color: _kDivider,
               ),
@@ -517,17 +1016,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: InkWell(
         onTap: enabled ? onTap : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
           child: Row(
             children: [
               Container(
-                width: 32,
-                height: 32,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: iconBg,
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: iconColor, size: 18),
+                child: Icon(icon, color: iconColor, size: 19),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -537,7 +1036,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
                         color: enabled ? _kTextPrimary : _kTextSecondary,
                       ),
                     ),
@@ -548,7 +1048,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
                           color: _kTextSecondary,
                         ),
                       ),
@@ -686,6 +1187,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             onTap: svm.canSync ? () => _showAutoSyncSheet(context, svm) : null,
             enabled: svm.canSync,
+          ),
+          _iosRow(
+            icon: Icons.health_and_safety_rounded,
+            iconBg: _kIconOrangeBg,
+            iconColor: _kIconOrange,
+            title: 'Sync Recovery Center',
+            subtitle: 'Diagnose and recover stuck sync queues',
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SyncRecoveryScreen(syncVM: svm),
+                ),
+              );
+              if (!mounted) return;
+              await svm.refreshPendingBatches(silent: true);
+              setState(() {});
+            },
           ),
         ]),
 
@@ -878,43 +1396,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ]);
   }
 
-  Widget _infoPill({
-    required IconData icon,
-    required String text,
-    Color? color,
-    Color? textColor,
-  }) {
-    final bg = color ?? Colors.white.withValues(alpha: 0.14);
-    final fg = textColor ?? Colors.white;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: fg.withValues(alpha: 0.12)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: fg),
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: fg,
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _smartLogout(BuildContext context) async {
     await LocalStorageService.clearLoginStateOnly();
     if (!context.mounted) return;
@@ -924,15 +1405,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _logoutFooterButton(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: OutlinedButton.icon(
+        onPressed: () => _smartLogout(context),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _kProfileBlueDark,
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: _kCardBorder),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+        ),
+        icon: const Icon(Icons.logout_rounded, size: 18),
+        label: const Text('Logout'),
+      ),
+    );
+  }
+
+  Widget _profileCornerTag({
+    required String text,
+    required VoidCallback onTap,
+  }) {
+    return Positioned(
+      top: 0,
+      right: 0,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 180),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: const BorderRadius.only(
+            topRight: Radius.circular(24),
+            bottomLeft: Radius.circular(8),
+          ),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            decoration: BoxDecoration(
+              color: _kProfileBlue.withValues(alpha: 0.06),
+              borderRadius: const BorderRadius.only(
+                topRight: Radius.circular(24),
+                bottomLeft: Radius.circular(8),
+              ),
+              border: Border(
+                left: BorderSide(
+                  color: _kProfileBlue.withValues(alpha: 0.18),
+                  width: 1,
+                ),
+                bottom: BorderSide(
+                  color: _kProfileBlue.withValues(alpha: 0.18),
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 9.5,
+                color: Color(0xFF5F7893),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   // ───────────────────────── USER HEADER ─────────────────────────
 
-  Widget _userHeaderCard(
-    BuildContext context,
-    UserModel user,
-    SyncViewModel svm,
-  ) {
+  Widget _userHeaderCard(BuildContext context, UserModel user) {
     final roleLabel = _profileRoleLabel(user);
     final statusText = user.planStatus?.statusText.trim();
+    final packageStatusText = statusText == null || statusText.isEmpty
+        ? null
+        : statusText;
     final initials = _profileName(user)
         .trim()
         .split(RegExp(r'\s+'))
@@ -942,165 +1492,72 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .join();
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF1E72C8), _kProfileBlue, Color(0xFF0B3E7A)],
-          stops: [0.0, 0.52, 1.0],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.all(Radius.circular(26)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.all(Radius.circular(24)),
+        border: Border.all(color: _kCardBorder),
         boxShadow: [
           BoxShadow(
-            color: Color(0x441862A3),
-            blurRadius: 32,
-            spreadRadius: -4,
-            offset: Offset(0, 18),
+            color: _kCardShadow,
+            blurRadius: 24,
+            spreadRadius: -10,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(26),
+        borderRadius: BorderRadius.circular(24),
         child: Stack(
           children: [
-            // Decorative background blobs
             Positioned(
-              top: -36,
-              right: -28,
+              top: 0,
+              left: 0,
+              right: 0,
               child: Container(
-                width: 140,
-                height: 140,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.07),
+                height: 92,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Color(0xFFEAF4FF), Color(0xFFF6FAFF)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
               ),
             ),
-            Positioned(
-              bottom: -50,
-              left: -30,
-              child: Container(
-                width: 180,
-                height: 180,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.05),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 38,
-              right: 82,
-              child: Container(
-                width: 54,
-                height: 54,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.04),
-                ),
-              ),
-            ),
-
-            // Content
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Glassmorphism logout pill — top right
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: GestureDetector(
-                      onTap: () => _smartLogout(context),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.22),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.logout_rounded,
-                              size: 11,
-                              color: Colors.white.withValues(alpha: 0.92),
-                            ),
-                            const SizedBox(width: 5),
-                            Text(
-                              'Logout',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.92),
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.2,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Avatar + name/email row
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Avatar with white border ring
                       Container(
-                        padding: const EdgeInsets.all(2),
+                        width: 54,
+                        height: 54,
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(17),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            width: 2,
-                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          color: const Color(0xFFE6F0FA),
+                          border: Border.all(color: const Color(0xFFCFE2F5)),
                         ),
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(14),
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.white.withValues(alpha: 0.24),
-                                Colors.white.withValues(alpha: 0.10),
-                              ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
-                            child: user.imageUrl.isNotEmpty
-                                ? Image.network(
-                                    user.imageUrl,
-                                    fit: BoxFit.cover,
-                                  )
-                                : Center(
-                                    child: Text(
-                                      initials,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1,
-                                      ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(15),
+                          child: user.imageUrl.isNotEmpty
+                              ? Image.network(user.imageUrl, fit: BoxFit.cover)
+                              : Center(
+                                  child: Text(
+                                    initials,
+                                    style: const TextStyle(
+                                      color: _kProfileBlueDark,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.8,
                                     ),
                                   ),
-                          ),
+                                ),
                         ),
                       ),
                       const SizedBox(width: 12),
-
-                      // Name + email
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1110,78 +1567,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
+                                color: _kTextPrimary,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              user.email,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _kTextSecondary,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              roleLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _kProfileBlueDark,
+                                fontSize: 11.5,
                                 fontWeight: FontWeight.w800,
                                 letterSpacing: 0.2,
                               ),
-                            ),
-                            const SizedBox(height: 3),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.mail_outline_rounded,
-                                  size: 11,
-                                  color: Colors.white.withValues(alpha: 0.68),
-                                ),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    user.email,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.80,
-                                      ),
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-
-                  // Gradient hairline divider
-                  Container(
-                    height: 1,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.transparent,
-                          Colors.white.withValues(alpha: 0.20),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Role + plan pills
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _infoPill(
-                        icon: Icons.verified_user_outlined,
-                        text: roleLabel,
-                      ),
-                      if (statusText != null && statusText.isNotEmpty)
-                        _infoPill(
-                          icon: Icons.workspace_premium_outlined,
-                          text: statusText,
-                        ),
-                    ],
-                  ),
                 ],
               ),
             ),
+            if (packageStatusText != null)
+              _profileCornerTag(
+                text: packageStatusText,
+                onTap: () => _showRenewalInfo(context, user),
+              ),
           ],
         ),
       ),
@@ -2706,31 +3132,39 @@ class _ProfileBackdrop extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Container(color: _kProfileBg),
+        Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFF9FBFF), Color(0xFFF2F6FC)],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+          ),
+        ),
         Positioned(
-          top: -90,
-          right: -70,
+          top: -120,
+          right: -85,
           child: Container(
-            width: 220,
-            height: 220,
+            width: 270,
+            height: 270,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
-                colors: [Color(0x331862A3), Color(0x001862A3)],
+                colors: [Color(0x2B1862A3), Color(0x001862A3)],
               ),
             ),
           ),
         ),
         Positioned(
-          top: 160,
-          left: -90,
+          top: 220,
+          left: -110,
           child: Container(
-            width: 190,
-            height: 190,
+            width: 230,
+            height: 230,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
               gradient: RadialGradient(
-                colors: [Color(0x1F1862A3), Color(0x001862A3)],
+                colors: [Color(0x141862A3), Color(0x001862A3)],
               ),
             ),
           ),

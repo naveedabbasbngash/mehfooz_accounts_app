@@ -14,15 +14,13 @@ class GlobalState {
   // Safe getters (always valid)
   // -----------------------------
   int get companyId => _selectedCompanyId ?? 1;
+  int? get selectedCompanyId => _selectedCompanyId;
   String get companyName => _selectedCompanyName ?? "Your Company";
 
   // -----------------------------
   // Set active company
   // -----------------------------
-  void setCompany({
-    required int id,
-    required String name,
-  }) {
+  void setCompany({required int id, required String name}) {
     _selectedCompanyId = id;
     _selectedCompanyName = name;
   }

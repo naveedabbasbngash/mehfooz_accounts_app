@@ -5,6 +5,7 @@ import '../../data/local/database_manager.dart';
 import '../../model/account_head_option.dart';
 import '../../repository/transactions_repository.dart';
 import '../../viewmodel/profile/profile_view_model.dart';
+import '../../viewmodel/sync/sync_viewmodel.dart';
 
 const Color _kChartBlue = Color(0xFF1862A3);
 const Color _kChartBlueDark = Color(0xFF0D4F88);
@@ -17,11 +18,16 @@ class ChartOfAccountsScreen extends StatefulWidget {
   State<ChartOfAccountsScreen> createState() => _ChartOfAccountsScreenState();
 }
 
-class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
+class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen>
+    with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  late final TabController _tabController;
 
   bool _busy = false;
+  bool _chartSyncing = false;
+  int _activeTabIndex = 0;
   String _searchQuery = '';
+  String _chartSyncMessage = '';
   List<AccountHeadListRow> _headRows = const [];
   List<AccountSubHeadListRow> _subHeadRows = const [];
   List<AccountHeadOption> _chartRows = const [];
@@ -32,13 +38,24 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_handleTabChanged);
     _loadAll();
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_handleTabChanged);
+    _tabController.dispose();
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _handleTabChanged() {
+    final nextIndex = _tabController.index;
+    if (_activeTabIndex == nextIndex) return;
+    if (!mounted) return;
+    setState(() => _activeTabIndex = nextIndex);
   }
 
   Future<void> _loadAll() async {
@@ -72,6 +89,74 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
         content: Text(text),
       ),
     );
+  }
+
+  Future<int> _countPendingChartSyncRows() async {
+    final row = await DatabaseManager.instance.db.customSelect('''
+      SELECT
+        (SELECT COUNT(*) FROM AccountHeads WHERE COALESCE(IsSynced, 0) = 0) +
+        (SELECT COUNT(*) FROM AccountSubHeads WHERE COALESCE(IsSynced, 0) = 0) +
+        (SELECT COUNT(*) FROM ChartOfAccounts WHERE COALESCE(IsSynced, 0) = 0)
+          AS pending_count
+      ''').getSingle();
+    return int.tryParse('${row.data['pending_count'] ?? 0}') ?? 0;
+  }
+
+  Future<void> _syncChartChangesNow() async {
+    if (!mounted) return;
+    late final SyncViewModel syncVM;
+    try {
+      syncVM = context.read<SyncViewModel>();
+    } on ProviderNotFoundException {
+      _showMessage(
+        'Saved locally. Sync is not available on this screen.',
+        error: true,
+      );
+      return;
+    }
+
+    if (!syncVM.canSync) {
+      _showMessage(
+        'Saved locally. Sync is disabled until database import/package status is ready.',
+        error: true,
+      );
+      return;
+    }
+
+    setState(() {
+      _chartSyncing = true;
+      _chartSyncMessage = 'Uploading chart changes to server...';
+    });
+
+    try {
+      await syncVM.syncNowIfNeededSingleFlight(force: true, silent: false);
+      if (!mounted) return;
+
+      final pending = await _countPendingChartSyncRows();
+      if (!mounted) return;
+
+      if (pending == 0) {
+        _showMessage('Chart changes uploaded to server.');
+      } else {
+        _showMessage(
+          'Saved locally. $pending chart change${pending == 1 ? '' : 's'} still pending upload.',
+          error: true,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(
+        'Saved locally, but upload failed: ${_friendlyError(e)}',
+        error: true,
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _chartSyncing = false;
+          _chartSyncMessage = '';
+        });
+      }
+    }
   }
 
   String get _query => _searchQuery.trim().toLowerCase();
@@ -200,129 +285,6 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
     return true;
   }
 
-  Future<void> _openHeadEditor({AccountHeadListRow? existing}) async {
-    if (!_ensureCanEditChart()) return;
-
-    final formKey = GlobalKey<FormState>();
-    final nameController = TextEditingController(
-      text: existing?.accountHeadName ?? '',
-    );
-    var selectedBalance = (existing?.normalBalance.trim().isNotEmpty ?? false)
-        ? existing!.normalBalance
-        : 'Debit';
-    var saving = false;
-
-    try {
-      final saved = await showModalBottomSheet<bool>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (sheetContext) {
-          return StatefulBuilder(
-            builder: (sheetContext, setSheetState) {
-              Future<void> save() async {
-                if (!(formKey.currentState?.validate() ?? false)) return;
-                setSheetState(() => saving = true);
-                try {
-                  if (existing == null) {
-                    await _repo.createAccountHeadRow(
-                      accountHeadName: nameController.text,
-                      normalBalance: selectedBalance,
-                    );
-                  } else {
-                    await _repo.updateAccountHeadRow(
-                      accountHeadId: existing.accountHeadId,
-                      accountHeadName: nameController.text,
-                      normalBalance: selectedBalance,
-                    );
-                  }
-                  if (sheetContext.mounted) {
-                    Navigator.of(sheetContext).pop(true);
-                  }
-                } catch (e) {
-                  _showMessage(_friendlyError(e), error: true);
-                  if (sheetContext.mounted) {
-                    setSheetState(() => saving = false);
-                  }
-                }
-              }
-
-              return _EditorSheetFrame(
-                title: existing == null ? 'Add Account Head' : 'Edit Head',
-                subtitle:
-                    'Define top-level accounting groups like Assets, Expenses, Equity, Liability, and Revenue.',
-                icon: Icons.account_tree_rounded,
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      TextFormField(
-                        controller: nameController,
-                        textInputAction: TextInputAction.next,
-                        decoration: _fieldDecoration(
-                          label: 'Account Head Name',
-                          icon: Icons.badge_rounded,
-                          hint: 'Assets',
-                        ),
-                        validator: (value) => (value?.trim().isEmpty ?? true)
-                            ? 'Account head name is required'
-                            : null,
-                      ),
-                      const SizedBox(height: 14),
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedBalance,
-                        isExpanded: true,
-                        decoration: _fieldDecoration(
-                          label: 'Normal Balance',
-                          icon: Icons.balance_rounded,
-                        ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'Debit',
-                            child: Text('Debit'),
-                          ),
-                          DropdownMenuItem(
-                            value: 'Credit',
-                            child: Text('Credit'),
-                          ),
-                        ],
-                        onChanged: saving
-                            ? null
-                            : (value) {
-                                if (value == null) return;
-                                setSheetState(() => selectedBalance = value);
-                              },
-                      ),
-                      const SizedBox(height: 18),
-                      _SheetPrimaryButton(
-                        label: existing == null
-                            ? 'Create Account Head'
-                            : 'Save Account Head',
-                        icon: Icons.check_circle_rounded,
-                        saving: saving,
-                        onPressed: save,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          );
-        },
-      );
-
-      if (saved == true) {
-        await _loadAll();
-        _showMessage(
-          existing == null ? 'Account head created.' : 'Account head updated.',
-        );
-      }
-    } finally {
-      nameController.dispose();
-    }
-  }
-
   Future<void> _openSubHeadEditor({AccountSubHeadListRow? existing}) async {
     if (!_ensureCanEditChart()) return;
     if (_headRows.isEmpty) {
@@ -351,6 +313,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
       text: existing?.accountSubHeadName ?? '',
     );
     var saving = false;
+    var sheetActive = true;
 
     if (!mounted) {
       codeController.dispose();
@@ -363,142 +326,168 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (sheetContext) {
-          return StatefulBuilder(
-            builder: (sheetContext, setSheetState) {
-              Future<void> save() async {
-                if (!(formKey.currentState?.validate() ?? false)) return;
-                setSheetState(() => saving = true);
-                try {
-                  if (existing == null) {
-                    await _repo.createAccountSubHead(
-                      accountHeadId: selectedHeadId,
-                      accountSubHeadName: nameController.text,
-                      code: codeController.text,
-                    );
-                  } else {
-                    await _repo.updateAccountSubHead(
-                      accountSubHeadId: existing.accountSubHeadId,
-                      accountHeadId: selectedHeadId,
-                      accountSubHeadName: nameController.text,
-                      code: codeController.text,
+        builder: (_) {
+          return ScaffoldMessenger(
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: StatefulBuilder(
+                builder: (sheetContext, setSheetState) {
+                  void showSheetMessage(String text, {bool error = false}) {
+                    if (!sheetContext.mounted) return;
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: error
+                            ? const Color(0xFFB3261E)
+                            : _kChartBlue,
+                        content: Text(text),
+                      ),
                     );
                   }
-                  if (sheetContext.mounted) {
-                    Navigator.of(sheetContext).pop(true);
-                  }
-                } catch (e) {
-                  _showMessage(_friendlyError(e), error: true);
-                  if (sheetContext.mounted) {
-                    setSheetState(() => saving = false);
-                  }
-                }
-              }
 
-              return _EditorSheetFrame(
-                title: existing == null ? 'Add Sub Head' : 'Edit Sub Head',
-                subtitle:
-                    'Create clean account categories under the right head.',
-                icon: Icons.category_rounded,
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      DropdownButtonFormField<int>(
-                        initialValue: selectedHeadId,
-                        isExpanded: true,
-                        decoration: _fieldDecoration(
-                          label: 'Account Head',
-                          icon: Icons.account_tree_rounded,
-                        ),
-                        items: _headRows
-                            .map(
-                              (head) => DropdownMenuItem<int>(
-                                value: head.accountHeadId,
-                                child: Text(head.accountHeadName),
-                              ),
-                            )
-                            .toList(growable: false),
-                        onChanged: saving
-                            ? null
-                            : (value) {
-                                if (value == null) return;
-                                () async {
-                                  setSheetState(() => selectedHeadId = value);
-                                  if (existing != null &&
-                                      existing.accountHeadId == value &&
-                                      existing.code.trim().isNotEmpty) {
-                                    codeController.text = existing.code;
-                                    return;
-                                  }
-                                  final nextCode = await _repo
-                                      .getNextAccountSubHeadCode(
-                                        accountHeadId: value,
-                                        excludingAccountSubHeadId:
-                                            existing?.accountSubHeadId,
-                                      );
-                                  if (sheetContext.mounted) {
-                                    setSheetState(
-                                      () => codeController.text = nextCode,
-                                    );
-                                  }
-                                }();
-                              },
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: nameController,
-                        textInputAction: TextInputAction.next,
-                        decoration: _fieldDecoration(
-                          label: 'Sub Head Name',
-                          icon: Icons.badge_rounded,
-                          hint: 'Current Assets',
-                        ),
-                        validator: (value) => (value?.trim().isEmpty ?? true)
-                            ? 'Sub head name is required'
-                            : null,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: codeController,
-                        readOnly: true,
-                        textInputAction: TextInputAction.done,
-                        decoration:
-                            _fieldDecoration(
-                              label: 'Code',
-                              icon: Icons.code_rounded,
-                              hint: '01-01',
-                            ).copyWith(
-                              helperText:
-                                  'Auto-generated from account head code',
+                  Future<void> save() async {
+                    if (!(formKey.currentState?.validate() ?? false)) return;
+                    setSheetState(() => saving = true);
+                    try {
+                      if (existing == null) {
+                        await _repo.createAccountSubHead(
+                          accountHeadId: selectedHeadId,
+                          accountSubHeadName: nameController.text,
+                          code: codeController.text,
+                        );
+                      } else {
+                        await _repo.updateAccountSubHead(
+                          accountSubHeadId: existing.accountSubHeadId,
+                          accountHeadId: selectedHeadId,
+                          accountSubHeadName: nameController.text,
+                          code: codeController.text,
+                        );
+                      }
+                      showSheetMessage(
+                        existing == null
+                            ? 'Sub head created.'
+                            : 'Sub head updated.',
+                      );
+                      await Future.delayed(const Duration(milliseconds: 250));
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop(true);
+                      }
+                    } catch (e) {
+                      showSheetMessage(_friendlyError(e), error: true);
+                      if (sheetContext.mounted) {
+                        setSheetState(() => saving = false);
+                      }
+                    }
+                  }
+
+                  return _EditorSheetFrame(
+                    title: existing == null ? 'Add Sub Head' : 'Edit Sub Head',
+                    subtitle:
+                        'Create clean account categories under the right head.',
+                    icon: Icons.category_rounded,
+                    child: Form(
+                      key: formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<int>(
+                            initialValue: selectedHeadId,
+                            isExpanded: true,
+                            decoration: _fieldDecoration(
+                              label: 'Account Head',
+                              icon: Icons.account_tree_rounded,
                             ),
+                            items: _headRows
+                                .map(
+                                  (head) => DropdownMenuItem<int>(
+                                    value: head.accountHeadId,
+                                    child: Text(head.accountHeadName),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: saving
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    () async {
+                                      setSheetState(
+                                        () => selectedHeadId = value,
+                                      );
+                                      if (existing != null &&
+                                          existing.accountHeadId == value &&
+                                          existing.code.trim().isNotEmpty) {
+                                        codeController.text = existing.code;
+                                        return;
+                                      }
+                                      final nextCode = await _repo
+                                          .getNextAccountSubHeadCode(
+                                            accountHeadId: value,
+                                            excludingAccountSubHeadId:
+                                                existing?.accountSubHeadId,
+                                          );
+                                      if (sheetActive && sheetContext.mounted) {
+                                        setSheetState(
+                                          () => codeController.text = nextCode,
+                                        );
+                                      }
+                                    }();
+                                  },
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: nameController,
+                            textInputAction: TextInputAction.next,
+                            decoration: _fieldDecoration(
+                              label: 'Sub Head Name',
+                              icon: Icons.badge_rounded,
+                              hint: 'Current Assets',
+                            ),
+                            validator: (value) =>
+                                (value?.trim().isEmpty ?? true)
+                                ? 'Sub head name is required'
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: codeController,
+                            readOnly: true,
+                            textInputAction: TextInputAction.done,
+                            decoration:
+                                _fieldDecoration(
+                                  label: 'Code',
+                                  icon: Icons.code_rounded,
+                                  hint: '01-01',
+                                ).copyWith(
+                                  helperText:
+                                      'Auto-generated from account head code',
+                                ),
+                          ),
+                          const SizedBox(height: 18),
+                          _SheetPrimaryButton(
+                            label: existing == null
+                                ? 'Create Sub Head'
+                                : 'Save Sub Head',
+                            icon: Icons.check_circle_rounded,
+                            saving: saving,
+                            onPressed: save,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 18),
-                      _SheetPrimaryButton(
-                        label: existing == null
-                            ? 'Create Sub Head'
-                            : 'Save Sub Head',
-                        icon: Icons.check_circle_rounded,
-                        saving: saving,
-                        onPressed: save,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    ),
+                  );
+                },
+              ),
+            ),
           );
         },
       );
 
       if (saved == true) {
         await _loadAll();
-        _showMessage(
-          existing == null ? 'Sub head created.' : 'Sub head updated.',
-        );
+        await _syncChartChangesNow();
       }
     } finally {
+      sheetActive = false;
       codeController.dispose();
       nameController.dispose();
     }
@@ -545,6 +534,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
     );
     final codeController = TextEditingController(text: initialCode);
     var saving = false;
+    var sheetActive = true;
 
     if (!mounted) {
       nameController.dispose();
@@ -557,218 +547,246 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (sheetContext) {
-          return StatefulBuilder(
-            builder: (sheetContext, setSheetState) {
-              List<AccountSubHeadListRow> currentSubHeads() =>
-                  _subHeadsForHead(selectedHeadId);
-
-              Future<void> save() async {
-                if (!(formKey.currentState?.validate() ?? false)) return;
-                if (selectedSubHeadId <= 0) {
-                  _showMessage('Select a sub head first.', error: true);
-                  return;
-                }
-                setSheetState(() => saving = true);
-                try {
-                  if (existing == null) {
-                    await _repo.createChartAccount(
-                      chartAccountName: nameController.text,
-                      accountHeadId: selectedHeadId,
-                      accountSubHeadId: selectedSubHeadId,
-                      code: codeController.text,
-                    );
-                  } else {
-                    await _repo.updateChartAccount(
-                      chartOfAccountId: existing.accHeadId,
-                      chartAccountName: nameController.text,
-                      accountHeadId: selectedHeadId,
-                      accountSubHeadId: selectedSubHeadId,
-                      code: codeController.text,
+        builder: (_) {
+          return ScaffoldMessenger(
+            child: Scaffold(
+              backgroundColor: Colors.transparent,
+              body: StatefulBuilder(
+                builder: (sheetContext, setSheetState) {
+                  void showSheetMessage(String text, {bool error = false}) {
+                    if (!sheetContext.mounted) return;
+                    ScaffoldMessenger.of(sheetContext).showSnackBar(
+                      SnackBar(
+                        behavior: SnackBarBehavior.floating,
+                        backgroundColor: error
+                            ? const Color(0xFFB3261E)
+                            : _kChartBlue,
+                        content: Text(text),
+                      ),
                     );
                   }
-                  if (sheetContext.mounted) {
-                    Navigator.of(sheetContext).pop(true);
-                  }
-                } catch (e) {
-                  _showMessage(_friendlyError(e), error: true);
-                  if (sheetContext.mounted) {
-                    setSheetState(() => saving = false);
-                  }
-                }
-              }
 
-              final matchingSubHeads = currentSubHeads();
-              final safeSubHeadValue =
-                  matchingSubHeads.any(
-                    (row) => row.accountSubHeadId == selectedSubHeadId,
-                  )
-                  ? selectedSubHeadId
-                  : null;
+                  List<AccountSubHeadListRow> currentSubHeads() =>
+                      _subHeadsForHead(selectedHeadId);
 
-              return _EditorSheetFrame(
-                title: existing == null
-                    ? 'Add Chart Account'
-                    : 'Edit Chart Account',
-                subtitle:
-                    'Link the account to the correct financial group and category.',
-                icon: Icons.account_balance_wallet_rounded,
-                child: Form(
-                  key: formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      DropdownButtonFormField<int>(
-                        initialValue: selectedHeadId,
-                        isExpanded: true,
-                        decoration: _fieldDecoration(
-                          label: 'Account Head',
-                          icon: Icons.account_tree_rounded,
-                        ),
-                        items: _headRows
-                            .map(
-                              (head) => DropdownMenuItem<int>(
-                                value: head.accountHeadId,
-                                child: Text(head.accountHeadName),
-                              ),
-                            )
-                            .toList(growable: false),
-                        onChanged: saving
-                            ? null
-                            : (value) {
-                                if (value == null) return;
-                                () async {
-                                  final nextSubHeads = _subHeadsForHead(value);
-                                  final nextSubHeadId = nextSubHeads.isEmpty
-                                      ? 0
-                                      : nextSubHeads.first.accountSubHeadId;
-                                  setSheetState(() {
-                                    selectedHeadId = value;
-                                    selectedSubHeadId = nextSubHeadId;
-                                  });
-                                  final nextCode = await _repo
-                                      .getNextChartAccountCode(
-                                        accountSubHeadId: nextSubHeadId,
-                                        excludingChartOfAccountId:
-                                            existing?.accHeadId,
-                                      );
-                                  if (sheetContext.mounted) {
-                                    setSheetState(
-                                      () => codeController.text = nextCode,
-                                    );
-                                  }
-                                }();
-                              },
-                      ),
-                      const SizedBox(height: 14),
-                      DropdownButtonFormField<int>(
-                        key: ValueKey(
-                          'chart-subhead-$selectedHeadId-$safeSubHeadValue',
-                        ),
-                        initialValue: safeSubHeadValue,
-                        isExpanded: true,
-                        decoration: _fieldDecoration(
-                          label: 'Sub Head',
-                          icon: Icons.category_rounded,
-                        ),
-                        items: matchingSubHeads
-                            .map(
-                              (subHead) => DropdownMenuItem<int>(
-                                value: subHead.accountSubHeadId,
-                                child: Text(
-                                  subHead.code.isEmpty
-                                      ? subHead.accountSubHeadName
-                                      : '${subHead.code} - ${subHead.accountSubHeadName}',
-                                ),
-                              ),
-                            )
-                            .toList(growable: false),
-                        onChanged: saving
-                            ? null
-                            : (value) {
-                                if (value == null) return;
-                                () async {
-                                  setSheetState(
-                                    () => selectedSubHeadId = value,
-                                  );
-                                  if (existing != null &&
-                                      existing.accountSubHeadId == value &&
-                                      (existing.chartCode?.trim().isNotEmpty ??
-                                          false)) {
-                                    codeController.text = existing.chartCode!;
-                                    return;
-                                  }
-                                  final nextCode = await _repo
-                                      .getNextChartAccountCode(
-                                        accountSubHeadId: value,
-                                        excludingChartOfAccountId:
-                                            existing?.accHeadId,
-                                      );
-                                  if (sheetContext.mounted) {
-                                    setSheetState(
-                                      () => codeController.text = nextCode,
-                                    );
-                                  }
-                                }();
-                              },
-                        validator: (_) => matchingSubHeads.isEmpty
-                            ? 'Create a sub head for this account head first'
-                            : null,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: nameController,
-                        textInputAction: TextInputAction.next,
-                        decoration: _fieldDecoration(
-                          label: 'Chart Account Name',
-                          icon: Icons.badge_rounded,
-                          hint: 'Cash in Hand',
-                        ),
-                        validator: (value) => (value?.trim().isEmpty ?? true)
-                            ? 'Chart account name is required'
-                            : null,
-                      ),
-                      const SizedBox(height: 14),
-                      TextFormField(
-                        controller: codeController,
-                        readOnly: true,
-                        textInputAction: TextInputAction.done,
-                        decoration:
-                            _fieldDecoration(
-                              label: 'Chart Code',
-                              icon: Icons.code_rounded,
-                              hint: '01-01-001',
-                            ).copyWith(
-                              helperText: 'Auto-generated from sub-head code',
+                  Future<void> save() async {
+                    if (!(formKey.currentState?.validate() ?? false)) return;
+                    if (selectedSubHeadId <= 0) {
+                      showSheetMessage('Select a sub head first.', error: true);
+                      return;
+                    }
+                    setSheetState(() => saving = true);
+                    try {
+                      if (existing == null) {
+                        await _repo.createChartAccount(
+                          chartAccountName: nameController.text,
+                          accountHeadId: selectedHeadId,
+                          accountSubHeadId: selectedSubHeadId,
+                          code: codeController.text,
+                        );
+                      } else {
+                        await _repo.updateChartAccount(
+                          chartOfAccountId: existing.accHeadId,
+                          chartAccountName: nameController.text,
+                          accountHeadId: selectedHeadId,
+                          accountSubHeadId: selectedSubHeadId,
+                          code: codeController.text,
+                        );
+                      }
+                      showSheetMessage(
+                        existing == null
+                            ? 'Chart account created.'
+                            : 'Chart account updated.',
+                      );
+                      await Future.delayed(const Duration(milliseconds: 250));
+                      if (sheetContext.mounted) {
+                        Navigator.of(sheetContext).pop(true);
+                      }
+                    } catch (e) {
+                      showSheetMessage(_friendlyError(e), error: true);
+                      if (sheetContext.mounted) {
+                        setSheetState(() => saving = false);
+                      }
+                    }
+                  }
+
+                  final matchingSubHeads = currentSubHeads();
+                  final safeSubHeadValue =
+                      matchingSubHeads.any(
+                        (row) => row.accountSubHeadId == selectedSubHeadId,
+                      )
+                      ? selectedSubHeadId
+                      : null;
+
+                  return _EditorSheetFrame(
+                    title: existing == null
+                        ? 'Add Chart Account'
+                        : 'Edit Chart Account',
+                    subtitle:
+                        'Link the account to the correct financial group and category.',
+                    icon: Icons.account_balance_wallet_rounded,
+                    child: Form(
+                      key: formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          DropdownButtonFormField<int>(
+                            initialValue: selectedHeadId,
+                            isExpanded: true,
+                            decoration: _fieldDecoration(
+                              label: 'Account Head',
+                              icon: Icons.account_tree_rounded,
                             ),
+                            items: _headRows
+                                .map(
+                                  (head) => DropdownMenuItem<int>(
+                                    value: head.accountHeadId,
+                                    child: Text(head.accountHeadName),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: saving
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    () async {
+                                      final nextSubHeads = _subHeadsForHead(
+                                        value,
+                                      );
+                                      final nextSubHeadId = nextSubHeads.isEmpty
+                                          ? 0
+                                          : nextSubHeads.first.accountSubHeadId;
+                                      setSheetState(() {
+                                        selectedHeadId = value;
+                                        selectedSubHeadId = nextSubHeadId;
+                                      });
+                                      final nextCode = await _repo
+                                          .getNextChartAccountCode(
+                                            accountSubHeadId: nextSubHeadId,
+                                            excludingChartOfAccountId:
+                                                existing?.accHeadId,
+                                          );
+                                      if (sheetActive && sheetContext.mounted) {
+                                        setSheetState(
+                                          () => codeController.text = nextCode,
+                                        );
+                                      }
+                                    }();
+                                  },
+                          ),
+                          const SizedBox(height: 14),
+                          DropdownButtonFormField<int>(
+                            key: ValueKey(
+                              'chart-subhead-$selectedHeadId-$safeSubHeadValue',
+                            ),
+                            initialValue: safeSubHeadValue,
+                            isExpanded: true,
+                            decoration: _fieldDecoration(
+                              label: 'Sub Head',
+                              icon: Icons.category_rounded,
+                            ),
+                            items: matchingSubHeads
+                                .map(
+                                  (subHead) => DropdownMenuItem<int>(
+                                    value: subHead.accountSubHeadId,
+                                    child: Text(
+                                      subHead.code.isEmpty
+                                          ? subHead.accountSubHeadName
+                                          : '${subHead.code} - ${subHead.accountSubHeadName}',
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: saving
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    () async {
+                                      setSheetState(
+                                        () => selectedSubHeadId = value,
+                                      );
+                                      if (existing != null &&
+                                          existing.accountSubHeadId == value &&
+                                          (existing.chartCode
+                                                  ?.trim()
+                                                  .isNotEmpty ??
+                                              false)) {
+                                        codeController.text =
+                                            existing.chartCode!;
+                                        return;
+                                      }
+                                      final nextCode = await _repo
+                                          .getNextChartAccountCode(
+                                            accountSubHeadId: value,
+                                            excludingChartOfAccountId:
+                                                existing?.accHeadId,
+                                          );
+                                      if (sheetActive && sheetContext.mounted) {
+                                        setSheetState(
+                                          () => codeController.text = nextCode,
+                                        );
+                                      }
+                                    }();
+                                  },
+                            validator: (_) => matchingSubHeads.isEmpty
+                                ? 'Create a sub head for this account head first'
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: nameController,
+                            textInputAction: TextInputAction.next,
+                            decoration: _fieldDecoration(
+                              label: 'Chart Account Name',
+                              icon: Icons.badge_rounded,
+                              hint: 'Cash in Hand',
+                            ),
+                            validator: (value) =>
+                                (value?.trim().isEmpty ?? true)
+                                ? 'Chart account name is required'
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            controller: codeController,
+                            readOnly: true,
+                            textInputAction: TextInputAction.done,
+                            decoration:
+                                _fieldDecoration(
+                                  label: 'Chart Code',
+                                  icon: Icons.code_rounded,
+                                  hint: '01-01-001',
+                                ).copyWith(
+                                  helperText:
+                                      'Auto-generated from sub-head code',
+                                ),
+                          ),
+                          const SizedBox(height: 18),
+                          _SheetPrimaryButton(
+                            label: existing == null
+                                ? 'Create Chart Account'
+                                : 'Save Chart Account',
+                            icon: Icons.check_circle_rounded,
+                            saving: saving,
+                            onPressed: save,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 18),
-                      _SheetPrimaryButton(
-                        label: existing == null
-                            ? 'Create Chart Account'
-                            : 'Save Chart Account',
-                        icon: Icons.check_circle_rounded,
-                        saving: saving,
-                        onPressed: save,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                    ),
+                  );
+                },
+              ),
+            ),
           );
         },
       );
 
       if (saved == true) {
         await _loadAll();
-        _showMessage(
-          existing == null
-              ? 'Chart account created.'
-              : 'Chart account updated.',
-        );
+        await _syncChartChangesNow();
       }
     } finally {
+      sheetActive = false;
       nameController.dispose();
       codeController.dispose();
     }
@@ -818,24 +836,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
       await _repo.deleteAccountSubHead(accountSubHeadId: row.accountSubHeadId);
       await _loadAll();
       _showMessage('Sub head deleted.');
-    } catch (e) {
-      _showMessage(_friendlyError(e), error: true);
-    }
-  }
-
-  Future<void> _deleteHead(AccountHeadListRow row) async {
-    if (!_ensureCanEditChart()) return;
-    final confirmed = await _confirmDelete(
-      title: 'Delete Account Head?',
-      message:
-          'This will remove "${row.accountHeadName}" from active account heads. Linked sub heads must be moved first.',
-    );
-    if (!confirmed) return;
-
-    try {
-      await _repo.deleteAccountHeadRow(accountHeadId: row.accountHeadId);
-      await _loadAll();
-      _showMessage('Account head deleted.');
+      await _syncChartChangesNow();
     } catch (e) {
       _showMessage(_friendlyError(e), error: true);
     }
@@ -854,6 +855,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
       await _repo.deleteChartAccount(chartOfAccountId: row.accHeadId);
       await _loadAll();
       _showMessage('Chart account deleted.');
+      await _syncChartChangesNow();
     } catch (e) {
       _showMessage(_friendlyError(e), error: true);
     }
@@ -865,87 +867,115 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
     final subHeads = _filteredSubHeads;
     final charts = _filteredCharts;
 
-    return DefaultTabController(
-      length: 3,
-      child: Builder(
-        builder: (context) => Scaffold(
-          backgroundColor: _kChartBg,
-          floatingActionButton: _buildFloatingActionButton(context),
-          body: Stack(
-            children: [
-              const _ChartBackdrop(),
-              SafeArea(
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-                      child: _buildHeader(
-                        heads: heads.length,
-                        subHeads: subHeads.length,
-                        charts: charts.length,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                      child: _buildSearchField(),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-                      child: _buildTabs(),
-                    ),
-                    Expanded(
-                      child: TabBarView(
-                        children: [
-                          _buildHeadsTab(heads),
-                          _buildSubHeadsTab(subHeads),
-                          _buildChartAccountsTab(charts),
-                        ],
-                      ),
-                    ),
-                  ],
+    return Scaffold(
+      backgroundColor: _kChartBg,
+      floatingActionButton: _buildFloatingActionButton(),
+      body: Stack(
+        children: [
+          const _ChartBackdrop(),
+          SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
+                  child: _buildHeader(
+                    heads: heads.length,
+                    subHeads: subHeads.length,
+                    charts: charts.length,
+                  ),
                 ),
-              ),
-            ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                  child: _buildSearchField(),
+                ),
+                if (_chartSyncing)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                    child: _buildChartSyncBanner(),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
+                  child: _buildTabs(),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildHeadsTab(heads),
+                      _buildSubHeadsTab(subHeads),
+                      _buildChartAccountsTab(charts),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
 
-  Widget _buildFloatingActionButton(BuildContext context) {
-    final controller = DefaultTabController.of(context);
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        final index = controller.index;
-        final isHead = index == 0;
-        final isSubHead = index == 1;
-        final label = isHead
-            ? 'Add Head'
-            : isSubHead
-            ? 'Add Sub Head'
-            : 'Add Chart';
-        final icon = isHead
-            ? Icons.account_tree_rounded
-            : isSubHead
+  Widget _buildChartSyncBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFD7E6F5)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x121862A3),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.6,
+              color: _kChartBlue,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              _chartSyncMessage.isEmpty
+                  ? 'Uploading chart changes to server...'
+                  : _chartSyncMessage,
+              style: const TextStyle(
+                color: Color(0xFF163A5F),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloatingActionButton() {
+    if (_activeTabIndex == 0) return const SizedBox.shrink();
+
+    final isSubHead = _activeTabIndex == 1;
+    return FloatingActionButton.extended(
+      heroTag: 'chart_of_accounts_action',
+      elevation: 8,
+      backgroundColor: _kChartBlueDark,
+      foregroundColor: Colors.white,
+      icon: Icon(
+        isSubHead
             ? Icons.add_business_rounded
-            : Icons.account_balance_wallet_rounded;
-        return FloatingActionButton.extended(
-          heroTag: 'chart_of_accounts_action',
-          elevation: 8,
-          backgroundColor: _kChartBlueDark,
-          foregroundColor: Colors.white,
-          icon: Icon(icon),
-          label: Text(label),
-          onPressed: _busy
-              ? null
-              : () => isHead
-                    ? _openHeadEditor()
-                    : isSubHead
-                    ? _openSubHeadEditor()
-                    : _openChartEditor(),
-        );
-      },
+            : Icons.account_balance_wallet_rounded,
+      ),
+      label: Text(isSubHead ? 'Add Sub Head' : 'Add Chart'),
+      onPressed: _busy
+          ? null
+          : () => isSubHead ? _openSubHeadEditor() : _openChartEditor(),
     );
   }
 
@@ -1100,6 +1130,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
         border: Border.all(color: const Color(0xFFDDECF8)),
       ),
       child: TabBar(
+        controller: _tabController,
         dividerColor: Colors.transparent,
         indicatorSize: TabBarIndicatorSize.tab,
         indicator: BoxDecoration(
@@ -1132,44 +1163,36 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
           ? 'Account heads will appear here after sync or database setup.'
           : 'Clear search to view all account heads.',
       onRefresh: _loadAll,
-      children: rows
-          .map(
-            (row) => _DataCard(
-              avatar: _initials(row.accountHeadName),
-              title: row.accountHeadName,
-              subtitle: 'AccountHeadID ${row.accountHeadId}',
-              icon: Icons.account_tree_outlined,
-              actions: [
-                _CardActionButton(
-                  tooltip: 'Edit account head',
-                  icon: Icons.edit_rounded,
-                  color: _kChartBlue,
-                  onPressed: () => _openHeadEditor(existing: row),
-                ),
-                _CardActionButton(
-                  tooltip: 'Delete account head',
-                  icon: Icons.delete_outline_rounded,
-                  color: const Color(0xFFB3261E),
-                  onPressed: () => _deleteHead(row),
-                ),
-              ],
-              chips: [
-                _InfoChip(
-                  icon: Icons.tag_rounded,
-                  label: 'ID ${row.accountHeadId}',
-                ),
-                _InfoChip(
-                  icon: row.normalBalance.toLowerCase() == 'credit'
-                      ? Icons.arrow_upward_rounded
-                      : Icons.arrow_downward_rounded,
-                  label: row.normalBalance.isEmpty
-                      ? 'Normal Balance'
-                      : row.normalBalance,
-                ),
-              ],
-            ),
-          )
-          .toList(growable: false),
+      children: [
+        const _LockedHeadsNotice(),
+        ...rows.map(
+          (row) => _DataCard(
+            avatar: _initials(row.accountHeadName),
+            title: row.accountHeadName,
+            subtitle: 'AccountHeadID ${row.accountHeadId}',
+            icon: Icons.account_tree_outlined,
+            actions: const [],
+            chips: [
+              const _InfoChip(
+                icon: Icons.lock_outline_rounded,
+                label: 'Locked',
+              ),
+              _InfoChip(
+                icon: Icons.tag_rounded,
+                label: 'ID ${row.accountHeadId}',
+              ),
+              _InfoChip(
+                icon: row.normalBalance.toLowerCase() == 'credit'
+                    ? Icons.arrow_upward_rounded
+                    : Icons.arrow_downward_rounded,
+                label: row.normalBalance.isEmpty
+                    ? 'Normal Balance'
+                    : row.normalBalance,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1476,6 +1499,67 @@ class _GroupCard extends StatelessWidget {
   }
 }
 
+class _LockedHeadsNotice extends StatelessWidget {
+  const _LockedHeadsNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF3FD),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFCFE2F5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.8),
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: const Icon(
+              Icons.lock_outline_rounded,
+              color: _kChartBlue,
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Heads are locked',
+                  style: TextStyle(
+                    color: Color(0xFF0D4F88),
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                SizedBox(height: 3),
+                Text(
+                  'Top-level heads are master data. Add or edit Sub Heads and Chart Accounts instead.',
+                  style: TextStyle(
+                    color: Color(0xFF315B7E),
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChartSubHeadSection extends StatelessWidget {
   final String title;
   final String countLabel;
@@ -1683,13 +1767,18 @@ class _EditorSheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final maxHeight = MediaQuery.of(context).size.height * 0.92;
 
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOutCubic,
-      padding: EdgeInsets.only(bottom: bottomInset),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        FocusManager.instance.primaryFocus?.unfocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!context.mounted) return;
+          Navigator.of(context).pop();
+        });
+      },
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Container(
@@ -1706,6 +1795,7 @@ class _EditorSheetFrame extends StatelessWidget {
             ],
           ),
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(18, 10, 18, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,

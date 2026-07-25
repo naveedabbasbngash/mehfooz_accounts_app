@@ -77,6 +77,7 @@ class AccPersonal extends Table {
   String get tableName => 'Acc_Personal';
 
   IntColumn get accId => integer().named('AccID')();
+  TextColumn get accountGuid => text().named('AccountGuid').nullable()();
 
   TextColumn get rDate => text().named('RDate').nullable()();
   TextColumn get name => text().named('Name').nullable()();
@@ -133,6 +134,7 @@ class CompanyTable extends Table {
   String get tableName => 'Company';
 
   IntColumn get companyId => integer().named('CompanyID')();
+  TextColumn get companyGuid => text().named('CompanyGuid').nullable()();
   TextColumn get companyName => text().named('CompanyName').nullable()();
   TextColumn get remarks => text().named('Remarks').nullable()();
 
@@ -173,8 +175,13 @@ class AccountPCurrencyAssignment extends Table {
   String get tableName => 'Account_PCurrencyAssignment';
 
   IntColumn get regId => integer().named('RegID')();
+  TextColumn get assignmentGuid => text().named('AssignmentGuid').nullable()();
   IntColumn get accId => integer().named('AccID').nullable()();
   IntColumn get accountTypeId => integer().named('AccountTypeID').nullable()();
+  IntColumn get companyId => integer().named('CompanyID').nullable()();
+  IntColumn get isDeleted => integer().named('IsDeleted').nullable()();
+  IntColumn get isSynced => integer().named('IsSynced').nullable()();
+  TextColumn get updatedAt => text().named('UpdatedAt').nullable()();
 
   @override
   Set<Column> get primaryKey => {regId};

@@ -224,6 +224,12 @@ class DrawerMenu extends StatelessWidget {
                 context: context,
               ),
               _menuItem(
+                title: "Compliance",
+                icon: Icons.verified_user_outlined,
+                index: 8,
+                context: context,
+              ),
+              _menuItem(
                 title: "Transaction",
                 icon: Icons.search,
                 index: 1,

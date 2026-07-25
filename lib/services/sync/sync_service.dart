@@ -15,6 +15,9 @@ class SyncBatch {
   final String checksum;
 
   final List<Map<String, dynamic>> companies;
+  final List<Map<String, dynamic>> accountHeads;
+  final List<Map<String, dynamic>> accountSubHeads;
+  final List<Map<String, dynamic>> chartOfAccounts;
   final List<Map<String, dynamic>> accPersonal;
   final List<Map<String, dynamic>> accTypes;
   final List<Map<String, dynamic>> assignments;
@@ -24,6 +27,9 @@ class SyncBatch {
     required this.batchId,
     required this.checksum,
     required this.companies,
+    required this.accountHeads,
+    required this.accountSubHeads,
+    required this.chartOfAccounts,
     required this.accPersonal,
     required this.accTypes,
     required this.assignments,
@@ -32,6 +38,9 @@ class SyncBatch {
 
   bool get isEmpty =>
       companies.isEmpty &&
+      accountHeads.isEmpty &&
+      accountSubHeads.isEmpty &&
+      chartOfAccounts.isEmpty &&
       accPersonal.isEmpty &&
       accTypes.isEmpty &&
       assignments.isEmpty &&
@@ -41,6 +50,9 @@ class SyncBatch {
   String toString() {
     return 'SyncBatch(batchId=$batchId, checksum=$checksum, '
         'companies=${companies.length}, '
+        'accountHeads=${accountHeads.length}, '
+        'accountSubHeads=${accountSubHeads.length}, '
+        'chartOfAccounts=${chartOfAccounts.length}, '
         'accPersonal=${accPersonal.length}, '
         'accTypes=${accTypes.length}, '
         'assignments=${assignments.length}, '
@@ -368,15 +380,21 @@ class SyncService {
     required String email,
     required String deviceId,
     int? companyId,
+    String? companyGuid,
   }) async {
+    final cleanCompanyGuid = companyGuid?.trim();
     _log.i(
       '📡 [SyncService] pullForMobile email=$email '
-      'device_id=$deviceId company_id=${companyId ?? '(auto)'}',
+      'device_id=$deviceId company_id=${companyId ?? '(auto)'} '
+      'company_guid=${cleanCompanyGuid?.isNotEmpty == true ? cleanCompanyGuid : '(auto)'}',
     );
 
     final payload = <String, dynamic>{'email': email, 'device_id': deviceId};
     if ((companyId ?? 0) > 0) {
       payload['company_id'] = companyId;
+    }
+    if (cleanCompanyGuid != null && cleanCompanyGuid.isNotEmpty) {
+      payload['company_guid'] = cleanCompanyGuid;
     }
     final uris = _withoutLegacyAdmin(
       _orderedWithPreferred(
@@ -506,6 +524,9 @@ class SyncService {
       }
 
       final companies = readList('companies');
+      final accountHeads = readList('account_heads');
+      final accountSubHeads = readList('account_sub_heads');
+      final chartOfAccounts = readList('chart_of_accounts');
       final accPersonal = readList('acc_personal');
       final accTypes = readList('acc_types');
       final assignments = readList('assignments');
@@ -515,6 +536,9 @@ class SyncService {
         batchId: batchId,
         checksum: checksum,
         companies: companies,
+        accountHeads: accountHeads,
+        accountSubHeads: accountSubHeads,
+        chartOfAccounts: chartOfAccounts,
         accPersonal: accPersonal,
         accTypes: accTypes,
         assignments: assignments,
@@ -545,6 +569,7 @@ class SyncService {
     required int companyId,
     required String deviceId,
     required List<Map<String, dynamic>> changes,
+    String? companyGuid,
     String? requestId,
   }) async {
     if (changes.isEmpty) {
@@ -571,6 +596,11 @@ class SyncService {
       'requestId': requestId ?? 'req_${Ulid.generate()}',
       'changes': changes,
     };
+    final cleanCompanyGuid = companyGuid?.trim();
+    if (cleanCompanyGuid != null && cleanCompanyGuid.isNotEmpty) {
+      payload['companyGuid'] = cleanCompanyGuid;
+      payload['company_guid'] = cleanCompanyGuid;
+    }
 
     Exception? lastError;
     for (final endpoint in _mkbPushEndpoints) {
@@ -661,7 +691,9 @@ class SyncService {
           'msg=${resolvedMsg.isEmpty ? '(empty)' : resolvedMsg}',
         );
         if (failedErrors.isNotEmpty) {
-          _log.w('📥 [HTTP] push errors endpoint=$endpoint errors=$failedErrors');
+          _log.w(
+            '📥 [HTTP] push errors endpoint=$endpoint errors=$failedErrors',
+          );
         }
 
         return SyncPushResponse(
@@ -1047,6 +1079,7 @@ class SyncService {
     required String deviceId,
     String? knownCursor,
     int? companyId,
+    String? companyGuid,
   }) async {
     final cleanKnownCursor = knownCursor?.trim();
     final payload = <String, dynamic>{'email': email, 'device_id': deviceId};
@@ -1055,6 +1088,10 @@ class SyncService {
     }
     if ((companyId ?? 0) > 0) {
       payload['company_id'] = companyId;
+    }
+    final cleanCompanyGuid = companyGuid?.trim();
+    if (cleanCompanyGuid != null && cleanCompanyGuid.isNotEmpty) {
+      payload['company_guid'] = cleanCompanyGuid;
     }
 
     final uris = _withoutLegacyAdmin(
@@ -1143,11 +1180,8 @@ class SyncService {
       final cursor = pickCursor(data).isNotEmpty
           ? pickCursor(data)
           : pickCursor(body);
-      final hasUpdatesHint = pickBool(data, const [
-            'has_updates',
-            'changed',
-            'needs_sync',
-          ]) ??
+      final hasUpdatesHint =
+          pickBool(data, const ['has_updates', 'changed', 'needs_sync']) ??
           pickBool(body, const ['has_updates', 'changed', 'needs_sync']);
 
       bool hasUpdates;

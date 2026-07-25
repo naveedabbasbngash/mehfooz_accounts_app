@@ -201,6 +201,10 @@ class SyncViewModel extends ChangeNotifier {
     return true;
   }
 
+  /// True when sync is running in pull-only mode because sync.write is missing.
+  bool get isPushPermissionMissing =>
+      _skipPushDueToMissingSyncWrite || _isMissingSyncWriteError(lastMessage);
+
   String get syncBlockReason {
     if (!_adminCanSync) return "🔒 Sync disabled by admin";
     if (!_hasLocalImport) return "🟠 Import local database to enable sync";
@@ -423,8 +427,8 @@ class SyncViewModel extends ChangeNotifier {
   }
 
   Future<int?> _activeCompanyIdForSync() async {
-    final currentCompanyId = GlobalState.instance.companyId;
-    if (currentCompanyId > 0) {
+    final currentCompanyId = GlobalState.instance.selectedCompanyId;
+    if (currentCompanyId != null && currentCompanyId > 0) {
       return currentCompanyId;
     }
 
@@ -433,6 +437,13 @@ class SyncViewModel extends ChangeNotifier {
 
     final fallbackCompanyId = await repo.resolveDefaultCompanyId();
     return fallbackCompanyId > 0 ? fallbackCompanyId : null;
+  }
+
+  Future<String?> _activeCompanyGuidForSync(int? companyId) async {
+    final repo = syncRepo;
+    if (repo == null || (companyId ?? 0) <= 0) return null;
+    final guid = await repo.resolveCompanyGuidForId(companyId!);
+    return guid.trim().isEmpty ? null : guid.trim();
   }
 
   Future<void> _logLocalSyncSnapshot(
@@ -530,6 +541,7 @@ class SyncViewModel extends ChangeNotifier {
       _log.w("⚠️ sync.write still missing → skipping push, pull-only mode");
     }
 
+    final activeCompanyGuid = await _activeCompanyGuidForSync(activeCompanyId);
     final pullSw = Stopwatch()..start();
     SyncBatch? batch;
     Object? pullError;
@@ -539,6 +551,7 @@ class SyncViewModel extends ChangeNotifier {
           email: email,
           deviceId: deviceId,
           companyId: activeCompanyId,
+          companyGuid: activeCompanyGuid,
         );
         pullError = null;
         break;
@@ -633,6 +646,9 @@ class SyncViewModel extends ChangeNotifier {
 
     final repo = syncRepo!;
     final defaultCompanyId = await repo.resolveDefaultCompanyId();
+    final unsyncedCompanies = await repo.collectUnsyncedCompanyChanges(
+      limit: 200,
+    );
 
     final unsyncedCurrencies = await repo.collectUnsyncedAccTypeChanges(
       fallbackCompanyId: defaultCompanyId,
@@ -709,6 +725,11 @@ class SyncViewModel extends ChangeNotifier {
     );
 
     final companyIdsToEnsure = <int>{};
+    for (final row in unsyncedCompanies) {
+      if (row.companyId > 0) {
+        companyIdsToEnsure.add(row.companyId);
+      }
+    }
     for (final row in pendingAccounts) {
       if (row.companyId > 0) {
         companyIdsToEnsure.add(row.companyId);
@@ -722,12 +743,16 @@ class SyncViewModel extends ChangeNotifier {
     if (pendingCurrencies.isNotEmpty || pendingHeads.isNotEmpty) {
       companyIdsToEnsure.add(defaultCompanyId);
     }
-    final pendingCompanies =
+    final snapshotCompanies =
         (forceMasterSnapshot || companyIdsToEnsure.isNotEmpty)
         ? await repo.collectCompanySnapshotChanges(
             companyIds: companyIdsToEnsure.toList(growable: false),
           )
         : const <PendingMasterChange>[];
+    final pendingCompanies = _mergeUniqueMasterRows(
+      unsyncedCompanies,
+      snapshotCompanies,
+    );
 
     final baseAssignments = <PendingMasterChange>[];
     final seenAssignments = <String>{};
@@ -923,6 +948,15 @@ class SyncViewModel extends ChangeNotifier {
     return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 
+  String? _companyGuidFromPayload(Map<String, dynamic> payload) {
+    final data = payload['data'];
+    final value = data is Map
+        ? (data['CompanyGuid'] ?? data['company_guid'])
+        : (payload['CompanyGuid'] ?? payload['company_guid']);
+    final guid = value?.toString().trim() ?? '';
+    return guid.isEmpty ? null : guid;
+  }
+
   Future<_PushSummary> _pushCompanySnapshots({
     required String token,
     required int tenantId,
@@ -951,6 +985,9 @@ class SyncViewModel extends ChangeNotifier {
         rows: rows,
         companyIdOf: (_) => envelopeCompanyId,
         payloadOf: (r) => r.payload,
+        onSuccess: (_, successRows) async {
+          await syncRepo?.markCompanySnapshotsSynced(successRows);
+        },
         nonBlocking: true,
       );
 
@@ -1001,6 +1038,9 @@ class SyncViewModel extends ChangeNotifier {
       final companyId = entry.key;
       final companyRows = entry.value;
       for (final chunk in _chunked(companyRows, 150)) {
+        final chunkCompanyGuid = _companyGuidFromPayload(
+          payloadOf(chunk.first),
+        );
         SyncPushResponse? response;
         Object? chunkError;
         for (int attempt = 0; attempt < _pushMaxRetries; attempt++) {
@@ -1011,6 +1051,7 @@ class SyncViewModel extends ChangeNotifier {
               companyId: companyId,
               deviceId: deviceId,
               changes: chunk.map(payloadOf).toList(growable: false),
+              companyGuid: chunkCompanyGuid,
               requestId: 'push_${label}_${Ulid.generate()}_$companyId',
             );
             break;
@@ -1276,11 +1317,15 @@ class SyncViewModel extends ChangeNotifier {
       if (hasLocalChanges) return true;
 
       final activeCompanyId = await _activeCompanyIdForSync();
+      final activeCompanyGuid = await _activeCompanyGuidForSync(
+        activeCompanyId,
+      );
       final status = await syncService.peekRemoteCursorStatus(
         email: _userEmail!,
         deviceId: await _ensureDeviceId(),
         knownCursor: _lastRemoteCursor,
         companyId: activeCompanyId,
+        companyGuid: activeCompanyGuid,
       );
 
       if (!status.hasUpdates) {

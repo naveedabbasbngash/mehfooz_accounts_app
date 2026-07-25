@@ -1,13 +1,17 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:flutter/cupertino.dart';
 import '../data/local/app_database.dart';
 import '../model/account_head_option.dart';
+import '../model/audit_trail_row.dart';
 import '../model/balance_currency_ui.dart';
 import '../model/balance_matrix_result.dart';
 import '../model/balance_row.dart';
 import '../model/last_credit_row.dart';
 import '../model/pending_currency_summary.dart';
 import '../model/pending_group_row.dart';
+import '../model/period_lock_row.dart';
 import '../model/pending_status_summary.dart';
 import '../model/subgroup_balance_row.dart';
 import '../model/tx_filter.dart';
@@ -22,6 +26,22 @@ class _ActorMeta {
   final bool isAdminOrOwner;
 
   const _ActorMeta({this.userId, this.userEmail, this.isAdminOrOwner = false});
+}
+
+class _PeriodLockMatch {
+  final int periodLockId;
+  final String startDate;
+  final String endDate;
+  final String lockMode;
+  final String reason;
+
+  const _PeriodLockMatch({
+    required this.periodLockId,
+    required this.startDate,
+    required this.endDate,
+    required this.lockMode,
+    required this.reason,
+  });
 }
 
 class TransactionEditData {
@@ -63,8 +83,15 @@ class TransactionsRepository {
   static const String _cashPairLinkPrefix = 'cash_pair:';
   static const int _maxSafeVoucherNo = 2147483640;
   String? _cachedDeviceId;
+  String? _lastComplianceNotice;
 
   TransactionsRepository(this.db);
+
+  String? consumeLastComplianceNotice() {
+    final value = _lastComplianceNotice;
+    _lastComplianceNotice = null;
+    return value;
+  }
 
   int _toInt(dynamic value) {
     if (value is int) return value;
@@ -255,6 +282,132 @@ class TransactionsRepository {
     }
   }
 
+  String _toDateOnly(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
+  }
+
+  String _normalizeDateText(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+    if (value.length >= 10) {
+      final firstTen = value.substring(0, 10);
+      if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(firstTen)) {
+        return firstTen;
+      }
+    }
+    final parsed = DateTime.tryParse(value.replaceFirst(' ', 'T'));
+    if (parsed == null) return '';
+    return _toDateOnly(parsed);
+  }
+
+  String _normalizeLockMode(String rawMode) {
+    final upper = rawMode.trim().toUpperCase();
+    return upper == 'SOFT' ? 'SOFT' : 'HARD';
+  }
+
+  bool _canBypassPeriodLock({
+    required _ActorMeta actor,
+    required _PeriodLockMatch lock,
+  }) {
+    return actor.isAdminOrOwner && _normalizeLockMode(lock.lockMode) == 'SOFT';
+  }
+
+  Future<_PeriodLockMatch?> _findActivePeriodLockForDate({
+    required int companyId,
+    required String dateText,
+  }) async {
+    if (companyId <= 0 || dateText.isEmpty) return null;
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT PeriodLockID, StartDate, EndDate, COALESCE(Reason, '') AS Reason
+            , COALESCE(NULLIF(TRIM(LockMode), ''), 'HARD') AS LockMode
+          FROM PeriodLocks
+          WHERE CompanyID = ?1
+            AND COALESCE(IsActive, 1) = 1
+            AND date(?2) BETWEEN date(StartDate) AND date(EndDate)
+          ORDER BY PeriodLockID DESC
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withString(dateText),
+          ],
+        )
+        .get();
+    if (rows.isEmpty) return null;
+    final data = rows.first.data;
+    return _PeriodLockMatch(
+      periodLockId: _toInt(data['PeriodLockID']),
+      startDate: _toText(data['StartDate']),
+      endDate: _toText(data['EndDate']),
+      lockMode: _normalizeLockMode(_toText(data['LockMode'])),
+      reason: _toText(data['Reason']),
+    );
+  }
+
+  Future<bool> isDateLocked({
+    required int companyId,
+    required DateTime date,
+  }) async {
+    final lock = await _findActivePeriodLockForDate(
+      companyId: companyId,
+      dateText: _toDateOnly(date),
+    );
+    return lock != null;
+  }
+
+  Future<DateTime> _nextOpenDate({
+    required int companyId,
+    DateTime? preferred,
+  }) async {
+    var cursor = (preferred ?? DateTime.now()).toUtc();
+    for (var i = 0; i < 366; i++) {
+      final locked = await isDateLocked(companyId: companyId, date: cursor);
+      if (!locked) {
+        return DateTime.utc(cursor.year, cursor.month, cursor.day);
+      }
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    throw Exception(
+      'No open accounting date available for the next 12 months. Unlock a period first.',
+    );
+  }
+
+  Future<void> _appendAuditTrail({
+    required String entityType,
+    required String action,
+    String entityId = '',
+    String message = '',
+    int? companyId,
+    Map<String, dynamic>? payload,
+    _ActorMeta? actor,
+  }) async {
+    final resolvedActor = actor ?? await _resolveCurrentActor();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    await db.customStatement(
+      '''
+      INSERT INTO AuditTrail
+        (CompanyID, EntityType, EntityID, Action, Message, Payload, ActorUserID, ActorEmail, CreatedAt)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      ''',
+      [
+        companyId,
+        entityType,
+        entityId.isEmpty ? null : entityId,
+        action,
+        message.isEmpty ? null : message,
+        payload == null ? null : jsonEncode(payload),
+        resolvedActor.userId,
+        resolvedActor.userEmail,
+        nowIso,
+      ],
+    );
+  }
+
   bool _canMutateTransactionRow(TransactionsPData row, _ActorMeta actor) {
     if (actor.isAdminOrOwner) return true;
     final actorId = actor.userId;
@@ -360,61 +513,13 @@ class TransactionsRepository {
     return _toInt(row.data['next_id']).clamp(1, _maxSafeVoucherNo).toInt();
   }
 
-  Future<void> _assertUniqueAccountHeadRow({
-    required int accountHeadId,
-    required String name,
-  }) async {
-    final rows = await db
-        .customSelect(
-          '''
-          SELECT AccountHeadID
-          FROM AccountHeads
-          WHERE COALESCE(IsDeleted, 0) = 0
-            AND AccountHeadID <> ?1
-            AND LOWER(TRIM(AccountHeadName)) = LOWER(TRIM(?2))
-          LIMIT 1
-          ''',
-          variables: [
-            Variable.withInt(accountHeadId),
-            Variable.withString(name),
-          ],
-          readsFrom: {db.accountHeads},
-        )
-        .get();
-    if (rows.isNotEmpty) {
-      throw ArgumentError('Account head already exists with the same name.');
-    }
-  }
-
   Future<int> createAccountHeadRow({
     required String accountHeadName,
     required String normalBalance,
   }) async {
-    final normalized = accountHeadName.trim();
-    final cleanBalance = normalBalance.trim();
-    if (normalized.isEmpty) {
-      throw ArgumentError('Account head name cannot be empty.');
-    }
-    if (cleanBalance.isEmpty) {
-      throw ArgumentError('Normal balance is required.');
-    }
-    await _assertUniqueAccountHeadRow(accountHeadId: 0, name: normalized);
-
-    final newId = await getNextAccountHeadRowId();
-    await db.customStatement(
-      '''
-      INSERT INTO AccountHeads
-        (AccountHeadID, AccountHeadName, NormalBalance, IsDeleted, IsSynced, UpdatedAt)
-      VALUES (?1, ?2, ?3, 0, 0, ?4)
-      ''',
-      [
-        newId,
-        normalized,
-        cleanBalance,
-        DateTime.now().toUtc().toIso8601String(),
-      ],
+    throw UnsupportedError(
+      'Account heads are locked master data. Add sub heads or chart accounts instead.',
     );
-    return newId;
   }
 
   Future<void> updateAccountHeadRow({
@@ -422,69 +527,14 @@ class TransactionsRepository {
     required String accountHeadName,
     required String normalBalance,
   }) async {
-    final normalized = accountHeadName.trim();
-    final cleanBalance = normalBalance.trim();
-    if (accountHeadId <= 0) {
-      throw ArgumentError('Account head id is required.');
-    }
-    if (normalized.isEmpty) {
-      throw ArgumentError('Account head name cannot be empty.');
-    }
-    if (cleanBalance.isEmpty) {
-      throw ArgumentError('Normal balance is required.');
-    }
-    await _assertUniqueAccountHeadRow(
-      accountHeadId: accountHeadId,
-      name: normalized,
-    );
-
-    await db.customStatement(
-      '''
-      UPDATE AccountHeads
-      SET AccountHeadName = ?1,
-          NormalBalance = ?2,
-          IsSynced = 0,
-          UpdatedAt = ?3
-      WHERE AccountHeadID = ?4
-      ''',
-      [
-        normalized,
-        cleanBalance,
-        DateTime.now().toUtc().toIso8601String(),
-        accountHeadId,
-      ],
+    throw UnsupportedError(
+      'Account heads are locked master data. Edit sub heads or chart accounts instead.',
     );
   }
 
   Future<void> deleteAccountHeadRow({required int accountHeadId}) async {
-    if (accountHeadId <= 0) return;
-    final usage = await db
-        .customSelect(
-          '''
-          SELECT COUNT(*) AS total
-          FROM AccountSubHeads
-          WHERE AccountHeadID = ?1
-            AND COALESCE(IsDeleted, 0) = 0
-          ''',
-          variables: [Variable.withInt(accountHeadId)],
-          readsFrom: {db.accountSubHeads},
-        )
-        .getSingle();
-    if (_toInt(usage.data['total']) > 0) {
-      throw ArgumentError(
-        'Cannot delete account head because sub heads are linked to it.',
-      );
-    }
-
-    await db.customStatement(
-      '''
-      UPDATE AccountHeads
-      SET IsDeleted = 1,
-          IsSynced = 0,
-          UpdatedAt = ?1
-      WHERE AccountHeadID = ?2
-      ''',
-      [DateTime.now().toUtc().toIso8601String(), accountHeadId],
+    throw UnsupportedError(
+      'Account heads are locked master data and cannot be deleted.',
     );
   }
 
@@ -714,6 +764,18 @@ class TransactionsRepository {
         DateTime.now().toUtc().toIso8601String(),
       ],
     );
+    await _appendAuditTrail(
+      entityType: 'account_sub_head',
+      action: 'create',
+      entityId: newId.toString(),
+      message: 'Account sub head created',
+      payload: {
+        'accountSubHeadId': newId,
+        'accountHeadId': accountHeadId,
+        'name': normalized,
+        'code': resolvedCode,
+      },
+    );
     return newId;
   }
 
@@ -781,6 +843,18 @@ class TransactionsRepository {
         accountSubHeadId,
       ],
     );
+    await _appendAuditTrail(
+      entityType: 'account_sub_head',
+      action: 'update',
+      entityId: accountSubHeadId.toString(),
+      message: 'Account sub head updated',
+      payload: {
+        'accountSubHeadId': accountSubHeadId,
+        'accountHeadId': accountHeadId,
+        'name': normalized,
+        'code': resolvedCode,
+      },
+    );
   }
 
   Future<void> deleteAccountSubHead({required int accountSubHeadId}) async {
@@ -812,6 +886,13 @@ class TransactionsRepository {
       WHERE AccountSubHeadID = ?2
       ''',
       [DateTime.now().toUtc().toIso8601String(), accountSubHeadId],
+    );
+    await _appendAuditTrail(
+      entityType: 'account_sub_head',
+      action: 'delete',
+      entityId: accountSubHeadId.toString(),
+      message: 'Account sub head deleted',
+      payload: {'accountSubHeadId': accountSubHeadId},
     );
   }
 
@@ -970,6 +1051,28 @@ class TransactionsRepository {
     if (accountSubHeadId <= 0) {
       throw ArgumentError('Account sub head is required.');
     }
+    final validMap = await db
+        .customSelect(
+          '''
+          SELECT 1
+          FROM AccountSubHeads
+          WHERE AccountSubHeadID = ?1
+            AND AccountHeadID = ?2
+            AND COALESCE(IsDeleted, 0) = 0
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(accountSubHeadId),
+            Variable.withInt(accountHeadId),
+          ],
+          readsFrom: {db.accountSubHeads},
+        )
+        .get();
+    if (validMap.isEmpty) {
+      throw ArgumentError(
+        'Selected sub head does not belong to the selected head.',
+      );
+    }
     final resolvedCode = cleanCode.isEmpty
         ? await getNextChartAccountCode(accountSubHeadId: accountSubHeadId)
         : cleanCode;
@@ -996,6 +1099,19 @@ class TransactionsRepository {
         resolvedCode.isEmpty ? null : resolvedCode,
         DateTime.now().toUtc().toIso8601String(),
       ],
+    );
+    await _appendAuditTrail(
+      entityType: 'chart_account',
+      action: 'create',
+      entityId: newId.toString(),
+      message: 'Chart account created',
+      payload: {
+        'chartOfAccountId': newId,
+        'name': normalized,
+        'accountHeadId': accountHeadId,
+        'accountSubHeadId': accountSubHeadId,
+        'code': resolvedCode,
+      },
     );
     return newId;
   }
@@ -1059,6 +1175,28 @@ class TransactionsRepository {
     if (accountSubHeadId <= 0) {
       throw ArgumentError('Account sub head is required.');
     }
+    final validMap = await db
+        .customSelect(
+          '''
+          SELECT 1
+          FROM AccountSubHeads
+          WHERE AccountSubHeadID = ?1
+            AND AccountHeadID = ?2
+            AND COALESCE(IsDeleted, 0) = 0
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(accountSubHeadId),
+            Variable.withInt(accountHeadId),
+          ],
+          readsFrom: {db.accountSubHeads},
+        )
+        .get();
+    if (validMap.isEmpty) {
+      throw ArgumentError(
+        'Selected sub head does not belong to the selected head.',
+      );
+    }
     final resolvedCode = cleanCode.isEmpty
         ? await getNextChartAccountCode(
             accountSubHeadId: accountSubHeadId,
@@ -1091,6 +1229,19 @@ class TransactionsRepository {
         DateTime.now().toUtc().toIso8601String(),
         chartOfAccountId,
       ],
+    );
+    await _appendAuditTrail(
+      entityType: 'chart_account',
+      action: 'update',
+      entityId: chartOfAccountId.toString(),
+      message: 'Chart account updated',
+      payload: {
+        'chartOfAccountId': chartOfAccountId,
+        'name': normalized,
+        'accountHeadId': accountHeadId,
+        'accountSubHeadId': accountSubHeadId,
+        'code': resolvedCode,
+      },
     );
   }
 
@@ -1128,6 +1279,225 @@ class TransactionsRepository {
       ''',
       [DateTime.now().toUtc().toIso8601String(), chartOfAccountId],
     );
+    await _appendAuditTrail(
+      entityType: 'chart_account',
+      action: 'delete',
+      entityId: chartOfAccountId.toString(),
+      message: 'Chart of account deleted',
+      payload: {'chartOfAccountId': chartOfAccountId},
+    );
+  }
+
+  // =========================================================
+  // COMPLIANCE (Period Locks + Audit Trail)
+  // =========================================================
+  Future<List<PeriodLockRow>> getPeriodLocks({required int companyId}) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT
+            PeriodLockID,
+            CompanyID,
+            StartDate,
+            EndDate,
+            COALESCE(NULLIF(TRIM(LockMode), ''), 'HARD') AS LockMode,
+            COALESCE(Reason, '') AS Reason,
+            COALESCE(IsActive, 1) AS IsActive,
+            COALESCE(CreatedAt, '') AS CreatedAt,
+            CreatedByUserID,
+            CreatedByEmail
+          FROM PeriodLocks
+          WHERE CompanyID = ?1
+          ORDER BY COALESCE(IsActive, 1) DESC, PeriodLockID DESC
+          ''',
+          variables: [Variable.withInt(companyId)],
+        )
+        .get();
+
+    return rows
+        .map(
+          (r) => PeriodLockRow(
+            periodLockId: _toInt(r.data['PeriodLockID']),
+            companyId: _toInt(r.data['CompanyID']),
+            startDate: _toText(r.data['StartDate']),
+            endDate: _toText(r.data['EndDate']),
+            lockMode: _normalizeLockMode(_toText(r.data['LockMode'])),
+            reason: _toText(r.data['Reason']),
+            isActive: _toInt(r.data['IsActive']) == 1,
+            createdAt: _toText(r.data['CreatedAt']),
+            createdByUserId: _toInt(r.data['CreatedByUserID']) <= 0
+                ? null
+                : _toInt(r.data['CreatedByUserID']),
+            createdByEmail: _toText(r.data['CreatedByEmail']).isEmpty
+                ? null
+                : _toText(r.data['CreatedByEmail']),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<int> createPeriodLock({
+    required int companyId,
+    required DateTime startDate,
+    required DateTime endDate,
+    String lockMode = 'HARD',
+    String reason = '',
+  }) async {
+    if (companyId <= 0) {
+      throw ArgumentError('Company is required for period lock.');
+    }
+    final from = DateTime.utc(startDate.year, startDate.month, startDate.day);
+    final to = DateTime.utc(endDate.year, endDate.month, endDate.day);
+    if (from.isAfter(to)) {
+      throw ArgumentError('Start date cannot be after end date.');
+    }
+
+    final fromText = _toDateOnly(from);
+    final toText = _toDateOnly(to);
+    final normalizedLockMode = _normalizeLockMode(lockMode);
+    final overlap = await db
+        .customSelect(
+          '''
+          SELECT PeriodLockID
+          FROM PeriodLocks
+          WHERE CompanyID = ?1
+            AND COALESCE(IsActive, 1) = 1
+            AND date(StartDate) <= date(?2)
+            AND date(EndDate) >= date(?3)
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withString(toText),
+            Variable.withString(fromText),
+          ],
+        )
+        .get();
+    if (overlap.isNotEmpty) {
+      throw ArgumentError('A lock already exists for the selected date range.');
+    }
+
+    final actor = await _resolveCurrentActor();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    await db.customStatement(
+      '''
+      INSERT INTO PeriodLocks
+        (CompanyID, StartDate, EndDate, LockMode, Reason, IsActive, CreatedByUserID, CreatedByEmail, CreatedAt, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, ?5, 1, ?6, ?7, ?8, ?9)
+      ''',
+      [
+        companyId,
+        fromText,
+        toText,
+        normalizedLockMode,
+        reason.trim().isEmpty ? null : reason.trim(),
+        actor.userId,
+        actor.userEmail,
+        nowIso,
+        nowIso,
+      ],
+    );
+
+    final idRow = await db
+        .customSelect('SELECT last_insert_rowid() AS id')
+        .getSingle();
+    final periodLockId = _toInt(idRow.data['id']);
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'period_lock',
+      action: 'create',
+      entityId: periodLockId.toString(),
+      message: 'Period lock created',
+      actor: actor,
+      payload: {
+        'periodLockId': periodLockId,
+        'startDate': fromText,
+        'endDate': toText,
+        'lockMode': normalizedLockMode,
+        'reason': reason.trim(),
+      },
+    );
+    return periodLockId;
+  }
+
+  Future<void> deactivatePeriodLock({
+    required int periodLockId,
+    required int companyId,
+    String reason = '',
+  }) async {
+    if (periodLockId <= 0) return;
+    final actor = await _resolveCurrentActor();
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    await db.customStatement(
+      '''
+      UPDATE PeriodLocks
+      SET IsActive = 0,
+          UpdatedAt = ?1
+      WHERE PeriodLockID = ?2
+        AND CompanyID = ?3
+      ''',
+      [nowIso, periodLockId, companyId],
+    );
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'period_lock',
+      action: 'deactivate',
+      entityId: periodLockId.toString(),
+      actor: actor,
+      message: 'Period lock deactivated',
+      payload: {'periodLockId': periodLockId, 'reason': reason.trim()},
+    );
+  }
+
+  Future<List<AuditTrailRow>> getAuditTrailRows({
+    required int companyId,
+    int limit = 300,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT
+            AuditID,
+            CompanyID,
+            COALESCE(EntityType, '') AS EntityType,
+            COALESCE(EntityID, '') AS EntityID,
+            COALESCE(Action, '') AS Action,
+            COALESCE(Message, '') AS Message,
+            COALESCE(Payload, '') AS Payload,
+            ActorUserID,
+            ActorEmail,
+            COALESCE(CreatedAt, '') AS CreatedAt
+          FROM AuditTrail
+          WHERE CompanyID = ?1 OR CompanyID IS NULL
+          ORDER BY AuditID DESC
+          LIMIT ?2
+          ''',
+          variables: [Variable.withInt(companyId), Variable.withInt(limit)],
+        )
+        .get();
+
+    return rows
+        .map(
+          (r) => AuditTrailRow(
+            auditId: _toInt(r.data['AuditID']),
+            companyId: _toInt(r.data['CompanyID']) <= 0
+                ? null
+                : _toInt(r.data['CompanyID']),
+            entityType: _toText(r.data['EntityType']),
+            entityId: _toText(r.data['EntityID']),
+            action: _toText(r.data['Action']),
+            message: _toText(r.data['Message']),
+            payload: _toText(r.data['Payload']),
+            actorUserId: _toInt(r.data['ActorUserID']) <= 0
+                ? null
+                : _toInt(r.data['ActorUserID']),
+            actorEmail: _toText(r.data['ActorEmail']).isEmpty
+                ? null
+                : _toText(r.data['ActorEmail']),
+            createdAt: _toText(r.data['CreatedAt']),
+          ),
+        )
+        .toList(growable: false);
   }
 
   // =========================================================
@@ -1391,10 +1761,11 @@ class TransactionsRepository {
               UpdatedAt = ?1,
               CompanyID = COALESCE(CompanyID, ?2),
               AccID = ?3,
-              AccountTypeID = ?4
-          WHERE RegID = ?5
+              AccountTypeID = ?4,
+              AssignmentGuid = COALESCE(NULLIF(TRIM(AssignmentGuid), ''), ?5)
+          WHERE RegID = ?6
           ''',
-          [nowIso, resolvedCompanyId, accId, accTypeId, regId],
+          [nowIso, resolvedCompanyId, accId, accTypeId, Ulid.generate(), regId],
         );
       }
       if (resolvedCompanyId != null && resolvedCompanyId > 0) {
@@ -1414,10 +1785,10 @@ class TransactionsRepository {
     await db.customStatement(
       '''
       INSERT INTO Account_PCurrencyAssignment
-        (RegID, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
-      VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+        (RegID, AssignmentGuid, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
+      VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6)
       ''',
-      [nextRegId, accId, accTypeId, resolvedCompanyId, nowIso],
+      [nextRegId, Ulid.generate(), accId, accTypeId, resolvedCompanyId, nowIso],
     );
 
     if (resolvedCompanyId != null && resolvedCompanyId > 0) {
@@ -1552,6 +1923,35 @@ class TransactionsRepository {
     );
   }
 
+  Future<void> _assertUniqueAccountNameForCompany({
+    required int companyId,
+    required String accountName,
+    int excludingAccId = 0,
+  }) async {
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT AccID
+          FROM Acc_Personal
+          WHERE COALESCE(IsDeleted, 0) = 0
+            AND CompanyID = ?1
+            AND AccID <> ?2
+            AND LOWER(TRIM(COALESCE(Name, ''))) = LOWER(TRIM(?3))
+          LIMIT 1
+          ''',
+          variables: [
+            Variable.withInt(companyId),
+            Variable.withInt(excludingAccId),
+            Variable.withString(accountName),
+          ],
+          readsFrom: {db.accPersonal},
+        )
+        .get();
+    if (rows.isNotEmpty) {
+      throw ArgumentError('An account with this name already exists.');
+    }
+  }
+
   Future<int> createAccountForCompany({
     required int companyId,
     required String name,
@@ -1562,18 +1962,46 @@ class TransactionsRepository {
   }) async {
     final nextAccId = await getNextAccId();
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      throw ArgumentError('Account name cannot be empty.');
+    }
+    await _assertUniqueAccountNameForCompany(
+      companyId: companyId,
+      accountName: normalizedName,
+    );
+    if (chartOfAccountId != null && chartOfAccountId > 0) {
+      final validChart = await db
+          .customSelect(
+            '''
+            SELECT 1
+            FROM ChartOfAccounts
+            WHERE ChartOfAccountID = ?1
+              AND COALESCE(IsDeleted, 0) = 0
+            LIMIT 1
+            ''',
+            variables: [Variable.withInt(chartOfAccountId)],
+            readsFrom: {db.chartOfAccounts},
+          )
+          .get();
+      if (validChart.isEmpty) {
+        throw ArgumentError('Selected chart account is not valid.');
+      }
+    }
     final normalizedHead = normalizeHeadNameForAccount(
       accountName: name,
       requestedHeadName: statusg,
     );
+    final actor = await _resolveCurrentActor();
 
     await db
         .into(db.accPersonal)
         .insert(
           AccPersonalCompanion(
             accId: Value(nextAccId),
+            accountGuid: Value(Ulid.generate()),
             rDate: Value(nowIso),
-            name: Value(name.trim()),
+            name: Value(normalizedName),
             phone: Value(phone?.trim().isEmpty == true ? null : phone?.trim()),
             address: Value(
               address?.trim().isEmpty == true ? null : address?.trim(),
@@ -1587,6 +2015,20 @@ class TransactionsRepository {
           ),
         );
 
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'account_personal',
+      action: 'create',
+      entityId: nextAccId.toString(),
+      actor: actor,
+      message: 'Account created',
+      payload: {
+        'accId': nextAccId,
+        'name': normalizedName,
+        'chartOfAccountId': chartOfAccountId,
+      },
+    );
+
     return nextAccId;
   }
 
@@ -1599,16 +2041,61 @@ class TransactionsRepository {
     int? chartOfAccountId,
   }) async {
     final nowIso = DateTime.now().toUtc().toIso8601String();
+    final companyRows = await db
+        .customSelect(
+          '''
+          SELECT CompanyID
+          FROM Acc_Personal
+          WHERE AccID = ?1
+          LIMIT 1
+          ''',
+          variables: [Variable.withInt(accId)],
+          readsFrom: {db.accPersonal},
+        )
+        .get();
+    final companyId = companyRows.isEmpty
+        ? 0
+        : _toInt(companyRows.first.data['CompanyID']);
+    final normalizedName = name.trim();
+    if (normalizedName.isEmpty) {
+      throw ArgumentError('Account name cannot be empty.');
+    }
+    if (companyId > 0) {
+      await _assertUniqueAccountNameForCompany(
+        companyId: companyId,
+        accountName: normalizedName,
+        excludingAccId: accId,
+      );
+    }
+    if (chartOfAccountId != null && chartOfAccountId > 0) {
+      final validChart = await db
+          .customSelect(
+            '''
+            SELECT 1
+            FROM ChartOfAccounts
+            WHERE ChartOfAccountID = ?1
+              AND COALESCE(IsDeleted, 0) = 0
+            LIMIT 1
+            ''',
+            variables: [Variable.withInt(chartOfAccountId)],
+            readsFrom: {db.chartOfAccounts},
+          )
+          .get();
+      if (validChart.isEmpty) {
+        throw ArgumentError('Selected chart account is not valid.');
+      }
+    }
     final normalizedHead = normalizeHeadNameForAccount(
       accountName: name,
       requestedHeadName: statusg,
     );
+    final actor = await _resolveCurrentActor();
 
     await (db.update(
       db.accPersonal,
     )..where((tbl) => tbl.accId.equals(accId))).write(
       AccPersonalCompanion(
-        name: Value(name.trim()),
+        name: Value(normalizedName),
         phone: Value(phone?.trim().isEmpty == true ? null : phone?.trim()),
         address: Value(
           address?.trim().isEmpty == true ? null : address?.trim(),
@@ -1618,6 +2105,20 @@ class TransactionsRepository {
         isSynced: const Value(0),
         updatedAt: Value(nowIso),
       ),
+    );
+
+    await _appendAuditTrail(
+      companyId: companyId > 0 ? companyId : null,
+      entityType: 'account_personal',
+      action: 'update',
+      entityId: accId.toString(),
+      actor: actor,
+      message: 'Account updated',
+      payload: {
+        'accId': accId,
+        'name': normalizedName,
+        'chartOfAccountId': chartOfAccountId,
+      },
     );
   }
 
@@ -1692,10 +2193,18 @@ class TransactionsRepository {
                   UpdatedAt = ?1,
                   CompanyID = ?2,
                   AccID = ?3,
-                  AccountTypeID = ?4
-              WHERE RegID = ?5
+                  AccountTypeID = ?4,
+                  AssignmentGuid = COALESCE(NULLIF(TRIM(AssignmentGuid), ''), ?5)
+              WHERE RegID = ?6
               ''',
-              [nowIso, resolvedCompanyId, accId, accTypeId, regId],
+              [
+                nowIso,
+                resolvedCompanyId,
+                accId,
+                accTypeId,
+                Ulid.generate(),
+                regId,
+              ],
             );
             continue;
           }
@@ -1705,10 +2214,10 @@ class TransactionsRepository {
         await db.customStatement(
           '''
           INSERT INTO Account_PCurrencyAssignment
-            (RegID, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
-          VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+            (RegID, AssignmentGuid, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
+          VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6)
           ''',
-          [regId, accId, accTypeId, resolvedCompanyId, nowIso],
+          [regId, Ulid.generate(), accId, accTypeId, resolvedCompanyId, nowIso],
         );
       }
 
@@ -1744,6 +2253,98 @@ class TransactionsRepository {
     if (rows.isEmpty) return null;
     final companyId = _toInt(rows.first.data['CompanyID']);
     return companyId > 0 ? companyId : null;
+  }
+
+  Future<int> _postReversalEntriesForRows({
+    required int companyId,
+    required List<TransactionsPData> rows,
+    required _ActorMeta actor,
+    required String reason,
+  }) async {
+    if (rows.isEmpty) return 0;
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final openDate = await _nextOpenDate(companyId: companyId);
+    final openDateText = _toDateOnly(openDate);
+
+    final sortedRows = [...rows]..sort((a, b) => a.voucherNo - b.voucherNo);
+    final pairLink = (sortedRows.first.others ?? '').trim();
+    final isPair =
+        pairLink.startsWith(_cashPairLinkPrefix) && sortedRows.length == 2;
+    final mainOriginal = _mainVoucherFromPairLink(pairLink);
+
+    var inserted = 0;
+    await db.transaction(() async {
+      int? newMainVoucher;
+      int? newReverseVoucher;
+      String? newPairLink;
+      if (isPair) {
+        newMainVoucher = await _reserveUniqueVoucherNo(userId: actor.userId);
+        newReverseVoucher = await _reserveUniqueVoucherNo(
+          minValue: newMainVoucher,
+          userId: actor.userId,
+        );
+        newPairLink = '$_cashPairLinkPrefix$newMainVoucher:$newReverseVoucher';
+      }
+
+      for (final row in sortedRows) {
+        final isMain =
+            !isPair || (mainOriginal != null && row.voucherNo == mainOriginal);
+        final targetVoucher = isPair
+            ? (isMain ? newMainVoucher! : newReverseVoucher!)
+            : await _reserveUniqueVoucherNo(userId: actor.userId);
+        final reverseIsCredit = (row.dr ?? 0) > 0;
+        final sourceRef = (mainOriginal ?? sortedRows.first.voucherNo)
+            .toString();
+
+        inserted += await db
+            .into(db.transactionsP)
+            .insert(
+              TransactionsPCompanion(
+                voucherNo: Value(targetVoucher),
+                txGuid: Value(_generateTxGuid()),
+                tDate: Value(openDateText),
+                accId: Value(row.accId),
+                accTypeId: Value(row.accTypeId),
+                description: Value('REVERSAL of V${row.voucherNo}: $reason'),
+                quality: Value(row.quality),
+                rate: Value(row.rate),
+                weight: Value(row.weight == null ? null : -row.weight!),
+                dr: Value(row.cr ?? 0.0),
+                cr: Value(row.dr ?? 0.0),
+                status: Value(reverseIsCredit ? 'jama' : 'banam'),
+                st: Value(reverseIsCredit ? 'jamakatha' : 'banamkatha'),
+                currencyStatus: const Value('csave'),
+                cashStatus: Value(row.cashStatus),
+                companyId: Value(companyId),
+                userId: Value(actor.userId),
+                wName: Value(actor.userEmail),
+                msgNo: Value('REV-$sourceRef'),
+                msgNo2: Value('REV-$sourceRef'),
+                hwls: Value(sourceRef),
+                others: Value(newPairLink),
+                isSynced: const Value(0),
+                updatedAt: Value(nowIso),
+                isDeleted: const Value(0),
+              ),
+              mode: InsertMode.insertOrReplace,
+            );
+      }
+    });
+
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'transaction',
+      action: 'reversal_posted',
+      entityId: rows.first.voucherNo.toString(),
+      actor: actor,
+      message: 'Reversal posted for locked-period transaction',
+      payload: {
+        'sourceVouchers': rows.map((e) => e.voucherNo).toList(growable: false),
+        'reason': reason,
+        'reversalDate': openDateText,
+      },
+    );
+    return inserted;
   }
 
   Future<List<String>> searchQualitySuggestions({
@@ -1820,8 +2421,33 @@ class TransactionsRepository {
     }
 
     final nowIso = DateTime.now().toUtc().toIso8601String();
-    final txDateIso =
-        '${txDate.year.toString().padLeft(4, '0')}-${txDate.month.toString().padLeft(2, '0')}-${txDate.day.toString().padLeft(2, '0')}';
+    final txDateIso = _toDateOnly(txDate);
+    final lock = await _findActivePeriodLockForDate(
+      companyId: companyId,
+      dateText: txDateIso,
+    );
+    if (lock != null) {
+      if (_canBypassPeriodLock(actor: actor, lock: lock)) {
+        await _appendAuditTrail(
+          companyId: companyId,
+          entityType: 'period_lock',
+          action: 'override_insert',
+          entityId: lock.periodLockId.toString(),
+          actor: actor,
+          message: 'SOFT lock overridden by admin/owner for insert',
+          payload: {
+            'lockMode': lock.lockMode,
+            'lockedStart': lock.startDate,
+            'lockedEnd': lock.endDate,
+            'txDate': txDateIso,
+          },
+        );
+      } else {
+        throw Exception(
+          'Date $txDateIso is locked (${lock.startDate} to ${lock.endDate}). Post in an open period.',
+        );
+      }
+    }
     final mainTxGuid = _generateTxGuid();
 
     var mainVoucher = 0;
@@ -1924,6 +2550,24 @@ class TransactionsRepository {
             );
       }
     });
+
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'transaction',
+      action: 'create',
+      entityId: mainVoucher.toString(),
+      actor: actor,
+      message: 'Transaction created',
+      payload: {
+        'voucherNo': mainVoucher,
+        'isCash': isCash,
+        'accId': accId,
+        'accTypeId': accTypeId,
+        'debit': debit,
+        'credit': credit,
+        'date': txDateIso,
+      },
+    );
   }
 
   Future<TransactionEditData?> getTransactionForEditing({
@@ -2070,6 +2714,106 @@ class TransactionsRepository {
     var mainTxGuid = (mainExisting.txGuid ?? '').trim();
     if (mainTxGuid.isEmpty) {
       mainTxGuid = 'legacy-$companyId-$mainVoucher';
+    }
+
+    final sourceDate = _normalizeDateText(mainExisting.tDate ?? '');
+    final sourceLock = await _findActivePeriodLockForDate(
+      companyId: companyId,
+      dateText: sourceDate,
+    );
+    if (sourceLock != null) {
+      if (_canBypassPeriodLock(actor: actor, lock: sourceLock)) {
+        await _appendAuditTrail(
+          companyId: companyId,
+          entityType: 'period_lock',
+          action: 'override_update_source',
+          entityId: sourceLock.periodLockId.toString(),
+          actor: actor,
+          message: 'SOFT lock overridden by admin/owner for update source date',
+          payload: {
+            'lockMode': sourceLock.lockMode,
+            'lockedStart': sourceLock.startDate,
+            'lockedEnd': sourceLock.endDate,
+            'sourceDate': sourceDate,
+            'voucherNo': mainVoucher,
+          },
+        );
+      } else {
+        final reversalCount = await _postReversalEntriesForRows(
+          companyId: companyId,
+          rows: existingRows,
+          actor: actor,
+          reason: 'Locked period update',
+        );
+        final openDate = await _nextOpenDate(
+          companyId: companyId,
+          preferred: txDate,
+        );
+        await insertTransactionEntry(
+          companyId: companyId,
+          accId: accId,
+          accTypeId: accTypeId,
+          txDate: openDate,
+          description: cleanDescription,
+          entryReference: cleanReference,
+          debit: debit,
+          credit: credit,
+          isCash: isCash,
+          cashAccId: cashAccId,
+          quality: cleanQuality,
+          rate: rate,
+          weight: weight,
+        );
+        final openDateText = _toDateOnly(openDate);
+        _lastComplianceNotice =
+            'Locked period detected (${sourceLock.startDate} to ${sourceLock.endDate}). '
+            'Posted reversal and replacement in open date $openDateText.';
+        await _appendAuditTrail(
+          companyId: companyId,
+          entityType: 'transaction',
+          action: 'update_reversed',
+          entityId: mainVoucher.toString(),
+          actor: actor,
+          message: 'Locked-period update converted into reversal + replacement',
+          payload: {
+            'sourceVoucher': mainVoucher,
+            'sourceDate': sourceDate,
+            'replacementDate': openDateText,
+            'reversalEntries': reversalCount,
+          },
+        );
+        return reversalCount + 1;
+      }
+    }
+
+    final targetDateText = _toDateOnly(txDate);
+    final targetLock = await _findActivePeriodLockForDate(
+      companyId: companyId,
+      dateText: targetDateText,
+    );
+    if (targetLock != null) {
+      if (_canBypassPeriodLock(actor: actor, lock: targetLock)) {
+        await _appendAuditTrail(
+          companyId: companyId,
+          entityType: 'period_lock',
+          action: 'override_update_target',
+          entityId: targetLock.periodLockId.toString(),
+          actor: actor,
+          message: 'SOFT lock overridden by admin/owner for update target date',
+          payload: {
+            'lockMode': targetLock.lockMode,
+            'lockedStart': targetLock.startDate,
+            'lockedEnd': targetLock.endDate,
+            'targetDate': targetDateText,
+            'voucherNo': mainVoucher,
+          },
+        );
+      } else {
+        throw Exception(
+          'Cannot move voucher to locked date $targetDateText '
+          '(${targetLock.startDate} to ${targetLock.endDate}).',
+        );
+      }
     }
 
     var affected = 0;
@@ -2247,6 +2991,24 @@ class TransactionsRepository {
       }
     });
 
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'transaction',
+      action: 'update',
+      entityId: mainVoucher.toString(),
+      actor: actor,
+      message: 'Transaction updated',
+      payload: {
+        'voucherNo': mainVoucher,
+        'isCash': isCash,
+        'accId': accId,
+        'accTypeId': accTypeId,
+        'debit': debit,
+        'credit': credit,
+        'date': targetDateText,
+      },
+    );
+
     return affected;
   }
 
@@ -2265,17 +3027,87 @@ class TransactionsRepository {
     if (rows.isEmpty) return 0;
     _assertCanMutateTransactionRows(rows, actor, 'delete');
 
-    final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
-    return (db.update(db.transactionsP)..where(
-          (t) => t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
-        ))
-        .write(
-          TransactionsPCompanion(
-            isDeleted: const Value(1),
-            isSynced: const Value(0),
-            updatedAt: Value(nowIso),
-          ),
+    _PeriodLockMatch? sourceLock;
+    var lockedDate = '';
+    for (final row in rows) {
+      final rowDate = _normalizeDateText(row.tDate ?? '');
+      final lock = await _findActivePeriodLockForDate(
+        companyId: companyId,
+        dateText: rowDate,
+      );
+      if (lock != null) {
+        sourceLock = lock;
+        lockedDate = rowDate;
+        break;
+      }
+    }
+    if (sourceLock != null) {
+      if (_canBypassPeriodLock(actor: actor, lock: sourceLock)) {
+        await _appendAuditTrail(
+          companyId: companyId,
+          entityType: 'period_lock',
+          action: 'override_delete',
+          entityId: sourceLock.periodLockId.toString(),
+          actor: actor,
+          message: 'SOFT lock overridden by admin/owner for delete',
+          payload: {
+            'lockMode': sourceLock.lockMode,
+            'lockedStart': sourceLock.startDate,
+            'lockedEnd': sourceLock.endDate,
+            'sourceDate': lockedDate,
+            'voucherNo': voucherNo,
+          },
         );
+      } else {
+        final reversalCount = await _postReversalEntriesForRows(
+          companyId: companyId,
+          rows: rows,
+          actor: actor,
+          reason: 'Locked period delete',
+        );
+        _lastComplianceNotice =
+            'Voucher is in a locked period (${sourceLock.startDate} to ${sourceLock.endDate}). '
+            'Posted reversal entry instead of deleting.';
+        await _appendAuditTrail(
+          companyId: companyId,
+          entityType: 'transaction',
+          action: 'delete_reversed',
+          entityId: voucherNo.toString(),
+          actor: actor,
+          message: 'Locked-period delete converted into reversal',
+          payload: {
+            'voucherNo': voucherNo,
+            'sourceDate': lockedDate,
+            'reversalEntries': reversalCount,
+          },
+        );
+        return reversalCount;
+      }
+    }
+
+    final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
+    final affected =
+        await (db.update(db.transactionsP)..where(
+              (t) =>
+                  t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
+            ))
+            .write(
+              TransactionsPCompanion(
+                isDeleted: const Value(1),
+                isSynced: const Value(0),
+                updatedAt: Value(nowIso),
+              ),
+            );
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'transaction',
+      action: 'delete',
+      entityId: voucherNo.toString(),
+      actor: actor,
+      message: 'Transaction moved to trash',
+      payload: {'voucherNo': voucherNo, 'affectedRows': affected},
+    );
+    return affected;
   }
 
   Future<int> restoreTransactionWithLinkedEntries({
@@ -2292,16 +3124,27 @@ class TransactionsRepository {
     if (rows.isEmpty) return 0;
 
     final voucherNos = rows.map((row) => row.voucherNo).toSet().toList();
-    return (db.update(db.transactionsP)..where(
-          (t) => t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
-        ))
-        .write(
-          TransactionsPCompanion(
-            isDeleted: const Value(0),
-            isSynced: const Value(0),
-            updatedAt: Value(nowIso),
-          ),
-        );
+    final affected =
+        await (db.update(db.transactionsP)..where(
+              (t) =>
+                  t.companyId.equals(companyId) & t.voucherNo.isIn(voucherNos),
+            ))
+            .write(
+              TransactionsPCompanion(
+                isDeleted: const Value(0),
+                isSynced: const Value(0),
+                updatedAt: Value(nowIso),
+              ),
+            );
+    await _appendAuditTrail(
+      companyId: companyId,
+      entityType: 'transaction',
+      action: 'restore',
+      entityId: voucherNo.toString(),
+      message: 'Transaction restored from trash',
+      payload: {'voucherNo': voucherNo, 'affectedRows': affected},
+    );
+    return affected;
   }
 
   Future<int> setAccountTransactionsDeletedState({

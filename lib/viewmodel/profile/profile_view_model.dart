@@ -3,7 +3,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:drift/drift.dart' show OrderingTerm, Variable;
+import 'package:drift/drift.dart' show Variable;
 import 'package:mehfooz_accounts_app/ui/auth/auth_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -14,6 +14,7 @@ import '../../data/local/database_manager.dart';
 import '../../model/user_model.dart';
 import '../../services/company_tombstone_store.dart';
 import '../../services/global_state.dart';
+import '../../utils/ulid.dart';
 import '../home/home_view_model.dart';
 import '../sync/sync_viewmodel.dart';
 import 'package:http/http.dart' as http;
@@ -136,8 +137,23 @@ class ProfileViewModel extends ChangeNotifier {
       await _loadCompanies();
 
       // Restore selected company
+      final storedGuid = prefs.getString("selected_company_guid")?.trim();
       final storedId = prefs.getInt("selected_company_id");
-      if (storedId != null && companies.isNotEmpty) {
+      if (storedGuid != null && storedGuid.isNotEmpty && companies.isNotEmpty) {
+        try {
+          selectedCompany = companies.firstWhere(
+            (c) => (c.companyGuid ?? '').trim() == storedGuid,
+          );
+
+          GlobalState.instance.setCompany(
+            id: selectedCompany!.companyId,
+            name: selectedCompany!.companyName ?? "Your Company",
+          );
+        } catch (_) {
+          selectedCompany = null;
+        }
+      }
+      if (selectedCompany == null && storedId != null && companies.isNotEmpty) {
         try {
           selectedCompany = companies.firstWhere(
             (c) => c.companyId == storedId,
@@ -157,6 +173,10 @@ class ProfileViewModel extends ChangeNotifier {
         selectedCompany = companies.first;
 
         await prefs.setInt("selected_company_id", selectedCompany!.companyId);
+        final companyGuid = selectedCompany!.companyGuid?.trim();
+        if (companyGuid != null && companyGuid.isNotEmpty) {
+          await prefs.setString("selected_company_guid", companyGuid);
+        }
 
         GlobalState.instance.setCompany(
           id: selectedCompany!.companyId,
@@ -216,9 +236,47 @@ class ProfileViewModel extends ChangeNotifier {
   // ─────────────────────────────────────────────────────────────
   Future<void> _loadCompanies() async {
     final db = DatabaseManager.instance.db;
-    companies = await (db.select(
-      db.companyTable,
-    )..orderBy([(t) => OrderingTerm.asc(t.companyId)])).get();
+    final rows = await db
+        .customSelect(
+          '''
+          SELECT c.CompanyID, c.CompanyGuid, c.CompanyName, c.Remarks
+          FROM Company c
+          WHERE COALESCE(c.IsDeleted, 0) = 0
+            AND NOT EXISTS (
+              SELECT 1
+              FROM Company other
+              WHERE COALESCE(other.IsDeleted, 0) = 0
+                AND LOWER(TRIM(COALESCE(other.CompanyName, ''))) =
+                    LOWER(TRIM(COALESCE(c.CompanyName, '')))
+                AND (
+                  COALESCE(other.IsSynced, 0) > COALESCE(c.IsSynced, 0)
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') > COALESCE(c.UpdatedAt, '')
+                  )
+                  OR (
+                    COALESCE(other.IsSynced, 0) = COALESCE(c.IsSynced, 0)
+                    AND COALESCE(other.UpdatedAt, '') = COALESCE(c.UpdatedAt, '')
+                    AND other.CompanyID < c.CompanyID
+                  )
+                )
+            )
+          ORDER BY c.CompanyID ASC
+          ''',
+          readsFrom: {db.companyTable},
+        )
+        .get();
+    companies = rows
+        .map(
+          (row) => CompanyTableData(
+            companyId: _toInt(row.data['CompanyID']),
+            companyGuid: row.data['CompanyGuid']?.toString(),
+            companyName: row.data['CompanyName']?.toString(),
+            remarks: row.data['Remarks']?.toString(),
+          ),
+        )
+        .where((company) => company.companyId > 0)
+        .toList(growable: false);
     final snapshot = companies
         .map((c) => '${c.companyId}:${c.companyName ?? '(null)'}')
         .join(', ');
@@ -242,11 +300,12 @@ class ProfileViewModel extends ChangeNotifier {
       final rows = await db
           .customSelect(
             '''
-        SELECT 1
-        FROM Company
-        WHERE LOWER(TRIM(COALESCE(CompanyName, ''))) = ?1
-        LIMIT 1
-        ''',
+	        SELECT 1
+	        FROM Company
+	        WHERE COALESCE(IsDeleted, 0) = 0
+            AND LOWER(TRIM(COALESCE(CompanyName, ''))) = ?1
+	        LIMIT 1
+	        ''',
             variables: [Variable.withString(normalized)],
           )
           .get();
@@ -257,10 +316,11 @@ class ProfileViewModel extends ChangeNotifier {
         .customSelect(
           '''
       SELECT 1
-      FROM Company
-      WHERE CompanyID <> ?1
-        AND LOWER(TRIM(COALESCE(CompanyName, ''))) = ?2
-      LIMIT 1
+	      FROM Company
+	      WHERE CompanyID <> ?1
+	        AND COALESCE(IsDeleted, 0) = 0
+	        AND LOWER(TRIM(COALESCE(CompanyName, ''))) = ?2
+	      LIMIT 1
       ''',
           variables: [
             Variable.withInt(excludeCompanyId),
@@ -277,6 +337,10 @@ class ProfileViewModel extends ChangeNotifier {
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt("selected_company_id", id);
+      final companyGuid = selectedCompany!.companyGuid?.trim();
+      if (companyGuid != null && companyGuid.isNotEmpty) {
+        await prefs.setString("selected_company_guid", companyGuid);
+      }
 
       GlobalState.instance.setCompany(
         id: selectedCompany!.companyId,
@@ -331,8 +395,17 @@ class ProfileViewModel extends ChangeNotifier {
         "🏢 [COMPANY_DEBUG] addCompany start name=$cleanName remarks=${cleanRemarks ?? '(null)'}",
       );
       await db.customStatement(
-        'INSERT INTO Company (CompanyName, Remarks) VALUES (?1, ?2);',
-        [cleanName, (cleanRemarks?.isEmpty ?? true) ? null : cleanRemarks],
+        '''
+	        INSERT INTO Company
+	          (CompanyGuid, CompanyName, Remarks, IsDeleted, IsSynced, UpdatedAt)
+	        VALUES (?1, ?2, ?3, 0, 0, ?4);
+	        ''',
+        [
+          Ulid.generate(),
+          cleanName,
+          (cleanRemarks?.isEmpty ?? true) ? null : cleanRemarks,
+          DateTime.now().toUtc().toIso8601String(),
+        ],
       );
 
       final idRow = await db
@@ -380,14 +453,17 @@ class ProfileViewModel extends ChangeNotifier {
     try {
       await db.customStatement(
         '''
-        UPDATE Company
-        SET CompanyName = ?1,
-            Remarks = ?2
-        WHERE CompanyID = ?3
-        ''',
+	        UPDATE Company
+	        SET CompanyName = ?1,
+	            Remarks = ?2,
+	            IsSynced = 0,
+	            UpdatedAt = ?3
+	        WHERE CompanyID = ?4
+	        ''',
         [
           cleanName,
           (cleanRemarks?.isEmpty ?? true) ? null : cleanRemarks,
+          DateTime.now().toUtc().toIso8601String(),
           companyId,
         ],
       );

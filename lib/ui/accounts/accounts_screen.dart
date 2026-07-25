@@ -10,6 +10,7 @@ import '../../model/account_head_option.dart';
 import '../../model/user_model.dart';
 import '../../repository/transactions_repository.dart';
 import '../../services/local_storage.dart';
+import '../../utils/ulid.dart';
 import '../../viewmodel/home/home_view_model.dart';
 import '../../viewmodel/sync/sync_viewmodel.dart';
 import '../commons/currency_flag.dart';
@@ -313,10 +314,11 @@ class _AccountsScreenState extends State<AccountsScreen> {
                   UpdatedAt = ?1,
                   CompanyID = ?2,
                   AccID = ?3,
-                  AccountTypeID = ?4
-              WHERE RegID = ?5
+                  AccountTypeID = ?4,
+                  AssignmentGuid = COALESCE(NULLIF(TRIM(AssignmentGuid), ''), ?5)
+              WHERE RegID = ?6
               ''',
-              [now, companyId, accId, accTypeId, regId],
+              [now, companyId, accId, accTypeId, Ulid.generate(), regId],
             );
             continue;
           }
@@ -326,10 +328,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
         await _db.customStatement(
           '''
           INSERT INTO Account_PCurrencyAssignment
-            (RegID, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
-          VALUES (?1, ?2, ?3, ?4, 0, 0, ?5)
+            (RegID, AssignmentGuid, AccID, AccountTypeID, CompanyID, IsDeleted, IsSynced, UpdatedAt)
+          VALUES (?1, ?2, ?3, ?4, ?5, 0, 0, ?6)
           ''',
-          [regId, accId, accTypeId, companyId, now],
+          [regId, Ulid.generate(), accId, accTypeId, companyId, now],
         );
       }
 
